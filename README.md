@@ -20,25 +20,70 @@ sage status
 sage logs worker
 ```
 
+## Long-Running Tasks
+
+Every task gets a trackable ID. Status transitions mechanically: `queued → running → done`.
+
+```bash
+# Submit (non-blocking, returns task ID)
+sage send worker '{"task":"Build the entire app"}'
+✓ task t-1710347041 → worker
+
+# Monitor
+sage tasks worker                   # status + elapsed time
+sage peek worker                    # live tmux pane + workspace
+sage result t-1710347041            # structured result when done
+
+# Course-correct
+sage steer worker "Use REST, not GraphQL"              # soft: queued for next msg
+sage steer worker "Wrong approach" --restart            # hard: cascade stop + retry
+```
+
 ## Orchestration
 
-Agents can create and manage other agents:
+Agents can create and manage other agents. Parent-child relationships are tracked automatically.
 
 ```bash
 sage create orch --runtime claude-code
 sage start orch
-sage call orch '{"task":"Build X. Delegate to sub-agents."}' 300
-# orch creates sub-agents, delegates, collects results, cleans up
+sage send orch '{"task":"Build X. Delegate to sub-agents."}'
+
+# orch creates sub-agents (parent auto-tracked)
+# sage status shows the tree:
+#   orch           claude-code  running
+#     └─ sub1      claude-code  running
+#     └─ sub2      claude-code  running
 ```
 
-## Long-Running Tasks
+## Multi-Orchestrator
+
+Run multiple independent orchestrators in parallel:
 
 ```bash
-sage send orch '{"task":"Build the entire app..."}'   # non-blocking
-sage wait orch --timeout 3600                          # stream progress, notify on completion
-sage inbox                                             # check results
-sage logs orch -f                                      # live tail
+sage create orch-frontend --runtime claude-code
+sage create orch-backend --runtime claude-code
+sage start --all
+
+sage send orch-frontend '{"task":"Build React dashboard"}'
+sage send orch-backend '{"task":"Build REST API"}'
+
+sage tasks    # all tasks across all agents
+sage status   # full tree view
 ```
+
+## Steering
+
+Course-correct agents without starting over:
+
+```bash
+# Soft steer — writes to steer.md, queued for next invocation
+sage steer orch "Use PostgreSQL instead of SQLite"
+
+# Hard steer — stops agent + all children, re-queues task with correction
+sage steer orch "Wrong approach entirely" --restart
+```
+
+`--restart` cascades: stops all child agents, stops the orchestrator, writes the steering context, re-queues the in-flight task, and restarts. The orch re-creates sub-agents as needed.
 
 ## Runtimes
 
@@ -52,37 +97,44 @@ Adding a new runtime = one file with two functions. See [DEVELOPMENT.md](DEVELOP
 
 ## Architecture
 
-- **Agents** = processes in tmux
+- **Agents** = processes in tmux windows
 - **Messages** = JSON files in inbox directories
+- **Tasks** = tracked with IDs, status files, and result files
+- **Parent-child** = auto-tracked via `SAGE_AGENT_NAME` env var
 - **Sync calls** = reply files + polling
 - **State** = files in workspace/
+- **Steering** = steer.md injected into runtime prompts
 - **Dependencies** = bash, jq, tmux
 
 ## Commands
 
 ```
 AGENTS
-  init [--force]              Initialize ~/.sage/
-  create <name> [--runtime R] Create agent (bash|cline|claude-code)
-  start [name|--all]          Start in tmux
-  stop [name|--all]           Stop
-  restart [name|--all]        Restart
-  status                      Show all agents
-  ls                          List agent names
-  rm <name>                   Remove agent
-  clean                       Clean stale files
+  init [--force]                  Initialize ~/.sage/
+  create <name> [--runtime R]     Create agent (bash|cline|claude-code)
+  start [name|--all]              Start in tmux
+  stop [name|--all]               Stop
+  restart [name|--all]            Restart
+  status                          Show all agents (tree view)
+  ls                              List agent names
+  rm <name>                       Remove agent
+  clean                           Clean stale files
 
-MESSAGING
-  send <to> <json>            Fire-and-forget
-  call <to> <json> [timeout]  Sync request/response (default: 60s)
-  wait <name> [--timeout N]   Wait for agent to finish (long-running)
-  inbox [--json] [--clear]    View/clear messages sent to you
+MESSAGING & TASKS
+  send <to> <json>                Fire-and-forget (returns task ID)
+  call <to> <json> [timeout]      Sync request/response (default: 60s)
+  tasks [name]                    List tasks with status
+  result <task-id>                Get task result
+  wait <name> [--timeout N]       Wait for agent to finish
+  peek <name> [--lines N]         See tmux pane + workspace
+  steer <name> <msg> [--restart]  Course-correct a running agent
+  inbox [--json] [--clear]        View/clear messages
 
 DEBUG
-  logs <name> [-f|--clear]    View/tail/clear logs
-  attach [name]               Attach to tmux session
+  logs <name> [-f|--clear]        View/tail/clear logs
+  attach [name]                   Attach to tmux session
 
 TOOLS
-  tool add <name> <path>      Register a tool
-  tool ls                     List tools
+  tool add <name> <path>          Register a tool
+  tool ls                         List tools
 ```

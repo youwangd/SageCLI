@@ -8,12 +8,13 @@ sage (CLI)
   ├── sage init          → creates ~/.sage/ with tools/, runtimes/, runner.sh
   ├── sage create <name> → creates agent dir with inbox/, workspace/, runtime.json
   ├── sage start <name>  → launches runner.sh in tmux pane
-  ├── sage send/call     → writes JSON to agent's inbox/
+  ├── sage send/call     → writes JSON to agent's inbox/, returns task ID
   │
   └── runner.sh (per agent, runs in tmux)
         ├── polls inbox/ every 300ms
         ├── sources runtimes/<runtime>.sh
-        └── calls runtime_inject() for each message
+        ├── calls runtime_inject() for each message
+        └── writes task status + results to results/
 ```
 
 ### File Layout
@@ -26,10 +27,14 @@ sage (CLI)
 │   └── <agent>/
 │       ├── inbox/             # incoming messages (JSON files)
 │       ├── replies/           # sync call responses
+│       ├── results/           # task tracking
+│       │   ├── <task-id>.status.json   # {status, queued_at, started_at, finished_at}
+│       │   └── <task-id>.result.json   # {status, agent, output}
 │       ├── workspace/         # agent's working directory
 │       ├── state/             # persistent agent state
-│       ├── runtime.json       # {"runtime":"cline","model":"","workdir":"..."}
+│       ├── runtime.json       # {runtime, model, parent, workdir, created}
 │       ├── instructions.md    # auto-generated prompt for CLI runtimes
+│       ├── steer.md           # steering context (injected into prompts)
 │       ├── handler.sh         # bash runtime only
 │       └── .pid               # runner process ID
 ├── runtimes/
@@ -44,15 +49,92 @@ sage (CLI)
 └── runner.sh                  # agent process loop
 ```
 
+## Task Lifecycle
+
+Every message creates a trackable task. Status transitions are mechanical (written by runner code, not LLM behavior).
+
+```
+sage send worker '{"task":"..."}' → task ID returned immediately
+                                         │
+                                    ┌─────▼─────┐
+                                    │  queued    │  status.json created by send_msg
+                                    └─────┬─────┘
+                                          │  runner picks up from inbox
+                                    ┌─────▼─────┐
+                                    │  running   │  runner updates status.json
+                                    └─────┬─────┘
+                                          │  runtime_inject() completes
+                                    ┌─────▼─────┐
+                                    │   done     │  runner updates status + runtime writes result
+                                    └────────────┘
+```
+
+Track with: `sage tasks [name]` · `sage result <task-id>` · `sage peek <name>`
+
+## Parent-Child Tracking
+
+When an agent creates a sub-agent, the parent is automatically recorded:
+
+```bash
+# Inside orch (SAGE_AGENT_NAME=orch):
+sage create sub1 --runtime claude-code
+# → sub1/runtime.json gets {"parent":"orch", ...}
+```
+
+`sage status` shows the tree:
+```
+  orch           claude-code  running
+    └─ sub1      claude-code  running
+    └─ sub2      claude-code  running
+```
+
+`sage steer orch "..." --restart` cascades: stops all children recursively, then restarts orch.
+
+## Steering
+
+Agents can be course-corrected mid-flight via `steer.md`:
+
+**Soft steer** — writes `steer.md` + queues a message:
+```bash
+sage steer orch "Use PostgreSQL instead of SQLite"
+# steer.md is injected into prompt BEFORE instructions on every runtime_inject()
+# Message queued — processed after current task finishes
+```
+
+**Hard steer** (`--restart`) — cascades stop + re-queues:
+```bash
+sage steer orch "Wrong approach" --restart
+# 1. Stops all children (recursive)
+# 2. Stops orch
+# 3. Writes steer.md
+# 4. Re-queues the in-flight task
+# 5. Restarts orch → picks up task with steering context
+# Children were stopped — orch re-creates them as needed
+```
+
+Runtime prompt construction:
+```
+[instructions.md]
+[steer.md — if exists]
+---
+## Current Task (from: ...)
+<task>
+---
+<completion instruction>
+```
+
 ## Message Flow
 
 ### Fire & Forget (sage send)
 ```
 sage send worker '{"task":"do X"}'
-  → writes JSON to ~/.sage/agents/worker/inbox/<msg_id>.json
-  → runner picks it up, calls runtime_inject()
-  → agent does work
-  → agent runs: sage send <from> '{"result":"done"}'
+  → returns task ID immediately (non-blocking)
+  → writes JSON to ~/.sage/agents/worker/inbox/<task-id>.json
+  → creates results/<task-id>.status.json (queued)
+  → runner picks it up, updates status → running
+  → calls runtime_inject()
+  → runtime writes results/<task-id>.result.json
+  → runner updates status → done
 ```
 
 ### Sync Call (sage call)
@@ -62,7 +144,7 @@ sage call worker '{"task":"do X"}' 60
   → polls reply_dir for response (up to 60s)
   → runner picks up message, calls runtime_inject()
   → runtime does work, captures output
-  → runtime writes reply to reply_dir/<msg_id>.json
+  → runtime writes reply to reply_dir/<task-id>.json
   → sage call reads reply, prints to stdout
 ```
 
@@ -74,9 +156,7 @@ When `reply_dir` is present (sync call via `sage call`):
 
 When `reply_dir` is absent (async via `sage send`):
 - Prompt says: "Report result via sage send <from> ..."
-- Agent must explicitly send results back
-
-This prevents duplicate messages and wasted LLM invocations.
+- Agent may send results back (but results/ is the reliable source)
 
 ### Caller Identity
 
@@ -96,7 +176,7 @@ runtime_start() {
 runtime_inject() {
   local name="$1" msg="$2"
   # Called for each incoming message
-  # Parse msg, build prompt, invoke CLI, write reply
+  # Parse msg, build prompt, invoke CLI, write reply + result
 }
 ```
 
@@ -127,8 +207,9 @@ runtime_inject() {
   local workdir=$(jq -r '.workdir // "."' "$agent_dir/runtime.json")
   local model=$(jq -r '.model // empty' "$agent_dir/runtime.json")
   local instructions="$agent_dir/instructions.md"
+  local steer_file="$agent_dir/steer.md"
 
-  # ── Build prompt (copy this block as-is) ──
+  # ── Build prompt ──
   local completion_instruction
   if [[ -n "$reply_dir" ]]; then
     completion_instruction="Your output will be automatically returned. Do NOT run sage send."
@@ -139,6 +220,7 @@ runtime_inject() {
   local prompt_file=$(mktemp /tmp/sage-XXXXX.txt)
   cat > "$prompt_file" << PROMPT
 $(cat "$instructions" 2>/dev/null)
+$(if [[ -f "$steer_file" ]]; then echo ""; cat "$steer_file"; fi)
 
 ---
 ## Current Task (from: $from)
@@ -155,19 +237,25 @@ PROMPT
   output=$(<YOUR_CLI_COMMAND> "$(cat "$prompt_file")" 2>&1) || true
   rm -f "$prompt_file"
 
-  log "<name> finished (${#output} bytes)"
+  log "<name> finished: $(echo "$output" | tail -1 | head -c 120)"
 
-  # ── Write reply (copy this block as-is) ──
+  # ── Write result for task tracking (copy as-is) ──
+  local results_dir="$AGENTS_DIR/$name/results"
+  if [[ -d "$results_dir" && -n "$msg_id" ]]; then
+    local json_out
+    json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$results_dir/${msg_id}.result.json" 2>/dev/null
+  fi
+
+  # ── Write reply for sync calls (copy as-is) ──
   if [[ -n "$reply_dir" ]]; then
     mkdir -p "$reply_dir"
-    local json_output
-    json_output=$(echo "$output" | jq -Rs .) || json_output="\"encoding failed\""
-    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_output}" > "$reply_dir/${msg_id}.json"
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$reply_dir/${msg_id}.json"
   fi
 }
 ```
 
-### Step 2: The CLI invocation (the only unique line)
+### Step 2: The CLI invocation examples
 
 ```bash
 # Cline
@@ -188,56 +276,87 @@ output=$(codex -q "$(cat "$prompt_file")" 2>&1) || true
 
 # Ollama (local)
 output=$(ollama run llama3 "$(cat "$prompt_file")" 2>&1) || true
-
-# Any CLI that takes a prompt and writes to stdout
-output=$(my-tool --prompt "$(cat "$prompt_file")" 2>&1) || true
 ```
 
 ### Step 3: Embed in sage init
 
-Add the runtime to the `cmd_init()` function in `sage` so `sage init` deploys it:
+Add the runtime to the `cmd_init()` function in `sage`:
 
 ```bash
-  # ── Runtime: <name> ──
   cat > "$RUNTIMES_DIR/<name>.sh" << 'RTEOF'
   <paste your runtime here>
   RTEOF
 ```
 
-### Step 4: Update help text
-
-In `cmd_help()`, add the runtime to the RUNTIMES section.
-
-### Step 5: Test
+### Step 4: Test
 
 ```bash
 sage init --force
 sage create test-agent --runtime <name>
 sage start test-agent
 
-# Simple task
+# Quick test
 sage call test-agent '{"task":"Create hello.py that prints hello"}' 60
-
-# Verify
 cat ~/.sage/agents/test-agent/workspace/hello.py
-sage logs test-agent
+
+# Task tracking test
+sage send test-agent '{"task":"Create world.py that prints world"}'
+sage tasks test-agent        # should show running → done
+sage result <task-id>        # should show output
+
+# Orchestrator test
+sage create orch --runtime <name>
+sage start orch
+sage call orch '{"task":"Create a sub-agent, delegate, collect result"}' 120
 
 # Clean up
-sage stop test-agent
-sage rm test-agent
+sage stop --all; sage rm test-agent; sage rm orch
 ```
 
 ### Checklist
 
-- [ ] `runtimes/<name>.sh` created with `runtime_start` + `runtime_inject`
-- [ ] CLI invocation works (test manually first: `<cli> "hello world"`)
-- [ ] Prompt passed correctly (CLI arg vs stdin — check your CLI's docs)
-- [ ] Output captured to `$output` variable
-- [ ] Reply written for sync calls (`reply_dir` check)
-- [ ] Embedded in `sage init` `cmd_init()`
+- [ ] `runtimes/<name>.sh` with `runtime_start` + `runtime_inject`
+- [ ] steer.md read and injected into prompt
+- [ ] Result written to `results/<task-id>.result.json`
+- [ ] Reply written for sync calls (reply_dir check)
+- [ ] Embedded in `sage init`
 - [ ] Help text updated
-- [ ] End-to-end test: `sage call` returns result
+- [ ] E2E: `sage call` returns result
+- [ ] E2E: `sage send` → `sage tasks` shows done → `sage result` works
 - [ ] Orchestrator test: orch creates sub-agents with this runtime
+
+## Known Patterns
+
+### Multi-Orchestrator (Parallel)
+Multiple independent orchestrators running simultaneously:
+```bash
+sage create orch-frontend --runtime claude-code
+sage create orch-backend --runtime claude-code
+sage start --all
+sage send orch-frontend '{"task":"Build React UI"}'
+sage send orch-backend '{"task":"Build REST API"}'
+sage tasks    # track all tasks across all agents
+```
+
+### Persistent Agent
+Agents stay alive between messages. The runner loops forever, processing each inbox message. Useful for multi-turn conversations.
+
+### Mixed Runtimes
+```bash
+sage create orch --runtime claude-code
+sage create fast-worker --runtime cline
+sage create smart-worker --runtime claude-code
+```
+
+### Long-Running Supervisor Pattern
+```bash
+sage send orch '{"task":"Build entire app"}'    # submit
+sage tasks orch                                  # monitor
+sage peek orch                                   # live view
+sage steer orch "Add auth module too"            # soft steer
+sage steer orch "Start over with Go" --restart   # hard restart + cascade
+sage result <task-id>                            # collect result
+```
 
 ## Dependencies
 
@@ -247,27 +366,6 @@ sage rm test-agent
 - `tmux` (3.0+)
 
 ### Optional (per runtime)
-- `cline` — Cline CLI (`npm i -g @anthropic-ai/cline` or standalone)
-- `claude` — Claude Code CLI (`npm i -g @anthropic-ai/claude-code`)
+- `cline` — Cline CLI
+- `claude` — Claude Code CLI (supports Bedrock)
 - Future: `aider`, `gemini`, `codex`, `ollama`
-
-## Known Patterns
-
-### Orchestrator Pattern
-An agent that creates sub-agents, delegates, and collects results:
-```
-orch → sage create sub1 --runtime cline → sage call sub1 '{"task":"..."}' 120
-     → sage create sub2 --runtime cline → sage call sub2 '{"task":"..."}' 120
-     → copy results to workspace → verify → sage stop/rm sub-agents
-```
-
-### Persistent Agent
-Agents stay alive between messages. The runner loops forever, processing each inbox message. Useful for multi-turn conversations (orch sends task, agent asks question, orch answers, agent continues).
-
-### Mixed Runtimes
-Orch can use claude-code while sub-agents use cline, or vice versa:
-```bash
-sage create orch --runtime claude-code
-sage create fast-worker --runtime cline
-sage create smart-worker --runtime claude-code
-```
