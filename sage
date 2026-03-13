@@ -225,8 +225,10 @@ sage send $from '{\"status\":\"done\",\"agent\":\"$name\",\"result\":\"<brief su
 
   # Write prompt to temp file
   local prompt_file=$(mktemp /tmp/sage-cline-XXXXX.txt)
+  local steer_file="$agent_dir/steer.md"
   cat > "$prompt_file" << PROMPT
 $(cat "$instructions" 2>/dev/null)
+$(if [[ -f "$steer_file" ]]; then echo ""; cat "$steer_file"; fi)
 
 ---
 ## Current Task (from: $from)
@@ -296,8 +298,10 @@ sage send $from '{\"status\":\"done\",\"agent\":\"$name\",\"result\":\"<brief su
 
   # Write prompt to temp file
   local prompt_file=$(mktemp /tmp/sage-claude-XXXXX.txt)
+  local steer_file="$agent_dir/steer.md"
   cat > "$prompt_file" << PROMPT
 $(cat "$instructions" 2>/dev/null)
+$(if [[ -f "$steer_file" ]]; then echo ""; cat "$steer_file"; fi)
 
 ---
 ## Current Task (from: $from)
@@ -864,6 +868,65 @@ cmd_wait() {
 }
 
 # ═══════════════════════════════════════════════
+# sage steer <name> <message> [--kill]
+# ═══════════════════════════════════════════════
+cmd_steer() {
+  local name="" message="" do_kill=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --kill)  do_kill=true; shift ;;
+      -*)      die "unknown flag: $1" ;;
+      *)
+        if [[ -z "$name" ]]; then
+          name="$1"
+        elif [[ -z "$message" ]]; then
+          message="$1"
+        else
+          message="$message $1"
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  [[ -n "$name" && -n "$message" ]] || die "usage: sage steer <name> <message> [--kill]"
+  ensure_init; agent_exists "$name"
+
+  local agent_dir="$AGENTS_DIR/$name"
+  local steer_file="$agent_dir/steer.md"
+
+  if [[ "$do_kill" == true ]]; then
+    # Hard steer: kill current task, restart with steering context
+    info "killing current task..."
+    cmd_stop "$name" 2>/dev/null || true
+
+    # Write steer file
+    printf "## ⚠️ CORRECTION FROM SUPERVISOR ($(date '+%H:%M:%S'))\n\n%s\n\n---\n\n" "$message" > "$steer_file"
+
+    # Restart
+    cmd_start "$name"
+    ok "agent restarted with steering: $message"
+  else
+    # Soft steer: write context that gets picked up on next message
+    # Append to steer.md — runtime reads this before each invocation
+    mkdir -p "$(dirname "$steer_file")"
+    printf "\n## ⚠️ STEERING UPDATE ($(date '+%H:%M:%S'))\n\n%s\n" "$message" >> "$steer_file"
+
+    # Also send as a high-priority message
+    export SAGE_AGENT_NAME="${SAGE_AGENT_NAME:-cli}"
+    source "$TOOLS_DIR/common.sh"
+    local payload
+    payload=$(jq -n --arg m "$message" '{priority:"high",type:"steer",text:$m}')
+    local task_id
+    task_id=$(send_msg "$name" "$payload")
+    ok "steering sent to $name (task: $task_id)"
+    info "steer.md updated — will be included in next invocation"
+    info "use --kill to interrupt current task and restart immediately"
+  fi
+}
+
+# ═══════════════════════════════════════════════
 # sage tasks [name]
 # ═══════════════════════════════════════════════
 cmd_tasks() {
@@ -1101,6 +1164,7 @@ cmd_help() {
     result <task-id>            Get task result
     wait <name> [--timeout N]   Wait for agent to finish (long-running tasks)
     peek <name> [--lines N]     See what agent is doing (tmux pane + workspace)
+    steer <name> <msg> [--kill] Course-correct a running agent
     inbox [--json] [--clear]    View/clear messages sent to you (.cli)
 
   DEBUG
@@ -1118,8 +1182,11 @@ cmd_help() {
 
   LONG-RUNNING TASKS
     sage send orch '{"task":"..."}'     # fire & forget (non-blocking)
-    sage wait orch --timeout 3600       # wait up to 1h with progress
-    sage inbox                          # check results when done
+    sage tasks orch                      # check status
+    sage peek orch                       # see what it's doing
+    sage steer orch "Use REST not GraphQL"  # course-correct
+    sage steer orch "Start over" --kill  # kill + restart with new context
+    sage result <task-id>                # get result when done
 
 EOF
 }
@@ -1136,6 +1203,7 @@ case "${1:-}" in
   call)    cmd_call "${2:-}" "${3:-}" "${4:-}" ;;
   tasks)   cmd_tasks "${2:-}" ;;
   result)  cmd_result "${2:-}" ;;
+  steer)   shift; cmd_steer "$@" ;;
   wait)    shift; cmd_wait "$@" ;;
   peek)    shift; cmd_peek "$@" ;;
   inbox)   shift; cmd_inbox "$@" ;;
