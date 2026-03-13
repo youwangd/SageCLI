@@ -705,11 +705,18 @@ cmd_status() {
 # ═══════════════════════════════════════════════
 cmd_send() {
   local to="${1:-}" message="${2:-}"
-  [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message>"
+  [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file>"
   ensure_init
 
   if [[ "$to" != ".cli" ]]; then
     agent_exists "$to"
+  fi
+
+  # Support @file syntax — read message from file
+  if [[ "$message" == @* ]]; then
+    local filepath="${message#@}"
+    [[ -f "$filepath" ]] || die "file not found: $filepath"
+    message=$(cat "$filepath")
   fi
 
   export SAGE_AGENT_NAME="${SAGE_AGENT_NAME:-cli}"
@@ -729,8 +736,15 @@ cmd_send() {
 # ═══════════════════════════════════════════════
 cmd_call() {
   local to="${1:-}" message="${2:-}" timeout="${3:-60}"
-  [[ -n "$to" && -n "$message" ]] || die "usage: sage call <agent> <message> [timeout]"
+  [[ -n "$to" && -n "$message" ]] || die "usage: sage call <agent> <message|@file> [timeout]"
   ensure_init; agent_exists "$to"
+
+  # Support @file syntax
+  if [[ "$message" == @* ]]; then
+    local filepath="${message#@}"
+    [[ -f "$filepath" ]] || die "file not found: $filepath"
+    message=$(cat "$filepath")
+  fi
 
   # Use the agent's own name if running inside an agent, otherwise .cli
   local caller="${SAGE_AGENT_NAME:-.cli}"
@@ -1227,8 +1241,8 @@ cmd_help() {
     clean                       Clean up stale files
 
   MESSAGING
-    send <to> <message>          Fire-and-forget (returns task ID)
-    call <to> <message> [sec]    Send and wait for response (default: 60s)
+    send <to> <message|@file>     Fire-and-forget (returns task ID)
+    call <to> <message|@file> [s]  Send and wait for response (default: 60s)
     tasks [name]                List tasks with status
     result <task-id>            Get task result
     wait <name> [--timeout N]   Wait for agent to finish (long-running tasks)
