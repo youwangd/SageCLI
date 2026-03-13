@@ -715,6 +715,7 @@ cmd_send() {
   # Support @file syntax — read message from file
   if [[ "$message" == @* ]]; then
     local filepath="${message#@}"
+    filepath="${filepath/#\~/$HOME}"
     [[ -f "$filepath" ]] || die "file not found: $filepath"
     message=$(cat "$filepath")
   fi
@@ -742,6 +743,7 @@ cmd_call() {
   # Support @file syntax
   if [[ "$message" == @* ]]; then
     local filepath="${message#@}"
+    filepath="${filepath/#\~/$HOME}"
     [[ -f "$filepath" ]] || die "file not found: $filepath"
     message=$(cat "$filepath")
   fi
