@@ -39,8 +39,8 @@ $task
 $completion_instruction
 PROMPT
 
-  log "invoking cline (reply_dir=${reply_dir:-none}, msg_id=${msg_id})..."
-  local output=""
+  log "invoking cline..."
+  local output
   cd "$workdir"
 
   local cline_args=(--act -c "$workdir")
@@ -49,18 +49,19 @@ PROMPT
   output=$(cline "${cline_args[@]}" "$(cat "$prompt_file")" 2>&1) || true
   rm -f "$prompt_file"
 
-  local output_len=${#output}
-  log "cline finished (${output_len} bytes): $(echo "$output" | tail -1 | head -c 120)"
+  log "cline finished: $(echo "$output" | tail -1 | head -c 120)"
+
+  # Write result for task tracking
+  local results_dir="$AGENTS_DIR/$name/results"
+  if [[ -d "$results_dir" && -n "$msg_id" ]]; then
+    local json_out
+    json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$results_dir/${msg_id}.result.json" 2>/dev/null
+  fi
 
   # Write reply for sync calls
   if [[ -n "$reply_dir" ]]; then
-    mkdir -p "$reply_dir" 2>/dev/null || true
-    local reply_file="$reply_dir/${msg_id}.json"
-    local json_output
-    json_output=$(echo "$output" | jq -Rs .) || json_output="\"output encoding failed\""
-    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_output}" > "$reply_file"
-    log "reply written to $reply_file ($(wc -c < "$reply_file") bytes)"
-  else
-    log "no reply_dir, skipping reply"
+    mkdir -p "$reply_dir"
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$reply_dir/${msg_id}.json"
   fi
 }

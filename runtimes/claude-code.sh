@@ -21,10 +21,8 @@ runtime_inject() {
   # Build completion instruction based on call type
   local completion_instruction
   if [[ -n "$reply_dir" ]]; then
-    # Sync call (sage call) — result returns automatically via reply mechanism
     completion_instruction="Your output will be automatically returned to the caller. Do NOT run sage send — just do the work and let your output speak for itself."
   else
-    # Async call (sage send) — agent must explicitly report back
     completion_instruction="When you complete this task, report your result by running:
 sage send $from '{\"status\":\"done\",\"agent\":\"$name\",\"result\":\"<brief summary>\"}'"
   fi
@@ -54,6 +52,14 @@ PROMPT
   rm -f "$prompt_file"
 
   log "claude-code finished: $(echo "$output" | tail -1 | head -c 120)"
+
+  # Write result for task tracking
+  local results_dir="$AGENTS_DIR/$name/results"
+  if [[ -d "$results_dir" && -n "$msg_id" ]]; then
+    local json_out
+    json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$results_dir/${msg_id}.result.json" 2>/dev/null
+  fi
 
   # Write reply for sync calls
   if [[ -n "$reply_dir" ]]; then

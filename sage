@@ -54,43 +54,76 @@ cmd_init() {
 SAGE_HOME="${SAGE_HOME:-$HOME/.sage}"
 AGENTS_DIR="$SAGE_HOME/agents"
 
+# Generate a short task ID
+_task_id() {
+  echo "t-$(date +%s)-$RANDOM"
+}
+
 send_msg() {
   local to="$1" payload="$2"
-  local msg_id="$(date +%s%N)-$$-$RANDOM"
+  local task_id="$(_task_id)"
   local me="${SAGE_AGENT_NAME:-cli}"
   local inbox="$AGENTS_DIR/$to/inbox"
-  # .cli is a special pseudo-agent for sage call — accept it as a target
+  # .cli is a special pseudo-agent — accept it as a target
   if [[ "$to" == ".cli" ]]; then
     mkdir -p "$AGENTS_DIR/.cli/inbox"
     inbox="$AGENTS_DIR/.cli/inbox"
   fi
   [[ -d "$inbox" ]] || { echo "error: agent '$to' not found" >&2; return 1; }
-  cat > "$inbox/${msg_id}.json" <<MSGEOF
-{"id":"$msg_id","from":"$me","payload":$payload,"ts":$(date +%s)}
+
+  # Create task tracking
+  local results_dir="$AGENTS_DIR/$to/results"
+  mkdir -p "$results_dir"
+  jq -n \
+    --arg id "$task_id" \
+    --arg from "$me" \
+    --arg status "queued" \
+    --arg ts "$(date +%s)" \
+    '{id:$id, from:$from, status:$status, queued_at:($ts|tonumber), started_at:null, finished_at:null}' \
+    > "$results_dir/${task_id}.status.json"
+
+  # Write message to inbox
+  cat > "$inbox/${task_id}.json" <<MSGEOF
+{"id":"$task_id","from":"$me","payload":$payload,"ts":$(date +%s)}
 MSGEOF
+
+  # Return task_id so callers can track it
+  echo "$task_id"
 }
 
 call_agent() {
   local to="$1" payload="$2" timeout="${3:-60}"
-  local msg_id="$(date +%s%N)-$$-$RANDOM"
+  local task_id="$(_task_id)"
   local me="${SAGE_AGENT_NAME:-cli}"
   local reply_dir="$AGENTS_DIR/${me}/replies"
   mkdir -p "$reply_dir"
   local inbox="$AGENTS_DIR/$to/inbox"
   [[ -d "$inbox" ]] || { echo "error: agent '$to' not found" >&2; return 1; }
-  cat > "$inbox/${msg_id}.json" <<MSGEOF
-{"id":"$msg_id","from":"$me","payload":$payload,"reply_dir":"$reply_dir","ts":$(date +%s)}
+
+  # Create task tracking
+  local results_dir="$AGENTS_DIR/$to/results"
+  mkdir -p "$results_dir"
+  jq -n \
+    --arg id "$task_id" \
+    --arg from "$me" \
+    --arg status "queued" \
+    --arg ts "$(date +%s)" \
+    '{id:$id, from:$from, status:$status, queued_at:($ts|tonumber), started_at:null, finished_at:null}' \
+    > "$results_dir/${task_id}.status.json"
+
+  cat > "$inbox/${task_id}.json" <<MSGEOF
+{"id":"$task_id","from":"$me","payload":$payload,"reply_dir":"$reply_dir","ts":$(date +%s)}
 MSGEOF
   local deadline=$((SECONDS + timeout))
   while [[ $SECONDS -lt $deadline ]]; do
-    if [[ -f "$reply_dir/${msg_id}.json" ]]; then
-      cat "$reply_dir/${msg_id}.json"
-      rm "$reply_dir/${msg_id}.json"
+    if [[ -f "$reply_dir/${task_id}.json" ]]; then
+      cat "$reply_dir/${task_id}.json"
+      rm "$reply_dir/${task_id}.json"
       return 0
     fi
     sleep 0.3
   done
-  echo "error: timeout waiting for reply from '$to'" >&2
+  echo "error: timeout waiting for reply from '$to' (task: $task_id — still running, use: sage result $task_id)" >&2
   return 1
 }
 
@@ -214,6 +247,14 @@ PROMPT
 
   log "cline finished: $(echo "$output" | tail -1 | head -c 120)"
 
+  # Write result for task tracking
+  local results_dir="$AGENTS_DIR/$name/results"
+  if [[ -d "$results_dir" && -n "$msg_id" ]]; then
+    local json_out
+    json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$results_dir/${msg_id}.result.json" 2>/dev/null
+  fi
+
   # Write reply for sync calls
   if [[ -n "$reply_dir" ]]; then
     mkdir -p "$reply_dir"
@@ -279,6 +320,14 @@ PROMPT
 
   log "claude-code finished: $(echo "$output" | tail -1 | head -c 120)"
 
+  # Write result for task tracking
+  local results_dir="$AGENTS_DIR/$name/results"
+  if [[ -d "$results_dir" && -n "$msg_id" ]]; then
+    local json_out
+    json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$results_dir/${msg_id}.result.json" 2>/dev/null
+  fi
+
   # Write reply for sync calls
   if [[ -n "$reply_dir" ]]; then
     mkdir -p "$reply_dir"
@@ -340,8 +389,25 @@ while true; do
     [[ -f "$msg_file" ]] || continue
     msg=$(cat "$msg_file")
     rm -f "$msg_file"
-    log "← $(echo "$msg" | jq -r '.from'): $(echo "$msg" | jq -c '.payload' | head -c 100)"
+    local_task_id=$(echo "$msg" | jq -r '.id')
+    local_from=$(echo "$msg" | jq -r '.from')
+    log "← ${local_from}: $(echo "$msg" | jq -c '.payload' | head -c 100)"
+
+    # Update task status → running
+    results_dir="$AGENT_DIR/results"
+    mkdir -p "$results_dir"
+    status_file="$results_dir/${local_task_id}.status.json"
+    if [[ -f "$status_file" ]]; then
+      jq --arg ts "$(date +%s)" '.status="running" | .started_at=($ts|tonumber)' "$status_file" > "${status_file}.tmp" && mv "${status_file}.tmp" "$status_file"
+    fi
+
+    # Process the message
     runtime_inject "$AGENT_NAME" "$msg"
+
+    # Update task status → done
+    if [[ -f "$status_file" ]]; then
+      jq --arg ts "$(date +%s)" '.status="done" | .finished_at=($ts|tonumber)' "$status_file" > "${status_file}.tmp" && mv "${status_file}.tmp" "$status_file"
+    fi
   done
   sleep 0.3
 done
@@ -614,7 +680,6 @@ cmd_send() {
   [[ -n "$to" && -n "$payload" ]] || die "usage: sage send <agent> '<json_payload>'"
   ensure_init
 
-  # Allow sending to any agent or .cli
   if [[ "$to" != ".cli" ]]; then
     agent_exists "$to"
   fi
@@ -626,8 +691,10 @@ cmd_send() {
     payload="$(jq -n --arg t "$payload" '{text:$t}')"
   fi
 
-  send_msg "$to" "$payload"
-  ok "sent to $to"
+  local task_id
+  task_id=$(send_msg "$to" "$payload")
+  ok "task ${BOLD}${task_id}${NC} → $to"
+  info "track: sage tasks $to | sage result $task_id"
 }
 
 # ═══════════════════════════════════════════════
@@ -797,6 +864,106 @@ cmd_wait() {
 }
 
 # ═══════════════════════════════════════════════
+# sage tasks [name]
+# ═══════════════════════════════════════════════
+cmd_tasks() {
+  local name="${1:-}"
+  ensure_init
+  set +e
+
+  local now=$(date +%s)
+  local found=0
+
+  printf "\n${BOLD}  ⚡ Tasks${NC}\n\n"
+  printf "  ${DIM}%-20s %-12s %-10s %-10s %s${NC}\n" "TASK" "AGENT" "STATUS" "ELAPSED" "FROM"
+
+  # Search specific agent or all agents
+  local search_dirs=()
+  if [[ -n "$name" ]]; then
+    agent_exists "$name"
+    search_dirs=("$AGENTS_DIR/$name/results")
+  else
+    for d in "$AGENTS_DIR"/*/results; do
+      [[ -d "$d" ]] && search_dirs+=("$d")
+    done
+  fi
+
+  for results_dir in "${search_dirs[@]}"; do
+    [[ -d "$results_dir" ]] || continue
+    local agent_name=$(basename "$(dirname "$results_dir")")
+    [[ "$agent_name" == .* ]] && continue
+
+    for status_file in $(ls -t "$results_dir"/*.status.json 2>/dev/null | head -20); do
+      [[ -f "$status_file" ]] || continue
+      ((found++))
+
+      local task_id=$(jq -r '.id' "$status_file")
+      local status=$(jq -r '.status' "$status_file")
+      local from=$(jq -r '.from' "$status_file")
+      local queued_at=$(jq -r '.queued_at // 0' "$status_file")
+      local finished_at=$(jq -r '.finished_at // 0' "$status_file")
+
+      local elapsed
+      if [[ "$finished_at" != "null" && "$finished_at" != "0" ]]; then
+        elapsed="$(( finished_at - queued_at ))s"
+      else
+        elapsed="$(( now - queued_at ))s"
+      fi
+
+      local status_color
+      case "$status" in
+        done)    status_color="$GREEN" ;;
+        running) status_color="$YELLOW" ;;
+        queued)  status_color="$DIM" ;;
+        failed)  status_color="$RED" ;;
+        *)       status_color="$NC" ;;
+      esac
+
+      printf "  %-20s %-12s ${status_color}%-10s${NC} %-10s %s\n" \
+        "$task_id" "$agent_name" "$status" "$elapsed" "$from"
+    done
+  done
+
+  [[ $found -eq 0 ]] && printf "  ${DIM}no tasks${NC}\n"
+  printf "\n"
+}
+
+# ═══════════════════════════════════════════════
+# sage result <task-id>
+# ═══════════════════════════════════════════════
+cmd_result() {
+  local task_id="${1:-}"
+  [[ -n "$task_id" ]] || die "usage: sage result <task-id>"
+  ensure_init
+
+  # Search all agents for this task
+  for results_dir in "$AGENTS_DIR"/*/results; do
+    [[ -d "$results_dir" ]] || continue
+    local status_file="$results_dir/${task_id}.status.json"
+    local result_file="$results_dir/${task_id}.result.json"
+
+    if [[ -f "$status_file" ]]; then
+      local status=$(jq -r '.status' "$status_file")
+      local agent_name=$(basename "$(dirname "$results_dir")")
+
+      if [[ "$status" == "done" && -f "$result_file" ]]; then
+        cat "$result_file"
+      elif [[ "$status" == "done" ]]; then
+        # No result file — check logs for the output
+        echo "{\"status\":\"done\",\"agent\":\"$agent_name\",\"note\":\"task completed — check sage logs $agent_name for output\"}"
+      elif [[ "$status" == "running" ]]; then
+        echo "{\"status\":\"running\",\"agent\":\"$agent_name\",\"hint\":\"use sage peek $agent_name to see progress\"}"
+      else
+        cat "$status_file"
+      fi
+      return 0
+    fi
+  done
+
+  die "task '$task_id' not found"
+}
+
+# ═══════════════════════════════════════════════
 # sage peek <name> [--lines N]
 # ═══════════════════════════════════════════════
 cmd_peek() {
@@ -928,8 +1095,10 @@ cmd_help() {
     clean                       Clean up stale files
 
   MESSAGING
-    send <to> <payload>         Fire-and-forget message
+    send <to> <payload>         Fire-and-forget (returns task ID)
     call <to> <payload> [sec]   Send and wait for response (default: 60s)
+    tasks [name]                List tasks with status
+    result <task-id>            Get task result
     wait <name> [--timeout N]   Wait for agent to finish (long-running tasks)
     peek <name> [--lines N]     See what agent is doing (tmux pane + workspace)
     inbox [--json] [--clear]    View/clear messages sent to you (.cli)
@@ -965,6 +1134,8 @@ case "${1:-}" in
   status)  cmd_status ;;
   send)    cmd_send "${2:-}" "${3:-}" ;;
   call)    cmd_call "${2:-}" "${3:-}" "${4:-}" ;;
+  tasks)   cmd_tasks "${2:-}" ;;
+  result)  cmd_result "${2:-}" ;;
   wait)    shift; cmd_wait "$@" ;;
   peek)    shift; cmd_peek "$@" ;;
   inbox)   shift; cmd_inbox "$@" ;;
