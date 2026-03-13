@@ -15,7 +15,7 @@ sage init
 ```bash
 sage create worker --runtime claude-code   # or: cline, bash
 sage start worker
-sage call worker '{"task":"Build hello.py"}' 60
+sage call worker "Build hello.py that prints hello" 60
 sage status
 sage logs worker
 ```
@@ -26,8 +26,8 @@ Every task gets a trackable ID. Status transitions mechanically: `queued → run
 
 ```bash
 # Submit (non-blocking, returns task ID)
-sage send worker '{"task":"Build the entire app"}'
-✓ task t-1710347041 → worker
+sage send worker "Build the entire app"
+# ✓ task t-1710347041 → worker
 
 # Monitor
 sage tasks worker                   # status + elapsed time
@@ -46,7 +46,7 @@ Agents can create and manage other agents. Parent-child relationships are tracke
 ```bash
 sage create orch --runtime claude-code
 sage start orch
-sage send orch '{"task":"Build X. Delegate to sub-agents."}'
+sage send orch "Build a todo app. Delegate to sub-agents."
 
 # orch creates sub-agents (parent auto-tracked)
 # sage status shows the tree:
@@ -64,8 +64,8 @@ sage create orch-frontend --runtime claude-code
 sage create orch-backend --runtime claude-code
 sage start --all
 
-sage send orch-frontend '{"task":"Build React dashboard"}'
-sage send orch-backend '{"task":"Build REST API"}'
+sage send orch-frontend "Build React dashboard"
+sage send orch-backend "Build REST API with FastAPI"
 
 sage tasks    # all tasks across all agents
 sage status   # full tree view
@@ -110,31 +110,31 @@ Adding a new runtime = one file with two functions. See [DEVELOPMENT.md](DEVELOP
 
 ```
 AGENTS
-  init [--force]                  Initialize ~/.sage/
-  create <name> [--runtime R]     Create agent (bash|cline|claude-code)
-  start [name|--all]              Start in tmux
-  stop [name|--all]               Stop
-  restart [name|--all]            Restart
-  status                          Show all agents (tree view)
-  ls                              List agent names
-  rm <name>                       Remove agent
-  clean                           Clean stale files
+  init [--force]                   Initialize ~/.sage/
+  create <name> [--runtime R]      Create agent (bash|cline|claude-code)
+  start [name|--all]               Start in tmux
+  stop [name|--all]                Stop
+  restart [name|--all]             Restart
+  status                           Show all agents (tree view)
+  ls                               List agent names
+  rm <name>                        Remove agent
+  clean                            Clean stale files
 
 MESSAGING & TASKS
-  send <to> <json>                Fire-and-forget (returns task ID)
-  call <to> <json> [timeout]      Sync request/response (default: 60s)
-  tasks [name]                    List tasks with status
-  result <task-id>                Get task result
-  wait <name> [--timeout N]       Wait for agent to finish
-  peek <name> [--lines N]         See tmux pane + workspace
-  steer <name> <msg> [--restart]  Course-correct a running agent
-  inbox [--json] [--clear]        View/clear messages
+  send <to> <message>              Fire-and-forget (returns task ID)
+  call <to> <message> [timeout]    Sync request/response (default: 60s)
+  tasks [name]                     List tasks with status
+  result <task-id>                 Get task result
+  wait <name> [--timeout N]        Wait for agent to finish
+  peek <name> [--lines N]          See tmux pane + workspace
+  steer <name> <msg> [--restart]   Course-correct a running agent
+  inbox [--json] [--clear]         View/clear messages
 
 DEBUG
-  logs <name> [-f|--clear]        View/tail/clear logs
-  attach [name]                   Attach to tmux session
+  logs <name> [-f|--clear]         View/tail/clear logs
+  attach [name]                    Attach to tmux session
 
 TOOLS
-  tool add <name> <path>          Register a tool
-  tool ls                         List tools
+  tool add <name> <path>           Register a tool
+  tool ls                          List tools
 ```

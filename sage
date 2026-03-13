@@ -221,7 +221,7 @@ runtime_start() {
 runtime_inject() {
   local name="$1" msg="$2"
   local agent_dir="$AGENTS_DIR/$name"
-  local task=$(echo "$msg" | jq -r '.payload.task // .payload.text // (.payload | tostring)' 2>/dev/null)
+  local task=$(echo "$msg" | jq -r '.payload.text // (.payload | tostring)' 2>/dev/null)
   local from=$(echo "$msg" | jq -r '.from' 2>/dev/null)
   local msg_id=$(echo "$msg" | jq -r '.id' 2>/dev/null)
   local reply_dir=$(echo "$msg" | jq -r '.reply_dir // empty' 2>/dev/null)
@@ -235,7 +235,7 @@ runtime_inject() {
     completion_instruction="Your output will be automatically returned to the caller. Do NOT run sage send — just do the work and let your output speak for itself."
   else
     completion_instruction="When you complete this task, report your result by running:
-sage send $from '{\"status\":\"done\",\"agent\":\"$name\",\"result\":\"<brief summary>\"}'"
+sage send $from \"Done: <brief summary of what you did>\""
   fi
 
   # Write prompt to temp file
@@ -294,7 +294,7 @@ runtime_start() {
 runtime_inject() {
   local name="$1" msg="$2"
   local agent_dir="$AGENTS_DIR/$name"
-  local task=$(echo "$msg" | jq -r '.payload.task // .payload.text // (.payload | tostring)' 2>/dev/null)
+  local task=$(echo "$msg" | jq -r '.payload.text // (.payload | tostring)' 2>/dev/null)
   local from=$(echo "$msg" | jq -r '.from' 2>/dev/null)
   local msg_id=$(echo "$msg" | jq -r '.id' 2>/dev/null)
   local reply_dir=$(echo "$msg" | jq -r '.reply_dir // empty' 2>/dev/null)
@@ -308,7 +308,7 @@ runtime_inject() {
     completion_instruction="Your output will be automatically returned to the caller. Do NOT run sage send — just do the work and let your output speak for itself."
   else
     completion_instruction="When you complete this task, report your result by running:
-sage send $from '{\"status\":\"done\",\"agent\":\"$name\",\"result\":\"<brief summary>\"}'"
+sage send $from \"Done: <brief summary of what you did>\""
   fi
 
   # Write prompt to temp file
@@ -488,7 +488,7 @@ You are a persistent agent in the sage system. You communicate with other agents
 
 \`\`\`bash
 # Send a message to another agent (fire & forget)
-sage send <agent-name> '{"task":"description","data":"..."}'
+sage send <agent-name> "description of what to do"
 
 # See who's running
 sage status
@@ -496,10 +496,10 @@ sage status
 # Create a sub-agent (if you need to delegate)
 sage create <name> --runtime $runtime
 sage start <name>
-sage send <name> '{"task":"..."}'
+sage send <name> "do this task"
 
 # Send and wait for a response (sync, 60s default timeout)
-sage call <name> '{"task":"..."}' 120
+sage call <name> "do this task" 120
 
 # Stop/remove agents you created
 sage stop <name>
@@ -515,7 +515,7 @@ sage rm <name>
 ## Rules
 - You receive tasks as messages. Do the work.
 - Use \`sage send\` to communicate results back to whoever sent you the task.
-- If you need clarification, use \`sage send <from> '{"question":"..."}'\`
+- If you need clarification, use \`sage send <from> "your question here"\`
 - If you need to delegate subtasks, create sub-agents with \`sage create\`
 - Keep your work in your workspace directory.
 - When done with a task, always send the result back.
@@ -704,8 +704,8 @@ cmd_status() {
 # sage send <to> <payload>
 # ═══════════════════════════════════════════════
 cmd_send() {
-  local to="${1:-}" payload="${2:-}"
-  [[ -n "$to" && -n "$payload" ]] || die "usage: sage send <agent> '<json_payload>'"
+  local to="${1:-}" message="${2:-}"
+  [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message>"
   ensure_init
 
   if [[ "$to" != ".cli" ]]; then
@@ -715,9 +715,8 @@ cmd_send() {
   export SAGE_AGENT_NAME="${SAGE_AGENT_NAME:-cli}"
   source "$TOOLS_DIR/common.sh"
 
-  if ! echo "$payload" | jq . >/dev/null 2>&1; then
-    payload="$(jq -n --arg t "$payload" '{text:$t}')"
-  fi
+  local payload
+  payload="$(jq -n --arg t "$message" '{text:$t}')"
 
   local task_id
   task_id=$(send_msg "$to" "$payload")
@@ -729,8 +728,8 @@ cmd_send() {
 # sage call <to> <payload> [timeout]
 # ═══════════════════════════════════════════════
 cmd_call() {
-  local to="${1:-}" payload="${2:-}" timeout="${3:-60}"
-  [[ -n "$to" && -n "$payload" ]] || die "usage: sage call <agent> '<json_payload>' [timeout]"
+  local to="${1:-}" message="${2:-}" timeout="${3:-60}"
+  [[ -n "$to" && -n "$message" ]] || die "usage: sage call <agent> <message> [timeout]"
   ensure_init; agent_exists "$to"
 
   # Use the agent's own name if running inside an agent, otherwise .cli
@@ -739,9 +738,8 @@ cmd_call() {
   export SAGE_AGENT_NAME="$caller"
   source "$TOOLS_DIR/common.sh"
 
-  if ! echo "$payload" | jq . >/dev/null 2>&1; then
-    payload="$(jq -n --arg t "$payload" '{text:$t}')"
-  fi
+  local payload
+  payload="$(jq -n --arg t "$message" '{text:$t}')"
 
   call_agent "$to" "$payload" "$timeout" || die "no response within ${timeout}s"
 }
@@ -1229,8 +1227,8 @@ cmd_help() {
     clean                       Clean up stale files
 
   MESSAGING
-    send <to> <payload>         Fire-and-forget (returns task ID)
-    call <to> <payload> [sec]   Send and wait for response (default: 60s)
+    send <to> <message>          Fire-and-forget (returns task ID)
+    call <to> <message> [sec]    Send and wait for response (default: 60s)
     tasks [name]                List tasks with status
     result <task-id>            Get task result
     wait <name> [--timeout N]   Wait for agent to finish (long-running tasks)
@@ -1252,7 +1250,7 @@ cmd_help() {
     claude-code   Claude Code CLI (supports Bedrock)
 
   LONG-RUNNING TASKS
-    sage send orch '{"task":"..."}'     # fire & forget (non-blocking)
+    sage send orch 'Build the entire app'      # fire & forget (non-blocking)
     sage tasks orch                      # check status
     sage peek orch                       # see what it's doing
     sage steer orch "Use REST not GraphQL"  # course-correct

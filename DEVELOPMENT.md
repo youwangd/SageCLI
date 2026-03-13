@@ -54,7 +54,7 @@ sage (CLI)
 Every message creates a trackable task. Status transitions are mechanical (written by runner code, not LLM behavior).
 
 ```
-sage send worker '{"task":"..."}' → task ID returned immediately
+sage send worker "your task description" → task ID returned immediately
                                          │
                                     ┌─────▼─────┐
                                     │  queued    │  status.json created by send_msg
@@ -127,7 +127,7 @@ Runtime prompt construction:
 
 ### Fire & Forget (sage send)
 ```
-sage send worker '{"task":"do X"}'
+sage send worker "do X"
   → returns task ID immediately (non-blocking)
   → writes JSON to ~/.sage/agents/worker/inbox/<task-id>.json
   → creates results/<task-id>.status.json (queued)
@@ -139,7 +139,7 @@ sage send worker '{"task":"do X"}'
 
 ### Sync Call (sage call)
 ```
-sage call worker '{"task":"do X"}' 60
+sage call worker "do X" 60
   → writes JSON with reply_dir to worker's inbox
   → polls reply_dir for response (up to 60s)
   → runner picks up message, calls runtime_inject()
@@ -214,7 +214,7 @@ runtime_inject() {
   if [[ -n "$reply_dir" ]]; then
     completion_instruction="Your output will be automatically returned. Do NOT run sage send."
   else
-    completion_instruction="When done: sage send $from '{\"status\":\"done\",\"agent\":\"$name\",\"result\":\"...\"}'"
+    completion_instruction="When done: sage send $from \"Done: <brief summary>\""
   fi
 
   local prompt_file=$(mktemp /tmp/sage-XXXXX.txt)
@@ -296,18 +296,18 @@ sage create test-agent --runtime <name>
 sage start test-agent
 
 # Quick test
-sage call test-agent '{"task":"Create hello.py that prints hello"}' 60
+sage call test-agent "Create hello.py that prints hello" 60
 cat ~/.sage/agents/test-agent/workspace/hello.py
 
 # Task tracking test
-sage send test-agent '{"task":"Create world.py that prints world"}'
+sage send test-agent "Create world.py that prints world"
 sage tasks test-agent        # should show running → done
 sage result <task-id>        # should show output
 
 # Orchestrator test
 sage create orch --runtime <name>
 sage start orch
-sage call orch '{"task":"Create a sub-agent, delegate, collect result"}' 120
+sage call orch "Create a sub-agent, delegate, collect result" 120
 
 # Clean up
 sage stop --all; sage rm test-agent; sage rm orch
@@ -333,8 +333,8 @@ Multiple independent orchestrators running simultaneously:
 sage create orch-frontend --runtime claude-code
 sage create orch-backend --runtime claude-code
 sage start --all
-sage send orch-frontend '{"task":"Build React UI"}'
-sage send orch-backend '{"task":"Build REST API"}'
+sage send orch-frontend "Build React UI"
+sage send orch-backend "Build REST API"
 sage tasks    # track all tasks across all agents
 ```
 
@@ -350,7 +350,7 @@ sage create smart-worker --runtime claude-code
 
 ### Long-Running Supervisor Pattern
 ```bash
-sage send orch '{"task":"Build entire app"}'    # submit
+sage send orch "Build entire app"    # submit
 sage tasks orch                                  # monitor
 sage peek orch                                   # live view
 sage steer orch "Add auth module too"            # soft steer
