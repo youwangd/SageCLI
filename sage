@@ -718,6 +718,139 @@ cmd_clean() {
 }
 
 # ═══════════════════════════════════════════════
+# sage wait <name> [--timeout <sec>]
+# ═══════════════════════════════════════════════
+cmd_wait() {
+  local name="" timeout=0 poll_interval=5
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --timeout|-t) timeout="$2"; shift 2 ;;
+      -*)           die "unknown flag: $1" ;;
+      *)            name="$1"; shift ;;
+    esac
+  done
+
+  [[ -n "$name" ]] || die "usage: sage wait <name> [--timeout <sec>]"
+  ensure_init; agent_exists "$name"
+
+  # Check agent is running
+  agent_pid "$name" >/dev/null 2>&1 || die "$name is not running"
+
+  local logfile="$LOGS_DIR/$name.log"
+  local start_time=$SECONDS
+  # Record current log length — only watch lines added after now
+  local log_offset=$(wc -l < "$logfile" 2>/dev/null || echo 0)
+
+  info "waiting for $name to complete... (Ctrl-C to detach)"
+  [[ $timeout -gt 0 ]] && info "timeout: ${timeout}s"
+
+  while true; do
+    # Get only new log lines since we started waiting
+    local new_lines=$(tail -n +$((log_offset + 1)) "$logfile" 2>/dev/null)
+
+    # Show new lines as progress
+    if [[ -n "$new_lines" ]]; then
+      local new_count=$(echo "$new_lines" | wc -l)
+      log_offset=$((log_offset + new_count))
+      echo "$new_lines" | while IFS= read -r line; do
+        [[ -n "$line" ]] && echo -e "  ${DIM}${line}${NC}"
+      done
+    fi
+
+    # Check for completion marker in NEW lines only
+    if echo "$new_lines" | grep -qE "finished|DONE|completed" 2>/dev/null; then
+      # Verify no active CLI process under the runner
+      local pid
+      if pid=$(agent_pid "$name"); then
+        local cli_running=$(ps --ppid "$pid" -o comm= 2>/dev/null | grep -cE "cline|claude|node" || true)
+        if [[ "$cli_running" -eq 0 ]]; then
+          echo ""
+          ok "$name completed"
+
+          # Show workspace contents
+          local ws="$AGENTS_DIR/$name/workspace"
+          local file_count=$(find "$ws" -maxdepth 1 -type f 2>/dev/null | wc -l)
+          if [[ $file_count -gt 0 ]]; then
+            echo ""
+            printf "  ${BOLD}Workspace:${NC} %s file(s)\n" "$file_count"
+            find "$ws" -maxdepth 1 -type f -printf "    %f\n" 2>/dev/null
+          fi
+          echo ""
+          return 0
+        fi
+      else
+        echo ""
+        warn "$name is no longer running"
+        return 1
+      fi
+    fi
+
+    # Timeout check
+    if [[ $timeout -gt 0 && $((SECONDS - start_time)) -ge $timeout ]]; then
+      echo ""
+      die "timeout after ${timeout}s (agent still running — use sage logs $name -f to monitor)"
+    fi
+
+    sleep "$poll_interval"
+  done
+}
+
+# ═══════════════════════════════════════════════
+# sage inbox [--json] [--clear]
+# ═══════════════════════════════════════════════
+cmd_inbox() {
+  local format="pretty" do_clear=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json)  format="json"; shift ;;
+      --clear) do_clear=true; shift ;;
+      -*)      die "unknown flag: $1" ;;
+      *)       shift ;;
+    esac
+  done
+
+  ensure_init
+  local inbox="$AGENTS_DIR/.cli/inbox"
+  mkdir -p "$inbox"
+
+  if [[ "$do_clear" == true ]]; then
+    local count=$(find "$inbox" -name "*.json" 2>/dev/null | wc -l)
+    rm -f "$inbox"/*.json
+    ok "cleared $count message(s)"
+    return
+  fi
+
+  local msg_count=0
+  for msg_file in $(ls -t "$inbox"/*.json 2>/dev/null); do
+    [[ -f "$msg_file" ]] || continue
+    ((msg_count++))
+
+    if [[ "$format" == "json" ]]; then
+      cat "$msg_file"
+      echo ""
+    else
+      local from=$(jq -r '.from // "unknown"' "$msg_file")
+      local ts=$(jq -r '.ts // 0' "$msg_file")
+      local status=$(jq -r '.payload.status // "—"' "$msg_file")
+      local result=$(jq -r '.payload.result // .payload.text // "—"' "$msg_file" | head -c 200)
+      local time_str=$(date -d "@$ts" '+%H:%M:%S' 2>/dev/null || echo "—")
+
+      printf "\n  ${BOLD}[%s]${NC} from ${CYAN}%s${NC} — status: ${GREEN}%s${NC}\n" "$time_str" "$from" "$status"
+      printf "  %s\n" "$result"
+    fi
+  done
+
+  if [[ $msg_count -eq 0 ]]; then
+    printf "\n  ${DIM}no messages in inbox${NC}\n"
+  else
+    printf "\n  ${DIM}%d message(s) — use --clear to remove${NC}\n" "$msg_count"
+  fi
+  echo ""
+}
+
+# ═══════════════════════════════════════════════
 # sage tool {add|ls}
 # ═══════════════════════════════════════════════
 cmd_tool() {
@@ -754,6 +887,8 @@ cmd_help() {
   MESSAGING
     send <to> <payload>         Fire-and-forget message
     call <to> <payload> [sec]   Send and wait for response (default: 60s)
+    wait <name> [--timeout N]   Wait for agent to finish (long-running tasks)
+    inbox [--json] [--clear]    View/clear messages sent to you (.cli)
 
   DEBUG
     logs <name> [-f|--clear]    View/tail/clear agent logs
@@ -768,6 +903,11 @@ cmd_help() {
     cline         Cline CLI code assistant
     claude-code   Claude Code CLI (supports Bedrock)
 
+  LONG-RUNNING TASKS
+    sage send orch '{"task":"..."}'     # fire & forget (non-blocking)
+    sage wait orch --timeout 3600       # wait up to 1h with progress
+    sage inbox                          # check results when done
+
 EOF
 }
 
@@ -781,6 +921,8 @@ case "${1:-}" in
   status)  cmd_status ;;
   send)    cmd_send "${2:-}" "${3:-}" ;;
   call)    cmd_call "${2:-}" "${3:-}" "${4:-}" ;;
+  wait)    shift; cmd_wait "$@" ;;
+  inbox)   shift; cmd_inbox "$@" ;;
   logs)    cmd_logs "${2:-}" "${3:-}" ;;
   attach)  cmd_attach "${2:-}" ;;
   ls)      cmd_ls ;;
