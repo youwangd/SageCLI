@@ -55,6 +55,7 @@ Every message creates a trackable task. Status transitions are mechanical (writt
 
 ```
 sage send worker "your task description" → task ID returned immediately
+sage send worker @prompt.md              → reads message from file
                                          │
                                     ┌─────▼─────┐
                                     │  queued    │  status.json created by send_msg
@@ -127,7 +128,9 @@ Runtime prompt construction:
 
 ### Fire & Forget (sage send)
 ```
-sage send worker "do X"
+sage send worker "do X"                  # inline
+sage send worker @task.md                # from file
+  → returns task ID immediately (non-blocking)
   → returns task ID immediately (non-blocking)
   → writes JSON to ~/.sage/agents/worker/inbox/<task-id>.json
   → creates results/<task-id>.status.json (queued)
@@ -139,7 +142,8 @@ sage send worker "do X"
 
 ### Sync Call (sage call)
 ```
-sage call worker "do X" 60
+sage call worker "do X" 60               # inline, 60s timeout
+sage call worker @task.md 120            # from file, 120s timeout
   → writes JSON with reply_dir to worker's inbox
   → polls reply_dir for response (up to 60s)
   → runner picks up message, calls runtime_inject()

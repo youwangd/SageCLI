@@ -20,6 +20,14 @@ sage status
 sage logs worker
 ```
 
+Messages can be inline or read from a file:
+
+```bash
+sage send worker "Build hello.py"           # inline text
+sage send worker @prompt.md                 # from file
+sage call worker @detailed-task.txt 120     # file + sync wait
+```
+
 ## Long-Running Tasks
 
 Every task gets a trackable ID. Status transitions mechanically: `queued → running → done`.
@@ -121,8 +129,8 @@ AGENTS
   clean                            Clean stale files
 
 MESSAGING & TASKS
-  send <to> <message>              Fire-and-forget (returns task ID)
-  call <to> <message> [timeout]    Sync request/response (default: 60s)
+  send <to> <message|@file>     Fire-and-forget (returns task ID)
+  call <to> <message|@file> [t]  Sync request/response (default: 60s)
   tasks [name]                     List tasks with status
   result <task-id>                 Get task result
   wait <name> [--timeout N]        Wait for agent to finish
