@@ -797,6 +797,49 @@ cmd_wait() {
 }
 
 # ═══════════════════════════════════════════════
+# sage peek <name> [--lines N]
+# ═══════════════════════════════════════════════
+cmd_peek() {
+  local name="" lines=30
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --lines|-n) lines="$2"; shift 2 ;;
+      -*)         die "unknown flag: $1" ;;
+      *)          name="$1"; shift ;;
+    esac
+  done
+
+  [[ -n "$name" ]] || die "usage: sage peek <name> [--lines N]"
+  ensure_init; agent_exists "$name"
+
+  # Check if tmux window exists
+  tmux has-session -t "$TMUX_SESSION" 2>/dev/null || die "tmux session not running"
+  tmux list-windows -t "$TMUX_SESSION" -F '#{window_name}' 2>/dev/null | grep -q "^${name}$" || die "no tmux window for '$name'"
+
+  # Capture pane content
+  local content
+  content=$(tmux capture-pane -t "$TMUX_SESSION:$name" -p -S -"$lines" 2>/dev/null) || die "failed to capture pane for '$name'"
+
+  # Also check workspace
+  local ws="$AGENTS_DIR/$name/workspace"
+  local file_count=$(find "$ws" -maxdepth 1 -type f 2>/dev/null | wc -l)
+
+  printf "\n${BOLD}  ⚡ peek: %s${NC}\n\n" "$name"
+
+  # Show pane content (filter empty lines)
+  echo "$content" | grep -v '^$' | tail -"$lines" | while IFS= read -r line; do
+    printf "  %s\n" "$line"
+  done
+
+  if [[ $file_count -gt 0 ]]; then
+    printf "\n  ${BOLD}Workspace:${NC} %s file(s)\n" "$file_count"
+    find "$ws" -maxdepth 1 -type f -printf "    %f (%s bytes)\n" 2>/dev/null
+  fi
+  echo ""
+}
+
+# ═══════════════════════════════════════════════
 # sage inbox [--json] [--clear]
 # ═══════════════════════════════════════════════
 cmd_inbox() {
@@ -888,6 +931,7 @@ cmd_help() {
     send <to> <payload>         Fire-and-forget message
     call <to> <payload> [sec]   Send and wait for response (default: 60s)
     wait <name> [--timeout N]   Wait for agent to finish (long-running tasks)
+    peek <name> [--lines N]     See what agent is doing (tmux pane + workspace)
     inbox [--json] [--clear]    View/clear messages sent to you (.cli)
 
   DEBUG
@@ -922,6 +966,7 @@ case "${1:-}" in
   send)    cmd_send "${2:-}" "${3:-}" ;;
   call)    cmd_call "${2:-}" "${3:-}" "${4:-}" ;;
   wait)    shift; cmd_wait "$@" ;;
+  peek)    shift; cmd_peek "$@" ;;
   inbox)   shift; cmd_inbox "$@" ;;
   logs)    cmd_logs "${2:-}" "${3:-}" ;;
   attach)  cmd_attach "${2:-}" ;;
