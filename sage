@@ -34,6 +34,21 @@ agent_pid() {
   return 1
 }
 
+# Find all children of an agent (recursive)
+agent_children() {
+  local parent="$1"
+  for d in "$AGENTS_DIR"/*/runtime.json; do
+    [[ -f "$d" ]] || continue
+    local child_name=$(basename "$(dirname "$d")")
+    local child_parent=$(jq -r '.parent // ""' "$d" 2>/dev/null)
+    if [[ "$child_parent" == "$parent" ]]; then
+      echo "$child_name"
+      # Recurse for grandchildren
+      agent_children "$child_name"
+    fi
+  done
+}
+
 # ═══════════════════════════════════════════════
 # sage init [--force]
 # ═══════════════════════════════════════════════
@@ -440,6 +455,11 @@ cmd_create() {
   [[ -n "$name" ]] || die "usage: sage create <name> [--runtime bash|cline|claude-code] [--model <model>]"
   ensure_init
 
+  # Auto-set parent from SAGE_AGENT_NAME if running inside an agent
+  if [[ -z "$parent" && -n "${SAGE_AGENT_NAME:-}" && "${SAGE_AGENT_NAME}" != "cli" ]]; then
+    parent="$SAGE_AGENT_NAME"
+  fi
+
   local agent_dir="$AGENTS_DIR/$name"
   [[ ! -d "$agent_dir" ]] || die "agent '$name' already exists"
 
@@ -660,8 +680,12 @@ cmd_status() {
     local logfile="$LOGS_DIR/$name.log"
     last_active=$(tail -1 "$logfile" 2>/dev/null | grep -oP '^\[\K[0-9:]+' || echo "—")
 
+    local parent=$(jq -r '.parent // ""' "$agent_dir/runtime.json" 2>/dev/null)
+    local display_name="$name"
+    [[ -n "$parent" ]] && display_name="  └─ $name"
+
     printf "  %-16s %-12s ${status_color}%-10s${NC} %-8s %-6s %s\n" \
-      "$name" "$runtime" "$status_text" "$pid_text" "$inbox_count" "$last_active"
+      "$display_name" "$runtime" "$status_text" "$pid_text" "$inbox_count" "$last_active"
     ((count++))
   done
 
@@ -868,15 +892,16 @@ cmd_wait() {
 }
 
 # ═══════════════════════════════════════════════
-# sage steer <name> <message> [--kill]
+# sage steer <name> <message> [--restart]
 # ═══════════════════════════════════════════════
 cmd_steer() {
-  local name="" message="" do_kill=false
+  local name="" message="" do_restart=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --kill)  do_kill=true; shift ;;
-      -*)      die "unknown flag: $1" ;;
+      --restart) do_restart=true; shift ;;
+      --kill)    do_restart=true; shift ;;  # legacy alias
+      -*)        die "unknown flag: $1" ;;
       *)
         if [[ -z "$name" ]]; then
           name="$1"
@@ -890,30 +915,76 @@ cmd_steer() {
     esac
   done
 
-  [[ -n "$name" && -n "$message" ]] || die "usage: sage steer <name> <message> [--kill]"
+  [[ -n "$name" && -n "$message" ]] || die "usage: sage steer <name> <message> [--restart]"
   ensure_init; agent_exists "$name"
 
   local agent_dir="$AGENTS_DIR/$name"
   local steer_file="$agent_dir/steer.md"
 
-  if [[ "$do_kill" == true ]]; then
-    # Hard steer: kill current task, restart with steering context
-    info "killing current task..."
+  if [[ "$do_restart" == true ]]; then
+    # Find the in-flight task to re-queue
+    local inflight_task=""
+    local results_dir="$agent_dir/results"
+    if [[ -d "$results_dir" ]]; then
+      for sf in $(ls -t "$results_dir"/*.status.json 2>/dev/null); do
+        local st=$(jq -r '.status' "$sf" 2>/dev/null)
+        if [[ "$st" == "running" ]]; then
+          inflight_task=$(jq -r '.id' "$sf")
+          break
+        fi
+      done
+    fi
+
+    # 1. Stop all children first (cascade)
+    local children
+    children=$(agent_children "$name")
+    if [[ -n "$children" ]]; then
+      info "stopping child agents..."
+      while IFS= read -r child; do
+        cmd_stop "$child" 2>/dev/null && info "  stopped $child" || true
+      done <<< "$children"
+    fi
+
+    # 2. Stop the agent
+    info "stopping $name..."
     cmd_stop "$name" 2>/dev/null || true
 
-    # Write steer file
+    # 3. Write steering context
     printf "## ⚠️ CORRECTION FROM SUPERVISOR ($(date '+%H:%M:%S'))\n\n%s\n\n---\n\n" "$message" > "$steer_file"
 
-    # Restart
+    # 4. Mark in-flight task as queued again
+    if [[ -n "$inflight_task" && -f "$results_dir/${inflight_task}.status.json" ]]; then
+      jq '.status="queued" | .started_at=null | .finished_at=null' \
+        "$results_dir/${inflight_task}.status.json" > "$results_dir/${inflight_task}.status.json.tmp" \
+        && mv "$results_dir/${inflight_task}.status.json.tmp" "$results_dir/${inflight_task}.status.json"
+
+      # Re-queue the original message from result file or reconstruct
+      local result_file="$results_dir/${inflight_task}.result.json"
+      # Find original task payload from logs
+      local original_payload
+      original_payload=$(grep "$inflight_task" "$LOGS_DIR/$name.log" 2>/dev/null | grep "←" | head -1 | sed 's/.*← [^:]*: //' || echo "")
+
+      if [[ -n "$original_payload" ]]; then
+        # Re-queue with the original payload
+        cat > "$agent_dir/inbox/${inflight_task}.json" <<MSGEOF
+{"id":"${inflight_task}","from":"cli","payload":${original_payload},"ts":$(date +%s),"requeued":true}
+MSGEOF
+        info "re-queued task $inflight_task with steering context"
+      fi
+    fi
+
+    # 5. Restart
     cmd_start "$name"
     ok "agent restarted with steering: $message"
+    if [[ -n "$children" ]]; then
+      info "children were stopped — $name will re-create them if needed"
+    fi
   else
-    # Soft steer: write context that gets picked up on next message
-    # Append to steer.md — runtime reads this before each invocation
+    # Soft steer: write context that gets picked up on next invocation
     mkdir -p "$(dirname "$steer_file")"
     printf "\n## ⚠️ STEERING UPDATE ($(date '+%H:%M:%S'))\n\n%s\n" "$message" >> "$steer_file"
 
-    # Also send as a high-priority message
+    # Also send as a message so agent processes it
     export SAGE_AGENT_NAME="${SAGE_AGENT_NAME:-cli}"
     source "$TOOLS_DIR/common.sh"
     local payload
@@ -922,7 +993,7 @@ cmd_steer() {
     task_id=$(send_msg "$name" "$payload")
     ok "steering sent to $name (task: $task_id)"
     info "steer.md updated — will be included in next invocation"
-    info "use --kill to interrupt current task and restart immediately"
+    info "use --restart to stop current task, cascade children, and retry"
   fi
 }
 
@@ -1164,7 +1235,7 @@ cmd_help() {
     result <task-id>            Get task result
     wait <name> [--timeout N]   Wait for agent to finish (long-running tasks)
     peek <name> [--lines N]     See what agent is doing (tmux pane + workspace)
-    steer <name> <msg> [--kill] Course-correct a running agent
+    steer <name> <msg> [--restart] Course-correct a running agent
     inbox [--json] [--clear]    View/clear messages sent to you (.cli)
 
   DEBUG
@@ -1185,7 +1256,7 @@ cmd_help() {
     sage tasks orch                      # check status
     sage peek orch                       # see what it's doing
     sage steer orch "Use REST not GraphQL"  # course-correct
-    sage steer orch "Start over" --kill  # kill + restart with new context
+    sage steer orch "Start over" --restart # kill orch + children, re-run task
     sage result <task-id>                # get result when done
 
 EOF
