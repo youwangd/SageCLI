@@ -5,7 +5,7 @@ Unix-native agent dispatching and management. No frameworks, no npm packages —
 ## Install
 
 ```bash
-git clone https://github.com/YouwangDeng/sage.git
+git clone https://github.com/YouwangDeng/SageCLI.git
 ln -s $(pwd)/sage/sage ~/bin/sage
 sage init
 ```
