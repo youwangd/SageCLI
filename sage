@@ -276,10 +276,17 @@ PROMPT
 
   local live_output="$agent_dir/.live_output"
   > "$live_output"
-  tail -f "$live_output" &
-  local tail_pid=$!
-  cline "${cline_args[@]}" "$(cat "$prompt_file")" > "$live_output" 2>&1 || true
-  sleep 0.2; kill "$tail_pid" 2>/dev/null; wait "$tail_pid" 2>/dev/null
+
+  # Mirror tmux pane output to file for peek/result
+  local agent_name=$(basename "$agent_dir")
+  tmux pipe-pane -t "sage:$agent_name" "cat >> '$live_output'" 2>/dev/null
+
+  # Run cline directly in the pane — streams naturally
+  cline "${cline_args[@]}" "$(cat "$prompt_file")" 2>&1 || true
+
+  # Stop mirroring
+  tmux pipe-pane -t "sage:$agent_name" "" 2>/dev/null
+
   output=$(cat "$live_output")
   rm -f "$prompt_file"
 
@@ -358,25 +365,31 @@ PROMPT
   local live_output="$agent_dir/.live_output"
   > "$live_output"
 
-  # Write claude command to a temp script to avoid quoting issues
-  local cmd_script=$(mktemp /tmp/sage-run-XXXXX.sh)
-  {
-    echo '#!/bin/bash'
-    echo "cd $(printf '%q' "$workdir")"
-    printf 'cat %q | claude' "$prompt_file"
-    for arg in "${claude_args[@]}"; do
-      printf ' %q' "$arg"
-    done
-    echo ""
-  } > "$cmd_script"
-  chmod +x "$cmd_script"
+  # Use stream-json + verbose for real-time event streaming
+  # Each line is a JSON event — we parse and display meaningful ones live
+  cd "$workdir"
+  cat "$prompt_file" | claude -p --output-format stream-json --verbose \
+    --allowedTools "Bash(*)" "Write(*)" "Read(*)" "Edit(*)" \
+    ${model:+--model "$model"} 2>&1 | while IFS= read -r line; do
+    local evt=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
+    case "$evt" in
+      assistant)
+        local tools text
+        tools=$(echo "$line" | jq -r '[.message.content[]? | select(.type == "tool_use") | .name] | join(", ")' 2>/dev/null)
+        text=$(echo "$line" | jq -r '[.message.content[]? | select(.type == "text") | .text] | join("")' 2>/dev/null)
+        [[ -n "$tools" ]] && printf "\033[36m  → %s\033[0m\n" "$tools"
+        [[ -n "$text" ]] && { echo "$text"; echo "$text" >> "$live_output"; }
+        ;;
+      result)
+        local result_text
+        result_text=$(echo "$line" | jq -r '.result // empty' 2>/dev/null)
+        [[ -n "$result_text" ]] && { echo "$result_text"; echo "$result_text" >> "$live_output"; }
+        ;;
+    esac
+  done
 
-  # Use script(1) with --flush to allocate a PTY and stream output in real-time
-  script -qefc "$cmd_script" --flush "$live_output" || true
-
-  # Clean script artifacts
-  output=$(sed '/^Script started/d; /^Script done/d' "$live_output" | tr -d '\r')
-  rm -f "$prompt_file" "$cmd_script"
+  output=$(cat "$live_output")
+  rm -f "$prompt_file"
 
   log "claude-code finished: $(echo "$output" | tail -1 | head -c 120)"
 
