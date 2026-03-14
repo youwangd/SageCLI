@@ -277,15 +277,33 @@ PROMPT
   local live_output="$agent_dir/.live_output"
   > "$live_output"
 
-  # Mirror tmux pane output to file for peek/result
-  local agent_name=$(basename "$agent_dir")
-  tmux pipe-pane -t "sage:$agent_name" "cat >> '$live_output'" 2>/dev/null
-
-  # Run cline directly in the pane — streams naturally
-  cline "${cline_args[@]}" "$(cat "$prompt_file")" 2>&1 || true
-
-  # Stop mirroring
-  tmux pipe-pane -t "sage:$agent_name" "" 2>/dev/null
+  # Use --json for real-time event streaming (like claude's stream-json)
+  cd "$workdir"
+  cline "${cline_args[@]}" --json "$(cat "$prompt_file")" 2>&1 | while IFS= read -r line; do
+    local say_type
+    say_type=$(echo "$line" | jq -r '.say // .type // empty' 2>/dev/null)
+    case "$say_type" in
+      text|completion_result)
+        local text
+        text=$(echo "$line" | jq -r '.text // empty' 2>/dev/null)
+        if [[ -n "$text" ]]; then
+          echo "$text"
+          echo "$text" >> "$live_output"
+        fi
+        ;;
+      tool)
+        local tool_name
+        tool_name=$(echo "$line" | jq -r '.text // empty' 2>/dev/null | jq -r '.tool // empty' 2>/dev/null)
+        [[ -n "$tool_name" ]] && printf "\033[36m  → %s\033[0m\n" "$tool_name"
+        ;;
+      api_req_started)
+        printf "\033[2m  ⋯ thinking...\033[0m\n"
+        ;;
+      task_started)
+        printf "\033[32m  ✓ task started\033[0m\n"
+        ;;
+    esac
+  done
 
   output=$(cat "$live_output")
   rm -f "$prompt_file"
