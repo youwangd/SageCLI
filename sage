@@ -737,6 +737,10 @@ cmd_send() {
 
   if [[ "$to" != ".cli" ]]; then
     agent_exists "$to"
+    # Auto-start if not running
+    if ! agent_pid "$to" >/dev/null 2>&1; then
+      cmd_start "$to"
+    fi
   fi
 
   # Support @file syntax — read message from file
@@ -766,6 +770,11 @@ cmd_call() {
   local to="${1:-}" message="${2:-}" timeout="${3:-60}"
   [[ -n "$to" && -n "$message" ]] || die "usage: sage call <agent> <message|@file> [timeout]"
   ensure_init; agent_exists "$to"
+
+  # Auto-start if not running
+  if ! agent_pid "$to" >/dev/null 2>&1; then
+    cmd_start "$to"
+  fi
 
   # Support @file syntax
   if [[ "$message" == @* ]]; then
