@@ -32,7 +32,7 @@ sage (CLI)
 │       │   └── <task-id>.result.json   # {status, agent, output}
 │       ├── workspace/         # agent's working directory
 │       ├── state/             # persistent agent state
-│       ├── runtime.json       # {runtime, model, parent, workdir, created}
+│       ├── runtime.json       # {runtime, model, parent, workdir, acp_agent, created}
 │       ├── instructions.md    # auto-generated prompt for CLI runtimes
 │       ├── steer.md           # steering context (injected into prompts)
 │       ├── handler.sh         # bash runtime only
@@ -40,7 +40,8 @@ sage (CLI)
 ├── runtimes/
 │   ├── bash.sh
 │   ├── cline.sh
-│   └── claude-code.sh
+│   ├── claude-code.sh
+│   └── acp.sh                 # Universal ACP bridge (cline, claude-code, goose, kiro, gemini...)
 ├── tools/
 │   ├── common.sh              # send_msg, call_agent, reply, broadcast
 │   └── llm.sh                 # raw LLM API helper
@@ -149,6 +150,82 @@ Runtime prompt construction:
 <task>
 ---
 <completion instruction>
+```
+
+## ACP Runtime (Agent Client Protocol)
+
+The `acp` runtime speaks JSON-RPC 2.0 over stdio to any ACP-compatible agent. Unlike the `cline` and `claude-code` runtimes (which are one-shot per task), ACP maintains a **persistent session** — follow-up messages go into the same conversation, enabling true live steering.
+
+### How It Works
+
+```
+sage create worker --runtime acp --agent cline
+sage start worker
+  → runner spawns cline --acp as subprocess
+  → initialize (capability negotiation)
+  → session/new (create workspace session)
+
+sage send worker "Build a Flask app"
+  → session/prompt #1 → cline works → end_turn
+
+sage send worker "Add a /health endpoint"
+  → session/prompt #2 into SAME session → cline has full context → modifies app
+```
+
+### ACP vs One-Shot Runtimes
+
+| Feature | cline/claude-code runtime | acp runtime |
+|---|---|---|
+| Process lifecycle | Spawn per task, exits after | Persistent across tasks |
+| Follow-up context | None (fresh process each time) | Full conversation history |
+| Live steering | steer.md on next task only | Follow-up prompt in same session |
+| Output | Custom JSON parser per agent | Universal ACP event stream |
+| Agent support | 1 runtime per agent | Any ACP agent with one runtime |
+
+### Supported Agents
+
+Any agent with ACP support works. Tested:
+
+| Agent | ACP command | Status |
+|---|---|---|
+| Cline | `cline --acp` | ✅ Verified |
+| Claude Code | `claude-agent-acp` (via Zed adapter) | ✅ Verified |
+| Goose | `goose --acp` | Should work |
+| Kiro | `kiro --acp` | Should work |
+| Gemini CLI | `gemini --experimental-acp` | Should work |
+
+### ACP Event Types
+
+The runtime parses these `session/update` notifications:
+
+- `agent_message_chunk` — text from the agent (accumulated, displayed)
+- `tool_call` — agent started using a tool (title displayed)
+- `tool_call_update` — tool status change (completed/failed)
+- `plan` — agent's execution plan
+- `agent_thought_chunk` — thinking (silently consumed)
+
+### Permission Handling
+
+When an agent requests permission (e.g., to write a file):
+- **Cline**: handles tools internally, rarely asks
+- **Claude Code adapter**: sends `session/request_permission` — runtime auto-approves with `outcome.selected + optionId`
+
+### Agent-Specific Quirks
+
+Both Cline and Claude Code's adapter require `cwd` and `mcpServers` in `session/new` params (not in base ACP spec). The runtime includes these automatically.
+
+### Creating ACP Agents
+
+```bash
+# Explicit
+sage create worker --runtime acp --agent cline
+
+# --agent implies --runtime acp
+sage create worker --agent goose
+
+# Runtime config
+cat ~/.sage/agents/worker/runtime.json
+# {"runtime":"acp","acp_agent":"cline",...}
 ```
 
 ## Message Flow
@@ -448,4 +525,6 @@ sage result <task-id>                            # collect result
 ### Optional (per runtime)
 - `cline` — Cline CLI
 - `claude` — Claude Code CLI (supports Bedrock)
+- `claude-agent-acp` — Claude Code ACP adapter (`npm i -g @zed-industries/claude-agent-acp`)
+- Any ACP-compatible agent CLI (goose, kiro, gemini, etc.)
 - Future: `aider`, `gemini`, `codex`, `ollama`

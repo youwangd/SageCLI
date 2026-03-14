@@ -427,6 +427,232 @@ PROMPT
 }
 RTEOF
 
+  # ── Runtime: acp ──
+  cat > "$RUNTIMES_DIR/acp.sh" << 'RTEOF'
+#!/bin/bash
+# Runtime: ACP (Agent Client Protocol) bridge
+# Speaks JSON-RPC 2.0 over stdio to any ACP-compatible agent (cline, claude-code, goose, kiro, gemini...)
+# Persistent session: first message creates the session, follow-ups steer within the same conversation.
+
+_acp_fifo_in=""
+_acp_fifo_out=""
+_acp_agent_pid=""
+_acp_session_id=""
+_acp_fd_w=""
+_acp_fd_r=""
+_acp_rpc_id=10  # start high to avoid collisions with agent-initiated request ids
+_acp_agent_type=""
+
+_acp_send() { echo "$1" >&7; }
+
+_acp_read() {
+  local timeout="${1:-90}"
+  IFS= read -r -t "$timeout" line <&8 && echo "$line"
+}
+
+_acp_cleanup() {
+  exec 7>&- 2>/dev/null; exec 8<&- 2>/dev/null
+  [[ -n "$_acp_agent_pid" ]] && kill "$_acp_agent_pid" 2>/dev/null && wait "$_acp_agent_pid" 2>/dev/null
+  rm -f "$_acp_fifo_in" "$_acp_fifo_out"
+  _acp_agent_pid=""
+  _acp_session_id=""
+}
+
+_acp_start_agent() {
+  local agent_dir="$1" name="$2"
+  local workdir=$(jq -r '.workdir // "."' "$agent_dir/runtime.json" 2>/dev/null)
+  _acp_agent_type=$(jq -r '.acp_agent // "cline"' "$agent_dir/runtime.json" 2>/dev/null)
+
+  # Determine ACP command
+  local acp_cmd
+  case "$_acp_agent_type" in
+    cline)       acp_cmd="cline --acp" ;;
+    claude-code) acp_cmd="claude-agent-acp"; export CLAUDE_CODE_USE_BEDROCK=1 ;;
+    goose)       acp_cmd="goose --acp" ;;
+    kiro)        acp_cmd="kiro --acp" ;;
+    gemini)      acp_cmd="gemini --experimental-acp" ;;
+    *)           acp_cmd="$_acp_agent_type --acp" ;;
+  esac
+
+  _acp_fifo_in=$(mktemp -u /tmp/sage-acp-in-XXXXX)
+  _acp_fifo_out=$(mktemp -u /tmp/sage-acp-out-XXXXX)
+  mkfifo "$_acp_fifo_in" "$_acp_fifo_out"
+
+  cd "$workdir"
+  $acp_cmd < "$_acp_fifo_in" > "$_acp_fifo_out" 2>/dev/null &
+  _acp_agent_pid=$!
+
+  exec 7>"$_acp_fifo_in"
+  exec 8<"$_acp_fifo_out"
+
+  # Initialize
+  _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$_acp_rpc_id,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":true},\"clientInfo\":{\"name\":\"sage\",\"version\":\"1.0.0\"}}}"
+  ((_acp_rpc_id++))
+  local r=$(_acp_read 15)
+  local aname=$(echo "$r" | jq -r '.result.agentInfo.name // "unknown"' 2>/dev/null)
+  local aver=$(echo "$r" | jq -r '.result.agentInfo.version // "?"' 2>/dev/null)
+  log "ACP connected: $aname v$aver"
+
+  # Create session
+  _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$_acp_rpc_id,\"method\":\"session/new\",\"params\":{\"workspaceRoots\":[{\"uri\":\"file://$workdir\"}],\"cwd\":\"$workdir\",\"mcpServers\":[]}}"
+  ((_acp_rpc_id++))
+  r=$(_acp_read 15)
+  _acp_session_id=$(echo "$r" | jq -r '.result.sessionId // empty' 2>/dev/null)
+
+  if [[ -z "$_acp_session_id" || "$_acp_session_id" == "null" ]]; then
+    log "ACP session creation failed: $(echo "$r" | jq -c '.error' 2>/dev/null)"
+    _acp_cleanup
+    return 1
+  fi
+  log "ACP session: $_acp_session_id"
+}
+
+_acp_process_events() {
+  local prompt_id="$1" live_output="$2"
+  local text_buf="" output=""
+
+  while true; do
+    local event=$(_acp_read 120)
+    [[ -z "$event" ]] && { log "ACP timeout waiting for events"; break; }
+
+    local eid=$(echo "$event" | jq -r '.id // empty' 2>/dev/null)
+    local method=$(echo "$event" | jq -r '.method // empty' 2>/dev/null)
+    local update=$(echo "$event" | jq -r '.params.update.sessionUpdate // empty' 2>/dev/null)
+
+    # Final response for our prompt
+    if [[ "$eid" == "$prompt_id" ]]; then
+      if [[ -n "$text_buf" ]]; then
+        echo "$text_buf"
+        echo "$text_buf" >> "$live_output"
+        output+="$text_buf"
+        text_buf=""
+      fi
+      local stop=$(echo "$event" | jq -r '.result.stopReason // "?"' 2>/dev/null)
+      printf "\033[32m  ✓ done (%s)\033[0m\n" "$stop"
+      break
+    fi
+
+    # Process notifications
+    case "$update" in
+      agent_message_chunk)
+        local t=$(echo "$event" | jq -r '.params.update.content.text // empty' 2>/dev/null)
+        text_buf+="$t"
+        ;;
+      tool_call)
+        if [[ -n "$text_buf" ]]; then
+          echo "$text_buf"; echo "$text_buf" >> "$live_output"; output+="$text_buf"; text_buf=""
+        fi
+        local title=$(echo "$event" | jq -r '.params.update.title // "tool"' 2>/dev/null)
+        printf "\033[36m  → %s\033[0m\n" "$title"
+        ;;
+      tool_call_update)
+        local s=$(echo "$event" | jq -r '.params.update.status // empty' 2>/dev/null)
+        [[ "$s" == "completed" ]] && printf "\033[32m  ✓ tool done\033[0m\n"
+        [[ "$s" == "failed" ]] && printf "\033[31m  ✗ tool failed\033[0m\n"
+        ;;
+      plan)
+        local entries=$(echo "$event" | jq -r '[.params.update.entries[]? | .content] | join(", ")' 2>/dev/null)
+        [[ -n "$entries" ]] && printf "\033[33m  📋 %s\033[0m\n" "$entries"
+        ;;
+      agent_thought_chunk|usage_update|available_commands_update|current_mode_update) ;;
+      *) [[ -n "$update" ]] && printf "\033[2m  [%s]\033[0m\n" "$update" ;;
+    esac
+
+    # Handle server-to-client requests
+    if [[ -n "$method" && "$method" != "null" ]]; then
+      local rid=$(echo "$event" | jq -r '.id // empty' 2>/dev/null)
+      [[ -z "$rid" || "$rid" == "null" ]] && continue
+
+      case "$method" in
+        session/request_permission)
+          printf "\033[33m  🔓 permission → approved\033[0m\n"
+          # Claude agent ACP uses outcome object; cline doesn't ask
+          _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$rid,\"result\":{\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"allow_always\"}}}"
+          ;;
+        fs/write_text_file)
+          local path=$(echo "$event" | jq -r '.params.path // empty' 2>/dev/null)
+          local content=$(echo "$event" | jq -r '.params.content // empty' 2>/dev/null)
+          [[ -n "$path" ]] && { mkdir -p "$(dirname "$path")" 2>/dev/null; printf '%s' "$content" > "$path"; }
+          _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$rid,\"result\":{}}"
+          ;;
+        fs/read_text_file)
+          local path=$(echo "$event" | jq -r '.params.path // empty' 2>/dev/null)
+          local c=""; [[ -f "$path" ]] && c=$(cat "$path" | jq -Rs .)
+          _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$rid,\"result\":{\"text\":${c:-\"\"}}}"
+          ;;
+        *)
+          _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$rid,\"result\":{}}"
+          ;;
+      esac
+    fi
+  done
+
+  echo "$output"
+}
+
+runtime_start() {
+  local agent_dir="$1" name="$2"
+  mkdir -p "$agent_dir/workspace"
+  _acp_start_agent "$agent_dir" "$name"
+  # Register cleanup on exit
+  trap '_acp_cleanup' EXIT
+}
+
+runtime_inject() {
+  local name="$1" msg="$2"
+  local agent_dir="$AGENTS_DIR/$name"
+  local task=$(echo "$msg" | jq -r '.payload.text // (.payload | tostring)' 2>/dev/null)
+  local from=$(echo "$msg" | jq -r '.from' 2>/dev/null)
+  local msg_id=$(echo "$msg" | jq -r '.id' 2>/dev/null)
+  local reply_dir=$(echo "$msg" | jq -r '.reply_dir // empty' 2>/dev/null)
+  local instructions="$agent_dir/instructions.md"
+  local steer_file="$agent_dir/steer.md"
+  local live_output="$agent_dir/.live_output"
+  > "$live_output"
+
+  # If no ACP session, start one
+  if [[ -z "$_acp_session_id" ]]; then
+    _acp_start_agent "$agent_dir" "$name"
+  fi
+
+  # Build prompt — first message gets instructions, follow-ups are just the task
+  local full_prompt="$task"
+  if [[ -f "$steer_file" ]]; then
+    full_prompt="$(cat "$steer_file")
+
+$full_prompt"
+    rm -f "$steer_file"
+  fi
+
+  local escaped_prompt=$(echo "$full_prompt" | jq -Rs .)
+
+  log "ACP prompt ($from): $(echo "$task" | head -c 120)"
+
+  local prompt_id=$_acp_rpc_id
+  ((_acp_rpc_id++))
+  _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$prompt_id,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"$_acp_session_id\",\"prompt\":[{\"type\":\"text\",\"text\":$escaped_prompt}]}}"
+
+  local output
+  output=$(_acp_process_events "$prompt_id" "$live_output")
+
+  log "ACP finished: $(echo "$output" | tail -1 | head -c 120)"
+
+  # Write result
+  local results_dir="$AGENTS_DIR/$name/results"
+  if [[ -d "$results_dir" && -n "$msg_id" ]]; then
+    local json_out
+    json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$results_dir/${msg_id}.result.json" 2>/dev/null
+  fi
+
+  # Write reply for sync calls
+  if [[ -n "$reply_dir" ]]; then
+    mkdir -p "$reply_dir"
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$reply_dir/${msg_id}.json"
+  fi
+}
+RTEOF
+
   # ── Runner ──
   cat > "$SAGE_HOME/runner.sh" << 'RUNNER'
 #!/bin/bash
@@ -520,19 +746,25 @@ RUNNER
 # sage create <name> [--runtime <rt>] [--model <m>]
 # ═══════════════════════════════════════════════
 cmd_create() {
-  local name="" runtime="bash" model="" parent=""
+  local name="" runtime="bash" model="" parent="" acp_agent=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --runtime|-r) runtime="$2"; shift 2 ;;
       --model|-m)   model="$2"; shift 2 ;;
+      --agent|-a)   acp_agent="$2"; shift 2 ;;
       --parent)     parent="$2"; shift 2 ;;
       -*)           die "unknown flag: $1" ;;
       *)            name="$1"; shift ;;
     esac
   done
 
-  [[ -n "$name" ]] || die "usage: sage create <name> [--runtime bash|cline|claude-code] [--model <model>]"
+  [[ -n "$name" ]] || die "usage: sage create <name> [--runtime bash|cline|claude-code|acp] [--agent <agent>] [--model <model>]"
+
+  # If --agent is specified without --runtime, default to acp
+  if [[ -n "$acp_agent" && "$runtime" == "bash" ]]; then
+    runtime="acp"
+  fi
   ensure_init
 
   # Auto-set parent from SAGE_AGENT_NAME if running inside an agent
@@ -554,11 +786,14 @@ cmd_create() {
     --arg m "$model" \
     --arg p "$parent" \
     --arg wd "$agent_dir/workspace" \
-    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, created:(now|todate)}' \
+    --arg aa "$acp_agent" \
+    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, acp_agent:$aa, created:(now|todate)}' \
     > "$agent_dir/runtime.json"
 
   # Generate instructions for CLI runtimes
   if [[ "$runtime" != "bash" ]]; then
+    local rt_display="$runtime"
+    [[ "$runtime" == "acp" && -n "$acp_agent" ]] && rt_display="acp ($acp_agent)"
     cat > "$agent_dir/instructions.md" << INST
 # You are sage agent: $name
 
@@ -1457,7 +1692,7 @@ cmd_help() {
 
   AGENTS
     init [--force]              Initialize sage (~/.sage/)
-    create <name> [flags]       Create agent (--runtime bash|cline|claude-code, --model <m>)
+    create <name> [flags]       Create agent (--runtime bash|cline|claude-code|acp, --agent <a>, --model <m>)
     start [name|--all]          Start agent(s) in tmux
     stop [name|--all]           Stop agent(s)
     restart [name|--all]        Restart agent(s)
@@ -1489,6 +1724,9 @@ cmd_help() {
     bash          Bash handler script (default)
     cline         Cline CLI code assistant
     claude-code   Claude Code CLI (supports Bedrock)
+    acp           Agent Client Protocol — universal agent bridge
+                  Use --agent to specify: cline, claude-code, goose, kiro, gemini, or any ACP agent
+                  Supports live steering: follow-up messages go into the same session
 
   LONG-RUNNING TASKS
     sage send orch 'Build the entire app'      # fire & forget (non-blocking)

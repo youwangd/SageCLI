@@ -49,7 +49,7 @@ That's it. Three commands. Your agent is running in a tmux pane, writing files, 
 ### Design Principles
 
 - **Unix-native** — Agents are tmux windows. Messages are JSON files in directories. No daemons, no databases, no Docker.
-- **Runtime-agnostic** — Plug in Claude Code, Cline, or any CLI. Adding a new runtime is one file with two functions.
+- **Runtime-agnostic** — Plug in Claude Code, Cline, or any ACP agent. Adding a new runtime is one file with two functions.
 - **Mechanical, not behavioral** — Task tracking, parent-child relationships, and tracing are handled by the engine, not by asking LLMs to remember protocols.
 - **Observable** — Real-time streaming, `peek` into any agent, `trace` the full call tree. You always know what's happening.
 - **Zero lock-in** — It's a single bash script. Read it, fork it, modify it. Your agents' state is plain files on disk.
@@ -84,7 +84,7 @@ sage init
 
 **Requirements:** `bash` 4.0+, `jq` 1.6+, `tmux` 3.0+
 
-**Optional runtimes:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Cline CLI](https://github.com/cline/cline)
+**Optional runtimes:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Cline CLI](https://github.com/cline/cline), or any [ACP-compatible agent](https://agentclientprotocol.com/get-started/agents)
 
 ---
 
@@ -287,7 +287,20 @@ sage trace --tree -n 50      # last 50 events as tree
 |---|---|---|---|
 | `claude-code` | [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) | ✅ stream-json | Real-time tool calls + text via `--output-format stream-json` |
 | `cline` | [Cline CLI](https://github.com/cline/cline) | ✅ json | Real-time events via `--json` |
+| `acp` | [Agent Client Protocol](https://agentclientprotocol.com) | ✅ JSON-RPC | Universal bridge — any ACP agent via stdio. Persistent sessions with live steering. |
 | `bash` | Shell script | — | Custom `handler.sh` processes messages |
+
+The `acp` runtime speaks JSON-RPC 2.0 over stdio and works with **any** ACP-compatible agent:
+
+```bash
+sage create worker --agent cline         # Cline via ACP
+sage create worker --agent claude-code   # Claude Code via ACP (needs claude-agent-acp adapter)
+sage create worker --agent goose         # Goose via ACP
+sage create worker --agent kiro          # Kiro via ACP
+sage create worker --agent gemini        # Gemini CLI via ACP
+```
+
+Unlike the dedicated `cline`/`claude-code` runtimes (one-shot per task), ACP maintains a **persistent session** — follow-up messages go into the same conversation, enabling true live steering.
 
 Adding a runtime is one file with two functions (`runtime_start` + `runtime_inject`). See [DEVELOPMENT.md](DEVELOPMENT.md).
 
