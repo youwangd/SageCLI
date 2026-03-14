@@ -1,205 +1,388 @@
-# ⚡ sage — Simple Agent Engine
+<p align="center">
+  <img src="https://img.shields.io/badge/bash-4.0+-4EAA25?logo=gnubash&logoColor=white" alt="Bash 4.0+">
+  <img src="https://img.shields.io/badge/jq-1.6+-CB171E?logo=jq&logoColor=white" alt="jq 1.6+">
+  <img src="https://img.shields.io/badge/tmux-3.0+-1BB91F?logo=tmux&logoColor=white" alt="tmux 3.0+">
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License">
+  <br>
+  <img src="https://img.shields.io/badge/Claude_Code-supported-7C3AED?logo=anthropic&logoColor=white" alt="Claude Code">
+  <img src="https://img.shields.io/badge/Cline-supported-F97316?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEwIi8+PC9zdmc+" alt="Cline">
+  <img src="https://img.shields.io/badge/Bash-supported-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
+</p>
 
-Unix-native agent dispatching and management. No frameworks, no npm packages — just bash, jq, and tmux.
+<h1 align="center">⚡ sage</h1>
+<h3 align="center">Simple Agent Engine</h3>
+
+<p align="center">
+  <strong>Orchestrate AI coding agents from your terminal.</strong><br>
+  No frameworks. No npm. No Python. Just bash, jq, and tmux.
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#why-sage">Why sage?</a> •
+  <a href="#use-cases">Use Cases</a> •
+  <a href="#live-monitoring">Live Monitoring</a> •
+  <a href="#commands">Commands</a> •
+  <a href="DEVELOPMENT.md">Development</a>
+</p>
+
+---
+
+## Why sage?
+
+Every AI coding agent framework wants you to learn a new language, install a runtime, and buy into an ecosystem. sage takes a different approach:
+
+**Agents are processes. Messages are files. The terminal is your IDE.**
+
+```bash
+sage create worker --runtime claude-code
+sage send worker "Build a REST API with auth, tests, and docs"
+sage peek worker   # watch it work in real-time
+```
+
+That's it. Three commands. Your agent is running in a tmux pane, writing files, calling tools, and you can watch every step.
+
+### Design Principles
+
+- **Unix-native** — Agents are tmux windows. Messages are JSON files in directories. No daemons, no databases, no Docker.
+- **Runtime-agnostic** — Plug in Claude Code, Cline, or any CLI. Adding a new runtime is one file with two functions.
+- **Mechanical, not behavioral** — Task tracking, parent-child relationships, and tracing are handled by the engine, not by asking LLMs to remember protocols.
+- **Observable** — Real-time streaming, `peek` into any agent, `trace` the full call tree. You always know what's happening.
+- **Zero lock-in** — It's a single bash script. Read it, fork it, modify it. Your agents' state is plain files on disk.
+
+---
 
 ## Install
 
 ```bash
 git clone https://github.com/YouwangDeng/SageCLI.git
-ln -s $(pwd)/sage/sage ~/bin/sage
+cd SageCLI
+ln -s $(pwd)/sage ~/bin/sage    # or /usr/local/bin/sage
 sage init
 ```
+
+**Requirements:** `bash` 4.0+, `jq` 1.6+, `tmux` 3.0+
+
+**Optional runtimes:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Cline CLI](https://github.com/cline/cline)
+
+---
 
 ## Quick Start
 
 ```bash
-sage create worker --runtime claude-code   # or: cline, bash
-sage send worker "Build hello.py that prints hello"
-# agent auto-starts if not running, returns task ID
-sage peek worker                           # live progress
-sage status
+# Create an agent and give it work
+sage create worker --runtime claude-code
+sage send worker "Build a Python CLI that converts CSV to JSON"
+
+# Watch it work
+sage peek worker          # live tool calls + output
+sage attach worker        # full tmux terminal access
+
+# Get the result
+sage tasks worker         # task status + elapsed time
+sage result <task-id>     # structured output
 ```
 
 `sage start` is optional — `send` and `call` auto-start agents that aren't running.
 
-Messages can be inline or read from a file:
+Messages can be inline text or loaded from files:
 
 ```bash
-sage send worker "Build hello.py"           # inline text
+sage send worker "Quick task"               # inline
 sage send worker @prompt.md                 # from file
-sage call worker @detailed-task.txt 120     # file + sync wait
+sage send worker @~/tasks/big-project.md    # ~ expansion supported
 ```
 
-## Live Monitoring
+---
 
-Both CLI runtimes stream events in real-time. `sage peek` shows live progress:
+## Use Cases
+
+### 🔨 Single Agent — Code Generation
+
+Point an agent at a task and let it build:
 
 ```bash
-sage peek master --lines 20
-#  ⚡ peek: master
-#
-#  Live output:
-#    I'll create a professional restaurant template...
-#
-#  Runner log:
-#    [22:15:28] master: invoking claude-code...
-#    I'll create a professional restaurant template...
-#      → ToolSearch
-#      → TodoWrite
-#      → Write
-#      → TodoWrite
-#      → Write
-#
-#  Workspace: 4 file(s)
-#    22:17  19889  styles.css
-#    22:16  23212  index.html
+sage create dev --runtime claude-code
+sage send dev "Create a Node.js Express API with JWT auth, rate limiting, and Swagger docs"
+sage peek dev    # watch files appear in real-time
 ```
 
-`sage attach` drops you into the tmux pane for full terminal access.
+### 🏗️ Multi-Agent Orchestration
 
-## Long-Running Tasks
-
-Every task gets a trackable ID. Status transitions mechanically: `queued → running → done`.
-
-```bash
-# Submit (non-blocking, returns task ID)
-sage send worker "Build the entire app"
-# ✓ task t-1710347041 → worker
-
-# Monitor
-sage tasks worker                   # status + elapsed time
-sage peek worker                    # live tmux pane + workspace
-sage result t-1710347041            # structured result when done
-
-# Course-correct
-sage steer worker "Use REST, not GraphQL"              # soft: queued for next msg
-sage steer worker "Wrong approach" --restart            # hard: cascade stop + retry
-```
-
-## Orchestration
-
-Agents can create and manage other agents. Parent-child relationships are tracked automatically.
+One agent delegates to specialists:
 
 ```bash
 sage create orch --runtime claude-code
-sage start orch
-sage send orch "Build a todo app. Delegate to sub-agents."
+sage send orch "Build a full-stack todo app. Create sub-agents for frontend and backend."
 
-# orch creates sub-agents (parent auto-tracked)
-# sage status shows the tree:
-#   orch           claude-code  running
-#     └─ sub1      claude-code  running
-#     └─ sub2      claude-code  running
+sage status
+#  orch              claude-code  running   45s
+#    └─ frontend     claude-code  running   30s
+#    └─ backend      claude-code  running   28s
+
+sage trace --tree
+#  t-001 cli → orch "Build a full-stack todo app" (120s) ✓
+#    ├─ t-002 orch → frontend "Build React UI with..." (45s) ✓
+#    └─ t-003 orch → backend "Build Express API with..." (52s) ✓
 ```
 
-## Multi-Orchestrator
+### ⚡ Parallel Workstreams
 
-Run multiple independent orchestrators in parallel:
+Run independent orchestrators simultaneously:
 
 ```bash
-sage create orch-frontend --runtime claude-code
-sage create orch-backend --runtime claude-code
-sage start --all
+sage create orch-api --runtime claude-code
+sage create orch-ui --runtime claude-code
+sage create orch-infra --runtime claude-code
 
-sage send orch-frontend "Build React dashboard"
-sage send orch-backend "Build REST API with FastAPI"
+sage send orch-api "Build REST API with FastAPI"
+sage send orch-ui "Build React dashboard"
+sage send orch-infra "Write Terraform for AWS ECS"
 
-sage tasks    # all tasks across all agents
+sage tasks    # track everything
 sage status   # full tree view
 ```
 
-## Steering
+### 🎯 Course Correction
 
-Course-correct agents without starting over:
+Steer agents without losing progress:
 
 ```bash
-# Soft steer — writes to steer.md, queued for next invocation
+# Soft steer — guidance for the next task
 sage steer orch "Use PostgreSQL instead of SQLite"
 
-# Hard steer — stops agent + all children, re-queues task with correction
-sage steer orch "Wrong approach entirely" --restart
+# Hard steer — stop everything, restart with new direction
+sage steer orch "Switch to Go instead of Python" --restart
+# Cascades: stops all children → restarts orch with context
 ```
 
-`--restart` cascades: stops all child agents, stops the orchestrator, writes the steering context, re-queues the in-flight task, and restarts. The orch re-creates sub-agents as needed.
+### 🔄 Mixed Runtimes
+
+Use the right tool for each job:
+
+```bash
+sage create planner --runtime claude-code    # strong reasoning
+sage create coder --runtime cline            # fast execution
+sage create scripts --runtime bash           # custom handlers
+```
+
+### 📋 Sync Calls
+
+When you need the answer right now:
+
+```bash
+# Blocks until done (60s default timeout)
+sage call worker "What's the time complexity of merge sort?" 30
+
+# Perfect for scripting
+RESULT=$(sage call analyzer "Review this PR" 120)
+echo "$RESULT"
+```
+
+---
+
+## Live Monitoring
+
+Both CLI runtimes stream events in real-time. Tool calls, text responses, and progress appear as they happen:
+
+```bash
+sage peek master --lines 20
+```
+
+```
+ ⚡ peek: master
+
+ Live output:
+   I'll create a professional restaurant template with modern design...
+
+ Runner log:
+   [22:15:28] master: invoking claude-code...
+   I'll create a professional restaurant template...
+     → ToolSearch
+     → TodoWrite
+     → Write
+     → TodoWrite
+     → Write
+
+ Workspace: 4 file(s)
+   22:17  19889  styles.css
+   22:16  23212  index.html
+```
+
+`sage attach` drops you into the tmux session for full terminal access.
+
+---
+
+## Task Tracking
+
+Every task gets a trackable ID. Status transitions are mechanical — no LLM behavior dependency.
+
+```
+queued → running → done
+```
+
+```bash
+sage send worker "Build the entire app"
+# ✓ task t-1710347041 → worker
+
+sage tasks worker
+#  TASK              AGENT   STATUS   ELAPSED  FROM
+#  t-1710347041      worker  running  45s      cli
+
+sage result t-1710347041     # structured output when done
+sage wait worker             # block until agent finishes
+```
+
+---
 
 ## Tracing
 
-See how agents work together — full timeline or call tree:
+Full observability into how agents collaborate:
 
 ```bash
-# Chronological timeline of all events
+# Timeline
 sage trace
-#   17:00:40  send   cli → orch        "Build the app..."
-#   17:01:02  send   orch → sub1       "Write fibonacci..."
-#   17:01:20  done   sub1 ✓            18s
-#   17:02:08  done   orch ✓            88s
+#  17:00:40  send   cli → orch      "Build the app..."
+#  17:01:02  send   orch → sub1     "Write fibonacci..."
+#  17:01:20  done   sub1 ✓          18s
+#  17:02:08  done   orch ✓          88s
 
 # Call hierarchy
 sage trace --tree
-#   t-123 cli → orch "Build the app" (88s) ✓
-#     ├─ t-456 orch → sub1 "Write fibonacci..." (18s) ✓
-#     └─ t-789 orch → sub2 "Write factorial..." (16s) ✓
+#  t-123 cli → orch "Build the app" (88s) ✓
+#    ├─ t-456 orch → sub1 "Write fibonacci..." (18s) ✓
+#    └─ t-789 orch → sub2 "Write factorial..." (16s) ✓
 
-# Filter by agent
-sage trace orch              # only events involving orch
-sage trace sub1 --tree       # sub1's call tree
-sage trace -n 100            # last 100 events
-sage trace --clear           # wipe trace log
+# Filter
+sage trace orch              # events for one agent
+sage trace --tree -n 50      # last 50 events as tree
 ```
+
+---
 
 ## Runtimes
 
-| Runtime | Backend | How it works |
-|---|---|---|
-| `bash` | Shell script | handler.sh processes messages |
-| `cline` | Cline CLI | Each message invokes `cline --act --json` (streams events live) |
-| `claude-code` | Claude Code CLI | Each message invokes `claude -p --output-format stream-json` (streams events live) |
+| Runtime | Backend | Streaming | How it works |
+|---|---|---|---|
+| `claude-code` | [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) | ✅ stream-json | Real-time tool calls + text via `--output-format stream-json` |
+| `cline` | [Cline CLI](https://github.com/cline/cline) | ✅ json | Real-time events via `--json` |
+| `bash` | Shell script | — | Custom `handler.sh` processes messages |
 
-Both CLI runtimes stream real-time progress to the tmux pane — tool calls, text responses, and completion. `sage peek` and `sage attach` show live output during execution.
+Adding a runtime is one file with two functions (`runtime_start` + `runtime_inject`). See [DEVELOPMENT.md](DEVELOPMENT.md).
 
-Adding a new runtime = one file with two functions. See [DEVELOPMENT.md](DEVELOPMENT.md).
+---
 
 ## Architecture
 
-- **Agents** = processes in tmux windows
-- **Messages** = JSON files in inbox directories
-- **Tasks** = tracked with IDs, status files, and result files
-- **Parent-child** = auto-tracked via `SAGE_AGENT_NAME` env var
-- **Sync calls** = reply files + polling
-- **State** = files in workspace/
-- **Steering** = steer.md injected into runtime prompts
-- **Dependencies** = bash, jq, tmux
+```
+sage CLI
+  │
+  ├─ sage create <name>    → ~/.sage/agents/<name>/{inbox,workspace,results}
+  ├─ sage send <name> msg  → writes JSON to inbox/, auto-starts if needed
+  │
+  └─ runner.sh (per agent, in tmux window)
+       ├─ polls inbox/ every 300ms
+       ├─ sources runtimes/<runtime>.sh
+       ├─ calls runtime_inject() per message
+       ├─ streams events to tmux pane (live monitoring)
+       └─ writes task status + results mechanically
+```
+
+**Everything is a file:**
+
+```
+~/.sage/
+├── agents/<name>/
+│   ├── inbox/          # incoming messages
+│   ├── workspace/      # agent's working directory
+│   ├── results/        # task status + output
+│   ├── steer.md        # steering context
+│   └── .live_output    # current task's live output
+├── runtimes/           # bash, cline, claude-code
+├── tools/              # shared utilities
+├── trace.jsonl         # append-only event log
+└── runner.sh           # agent process loop
+```
+
+---
 
 ## Commands
 
 ```
 AGENTS
-  init [--force]                   Initialize ~/.sage/
-  create <name> [--runtime R]      Create agent (bash|cline|claude-code)
-  start [name|--all]               Start in tmux
-  stop [name|--all]                Stop
-  restart [name|--all]             Restart
-  status                           Show all agents (tree view)
-  ls                               List agent names
-  rm <name>                        Remove agent
-  clean                            Clean stale files
+  init [--force]                     Initialize ~/.sage/
+  create <name> [--runtime R]        Create agent (bash|cline|claude-code)
+  start [name|--all]                 Start in tmux
+  stop [name|--all]                  Stop (kills process group)
+  restart [name|--all]               Restart
+  status                             Tree view of all agents
+  ls                                 List agent names
+  rm <name>                          Remove agent
+  clean                              Clean stale files
 
 MESSAGING & TASKS
-  send <to> <message|@file>     Fire-and-forget (returns task ID)
-  call <to> <message|@file> [t]  Sync request/response (default: 60s)
-  tasks [name]                     List tasks with status
-  result <task-id>                 Get task result
-  wait <name> [--timeout N]        Wait for agent to finish
-  peek <name> [--lines N]          See tmux pane + workspace
-  steer <name> <msg> [--restart]   Course-correct a running agent
-  inbox [--json] [--clear]         View/clear messages
+  send <to> <message|@file>          Fire-and-forget (returns task ID)
+  call <to> <message|@file> [t]      Sync request/response (default 60s)
+  tasks [name]                       List tasks with status
+  result <task-id>                   Get task result
+  wait <name> [--timeout N]          Wait for agent to finish
+  peek <name> [--lines N]            Live output + workspace
+  steer <name> <msg> [--restart]     Course-correct agent
+  inbox [--json] [--clear]           View/clear CLI messages
 
-DEBUG
-  logs <name> [-f|--clear]         View/tail/clear logs
-  trace [name] [--tree] [-n N]     Show agent interaction trace
-  attach [name]                    Attach to tmux session
+DEBUG & OBSERVABILITY
+  logs <name> [-f|--clear]           View/tail/clear logs
+  trace [name] [--tree] [-n N]       Agent interaction trace
+  attach [name]                      Attach to tmux session
 
 TOOLS
-  tool add <name> <path>           Register a tool
-  tool ls                          List tools
+  tool add <name> <path>             Register a tool
+  tool ls                            List tools
 ```
+
+---
+
+## Configuration
+
+Agents are configured via `runtime.json`:
+
+```json
+{
+  "runtime": "claude-code",
+  "model": "claude-sonnet-4-6",
+  "parent": "orch",
+  "workdir": "/path/to/project",
+  "created": "2026-03-13T22:00:00Z"
+}
+```
+
+Customize agent behavior by editing `instructions.md` in the agent directory.
+
+---
+
+## Contributing
+
+sage is a single bash script. Read it, understand it, improve it.
+
+```bash
+# The entire engine
+wc -l sage    # ~1500 lines
+
+# Run from source
+./sage init --force
+./sage create test --runtime bash
+```
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for architecture details, runtime interface, and how to add new runtimes.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+---
+
+<p align="center">
+  <strong>⚡ sage</strong> — Because the best agent framework is the one you can read in an afternoon.
+</p>
