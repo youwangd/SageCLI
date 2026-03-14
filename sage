@@ -358,21 +358,25 @@ PROMPT
   local live_output="$agent_dir/.live_output"
   > "$live_output"
 
-  # Run claude writing to file, tail -f shows live output in tmux pane
-  cat "$prompt_file" | claude "${claude_args[@]}" > "$live_output" 2>&1 &
-  local claude_pid=$!
+  # Write claude command to a temp script to avoid quoting issues
+  local cmd_script=$(mktemp /tmp/sage-run-XXXXX.sh)
+  {
+    echo '#!/bin/bash'
+    echo "cd $(printf '%q' "$workdir")"
+    printf 'cat %q | claude' "$prompt_file"
+    for arg in "${claude_args[@]}"; do
+      printf ' %q' "$arg"
+    done
+    echo ""
+  } > "$cmd_script"
+  chmod +x "$cmd_script"
 
-  # Stream file content to tmux pane as it appears
-  tail -f "$live_output" --pid=$claude_pid 2>/dev/null &
-  local tail_pid=$!
+  # Use script(1) with --flush to allocate a PTY and stream output in real-time
+  script -qefc "$cmd_script" --flush "$live_output" || true
 
-  # Wait for claude to finish
-  wait "$claude_pid" 2>/dev/null || true
-  sleep 0.3
-  kill "$tail_pid" 2>/dev/null; wait "$tail_pid" 2>/dev/null
-
-  output=$(cat "$live_output")
-  rm -f "$prompt_file"
+  # Clean script artifacts
+  output=$(sed '/^Script started/d; /^Script done/d' "$live_output" | tr -d '\r')
+  rm -f "$prompt_file" "$cmd_script"
 
   log "claude-code finished: $(echo "$output" | tail -1 | head -c 120)"
 
@@ -1217,7 +1221,7 @@ cmd_peek() {
 
   if [[ $file_count -gt 0 ]]; then
     printf "\n  ${BOLD}Workspace:${NC} %s file(s)\n" "$file_count"
-    find "$ws" -maxdepth 1 -type f -printf "    %f (%s bytes)\n" 2>/dev/null
+    find "$ws" -maxdepth 2 -type f -printf "    %TH:%TM  %8s  %P\n" 2>/dev/null | sort -r | head -15
   fi
   echo ""
 }
