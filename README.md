@@ -55,7 +55,7 @@ That's it. Three commands. Your agent is running in a tmux pane, writing files, 
 ## Install
 
 ```bash
-git clone https://github.com/YouwangDeng/SageCLI.git
+git clone https://github.com/youwangd/SageCLI.git
 cd SageCLI
 ln -s $(pwd)/sage ~/bin/sage    # or /usr/local/bin/sage
 sage init
