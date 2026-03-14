@@ -510,10 +510,34 @@ _acp_start_agent() {
 _acp_process_events() {
   local prompt_id="$1" live_output="$2"
   local text_buf="" output=""
+  local cancel_file="$AGENTS_DIR/$AGENT_NAME/.acp_cancel"
 
   while true; do
-    local event=$(_acp_read 120)
-    [[ -z "$event" ]] && { log "ACP timeout waiting for events"; break; }
+    # Check for cancel signal (from --force) BEFORE reading next event
+    if [[ -f "$cancel_file" ]]; then
+      rm -f "$cancel_file"
+      log "ACP cancel signal received — aborting current task"
+      printf "\033[31m  ⚠ cancelled by --force\033[0m\n"
+      # Send session/cancel
+      _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$_acp_rpc_id,\"method\":\"session/cancel\",\"params\":{\"sessionId\":\"$_acp_session_id\"}}"
+      ((_acp_rpc_id++))
+      # Kill and restart the ACP agent process for a clean slate
+      _acp_cleanup
+      _acp_start_agent "$AGENTS_DIR/$AGENT_NAME" "$AGENT_NAME"
+      break
+    fi
+
+    # Use short read timeout so cancel checks happen frequently
+    local event
+    IFS= read -r -t 1 event <&8 || true
+    if [[ -z "$event" ]]; then
+      # No event this cycle — check agent alive
+      if [[ -n "$_acp_agent_pid" ]] && ! kill -0 "$_acp_agent_pid" 2>/dev/null; then
+        log "ACP agent process died"
+        break
+      fi
+      continue
+    fi
 
     local eid=$(echo "$event" | jq -r '.id // empty' 2>/dev/null)
     local method=$(echo "$event" | jq -r '.method // empty' 2>/dev/null)
@@ -1019,8 +1043,26 @@ cmd_status() {
 # sage send <to> <payload>
 # ═══════════════════════════════════════════════
 cmd_send() {
-  local to="${1:-}" message="${2:-}"
-  [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file>"
+  local to="" message="" force=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force|-f) force=true; shift ;;
+      -*)         die "unknown flag: $1" ;;
+      *)
+        if [[ -z "$to" ]]; then
+          to="$1"
+        elif [[ -z "$message" ]]; then
+          message="$1"
+        else
+          message="$message $1"
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file> [--force]"
   ensure_init
 
   if [[ "$to" != ".cli" ]]; then
@@ -1037,6 +1079,13 @@ cmd_send() {
     filepath="${filepath/#\~/$HOME}"
     [[ -f "$filepath" ]] || die "file not found: $filepath"
     message=$(cat "$filepath")
+  fi
+
+  # --force: signal the ACP runtime to cancel the current task
+  if [[ "$force" == true ]]; then
+    local cancel_file="$AGENTS_DIR/$to/.acp_cancel"
+    echo "1" > "$cancel_file"
+    info "cancel signal sent — current task will be interrupted"
   fi
 
   export SAGE_AGENT_NAME="${SAGE_AGENT_NAME:-cli}"
@@ -1702,7 +1751,7 @@ cmd_help() {
     clean                       Clean up stale files
 
   MESSAGING
-    send <to> <message|@file>     Fire-and-forget (returns task ID)
+    send <to> <message|@file> [--force] Fire-and-forget (--force cancels running task)
     call <to> <message|@file> [s]  Send and wait for response (default: 60s)
     tasks [name]                List tasks with status
     result <task-id>            Get task result
@@ -1732,7 +1781,8 @@ cmd_help() {
     sage send orch 'Build the entire app'      # fire & forget (non-blocking)
     sage tasks orch                      # check status
     sage peek orch                       # see what it's doing
-    sage steer orch "Use REST not GraphQL"  # course-correct
+    sage send orch "Use React" --force   # cancel current task, switch direction
+    sage steer orch "Use REST not GraphQL"  # course-correct (next task)
     sage steer orch "Start over" --restart # kill orch + children, re-run task
     sage result <task-id>                # get result when done
 
