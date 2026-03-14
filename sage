@@ -1235,7 +1235,7 @@ cmd_inbox() {
 # sage trace [--tree] [--clear] [-n N]
 # ═══════════════════════════════════════════════
 cmd_trace() {
-  local mode="timeline" limit=50 do_clear=false
+  local mode="timeline" limit=50 do_clear=false agent_filter=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1243,7 +1243,7 @@ cmd_trace() {
       --clear) do_clear=true; shift ;;
       -n)      limit="$2"; shift 2 ;;
       -*)      die "unknown flag: $1" ;;
-      *)       shift ;;
+      *)       agent_filter="$1"; shift ;;
     esac
   done
 
@@ -1258,14 +1258,25 @@ cmd_trace() {
 
   [[ -f "$tracefile" ]] || { printf "\n  ${DIM}no trace data — run some tasks first${NC}\n\n"; return; }
 
+  # Filter trace to specific agent (matches from, to, or agent fields)
+  local trace_data
+  if [[ -n "$agent_filter" ]]; then
+    trace_data=$(grep -E "\"(from|to|agent)\":\"$agent_filter\"" "$tracefile" | tail -"$limit")
+  else
+    trace_data=$(tail -"$limit" "$tracefile")
+  fi
+
+  [[ -n "$trace_data" ]] || { printf "\n  ${DIM}no trace data for '$agent_filter'${NC}\n\n"; return; }
+
   if [[ "$mode" == "tree" ]]; then
     # Build task tree: group by root task
-    printf "\n${BOLD}  ⚡ Trace (tree)${NC}\n\n"
+    printf "\n${BOLD}  ⚡ Trace (tree)${NC}"
+    [[ -n "$agent_filter" ]] && printf " ${DIM}(agent: $agent_filter)${NC}"
+    printf "\n\n"
 
-    # Find all send events and their done events
     local send_events done_events
-    send_events=$(grep '"type":"send"' "$tracefile" | tail -"$limit")
-    done_events=$(grep '"type":"done"' "$tracefile")
+    send_events=$(echo "$trace_data" | grep '"type":"send"')
+    done_events=$(echo "$trace_data" | grep '"type":"done"')
 
     # Find root tasks (from=cli or from not in any agent's task)
     echo "$send_events" | while IFS= read -r event; do
@@ -1304,10 +1315,12 @@ cmd_trace() {
 
   else
     # Timeline mode — chronological
-    printf "\n${BOLD}  ⚡ Trace (timeline)${NC}\n\n"
+    printf "\n${BOLD}  ⚡ Trace${NC}"
+    [[ -n "$agent_filter" ]] && printf " ${DIM}(agent: $agent_filter)${NC}"
+    printf "\n\n"
     printf "  ${DIM}%-10s %-8s %-20s %-22s %s${NC}\n" "TIME" "TYPE" "FLOW" "TASK" "INFO"
 
-    tail -"$limit" "$tracefile" | while IFS= read -r line; do
+    echo "$trace_data" | while IFS= read -r line; do
       [[ -z "$line" ]] && continue
       local ts type agent from to task_id text elapsed
       ts=$(echo "$line" | jq -r '.ts')
@@ -1385,7 +1398,7 @@ cmd_help() {
 
   DEBUG
     logs <name> [-f|--clear]    View/tail/clear agent logs
-    trace [--tree] [-n N]       Show agent interaction trace
+    trace [name] [--tree] [-n N]  Show agent interaction trace
     attach [name]               Attach to tmux session
 
   TOOLS
