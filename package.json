@@ -1,0 +1,45 @@
+{
+  "name": "sagecli",
+  "version": "1.0.0",
+  "description": "⚡ Simple Agent Engine — Orchestrate AI coding agents from your terminal. No frameworks, just bash, jq, and tmux.",
+  "bin": {
+    "sage": "./bin/sage-wrapper.js"
+  },
+  "scripts": {
+    "postinstall": "node ./bin/postinstall.js"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "cli",
+    "orchestration",
+    "claude",
+    "cline",
+    "tmux",
+    "coding-agent",
+    "multi-agent",
+    "automation",
+    "llm"
+  ],
+  "author": "Youwang Deng",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/youwangd/SageCLI.git"
+  },
+  "homepage": "https://github.com/youwangd/SageCLI",
+  "bugs": {
+    "url": "https://github.com/youwangd/SageCLI/issues"
+  },
+  "os": ["linux", "darwin"],
+  "engines": {
+    "node": ">=14"
+  },
+  "files": [
+    "sage",
+    "runtimes/",
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ]
+}

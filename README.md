@@ -54,6 +54,23 @@ That's it. Three commands. Your agent is running in a tmux pane, writing files, 
 
 ## Install
 
+**Homebrew** (macOS & Linux):
+```bash
+brew tap youwangd/sage
+brew install sage
+```
+
+**npm** (cross-platform):
+```bash
+npm install -g sagecli
+```
+
+**curl** (one-liner):
+```bash
+curl -fsSL https://raw.githubusercontent.com/youwangd/SageCLI/main/install.sh | bash
+```
+
+**Manual:**
 ```bash
 git clone https://github.com/youwangd/SageCLI.git
 cd SageCLI
