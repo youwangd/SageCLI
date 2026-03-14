@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License">
   <br>
   <img src="https://img.shields.io/badge/Claude_Code-supported-7C3AED?logo=anthropic&logoColor=white" alt="Claude Code">
-  <img src="https://img.shields.io/badge/Cline-supported-F97316" alt="Cline">
+  <img src="https://img.shields.io/badge/Cline-supported-F97316?logo=cline&logoColor=white" alt="Cline">
   <img src="https://img.shields.io/badge/Bash-supported-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
 </p>
 
