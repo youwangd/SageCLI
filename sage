@@ -74,6 +74,12 @@ _task_id() {
   echo "t-$(date +%s)-$RANDOM"
 }
 
+# Append to shared trace log
+_trace() {
+  local event="$1"
+  echo "$event" >> "$SAGE_HOME/trace.jsonl" 2>/dev/null
+}
+
 send_msg() {
   local to="$1" payload="$2"
   local task_id="$(_task_id)"
@@ -102,6 +108,10 @@ send_msg() {
 {"id":"$task_id","from":"$me","payload":$payload,"ts":$(date +%s)}
 MSGEOF
 
+  # Trace
+  local text_preview=$(echo "$payload" | jq -r '.text // (.task // "")' 2>/dev/null | head -c 80)
+  _trace "{\"ts\":$(date +%s),\"type\":\"send\",\"from\":\"$me\",\"to\":\"$to\",\"task_id\":\"$task_id\",\"text\":$(echo "$text_preview" | jq -Rs .)}"
+
   # Return task_id so callers can track it
   echo "$task_id"
 }
@@ -129,6 +139,11 @@ call_agent() {
   cat > "$inbox/${task_id}.json" <<MSGEOF
 {"id":"$task_id","from":"$me","payload":$payload,"reply_dir":"$reply_dir","ts":$(date +%s)}
 MSGEOF
+
+  # Trace
+  local text_preview=$(echo "$payload" | jq -r '.text // (.task // "")' 2>/dev/null | head -c 80)
+  _trace "{\"ts\":$(date +%s),\"type\":\"send\",\"from\":\"$me\",\"to\":\"$to\",\"task_id\":\"$task_id\",\"text\":$(echo "$text_preview" | jq -Rs .)}"
+
   local deadline=$((SECONDS + timeout))
   while [[ $SECONDS -lt $deadline ]]; do
     if [[ -f "$reply_dir/${task_id}.json" ]]; then
@@ -420,13 +435,21 @@ while true; do
       jq --arg ts "$(date +%s)" '.status="running" | .started_at=($ts|tonumber)' "$status_file" > "${status_file}.tmp" && mv "${status_file}.tmp" "$status_file"
     fi
 
+    # Trace: task started
+    echo "{\"ts\":$(date +%s),\"type\":\"start\",\"agent\":\"$AGENT_NAME\",\"task_id\":\"$local_task_id\",\"from\":\"$local_from\"}" >> "$SAGE_HOME/trace.jsonl" 2>/dev/null
+
     # Process the message
+    task_start_ts=$(date +%s)
     runtime_inject "$AGENT_NAME" "$msg"
+    task_elapsed=$(( $(date +%s) - task_start_ts ))
 
     # Update task status → done
     if [[ -f "$status_file" ]]; then
       jq --arg ts "$(date +%s)" '.status="done" | .finished_at=($ts|tonumber)' "$status_file" > "${status_file}.tmp" && mv "${status_file}.tmp" "$status_file"
     fi
+
+    # Trace: task done
+    echo "{\"ts\":$(date +%s),\"type\":\"done\",\"agent\":\"$AGENT_NAME\",\"task_id\":\"$local_task_id\",\"elapsed\":$task_elapsed}" >> "$SAGE_HOME/trace.jsonl" 2>/dev/null
   done
   sleep 0.3
 done
@@ -1209,6 +1232,114 @@ cmd_inbox() {
 }
 
 # ═══════════════════════════════════════════════
+# sage trace [--tree] [--clear] [-n N]
+# ═══════════════════════════════════════════════
+cmd_trace() {
+  local mode="timeline" limit=50 do_clear=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --tree)  mode="tree"; shift ;;
+      --clear) do_clear=true; shift ;;
+      -n)      limit="$2"; shift 2 ;;
+      -*)      die "unknown flag: $1" ;;
+      *)       shift ;;
+    esac
+  done
+
+  ensure_init
+  local tracefile="$SAGE_HOME/trace.jsonl"
+
+  if [[ "$do_clear" == true ]]; then
+    rm -f "$tracefile"
+    ok "trace cleared"
+    return
+  fi
+
+  [[ -f "$tracefile" ]] || { printf "\n  ${DIM}no trace data — run some tasks first${NC}\n\n"; return; }
+
+  if [[ "$mode" == "tree" ]]; then
+    # Build task tree: group by root task
+    printf "\n${BOLD}  ⚡ Trace (tree)${NC}\n\n"
+
+    # Find all send events and their done events
+    local send_events done_events
+    send_events=$(grep '"type":"send"' "$tracefile" | tail -"$limit")
+    done_events=$(grep '"type":"done"' "$tracefile")
+
+    # Find root tasks (from=cli or from not in any agent's task)
+    echo "$send_events" | while IFS= read -r event; do
+      [[ -z "$event" ]] && continue
+      local from=$(echo "$event" | jq -r '.from')
+      local to=$(echo "$event" | jq -r '.to')
+      local task_id=$(echo "$event" | jq -r '.task_id')
+      local text=$(echo "$event" | jq -r '.text' | head -c 50)
+
+      # Check if this is a root task (from cli or from a non-agent)
+      if [[ "$from" == "cli" || "$from" == ".cli" ]]; then
+        # Root task — find elapsed
+        local elapsed=$(echo "$done_events" | grep "\"$task_id\"" | jq -r '.elapsed // "?"' | tail -1)
+        local status_icon="⏳"
+        [[ "$elapsed" != "?" && -n "$elapsed" ]] && status_icon="✓"
+        printf "  ${BOLD}${task_id}${NC} $from → $to \"$text\" (${elapsed}s) $status_icon\n"
+
+        # Find child tasks (sent by $to)
+        echo "$send_events" | while IFS= read -r child_event; do
+          [[ -z "$child_event" ]] && continue
+          local child_from=$(echo "$child_event" | jq -r '.from')
+          local child_to=$(echo "$child_event" | jq -r '.to')
+          local child_id=$(echo "$child_event" | jq -r '.task_id')
+          local child_text=$(echo "$child_event" | jq -r '.text' | head -c 40)
+
+          if [[ "$child_from" == "$to" ]]; then
+            local child_elapsed=$(echo "$done_events" | grep "\"$child_id\"" | jq -r '.elapsed // "?"' | tail -1)
+            local child_icon="⏳"
+            [[ "$child_elapsed" != "?" && -n "$child_elapsed" ]] && child_icon="✓"
+            printf "    ├─ ${DIM}${child_id}${NC} $child_from → $child_to \"$child_text\" (${child_elapsed}s) $child_icon\n"
+          fi
+        done
+      fi
+    done
+    echo ""
+
+  else
+    # Timeline mode — chronological
+    printf "\n${BOLD}  ⚡ Trace (timeline)${NC}\n\n"
+    printf "  ${DIM}%-10s %-8s %-20s %-22s %s${NC}\n" "TIME" "TYPE" "FLOW" "TASK" "INFO"
+
+    tail -"$limit" "$tracefile" | while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      local ts type agent from to task_id text elapsed
+      ts=$(echo "$line" | jq -r '.ts')
+      type=$(echo "$line" | jq -r '.type')
+      task_id=$(echo "$line" | jq -r '.task_id // ""')
+
+      local time_str=$(date -d "@$ts" '+%H:%M:%S' 2>/dev/null || echo "—")
+
+      case "$type" in
+        send)
+          from=$(echo "$line" | jq -r '.from')
+          to=$(echo "$line" | jq -r '.to')
+          text=$(echo "$line" | jq -r '.text' | head -c 40)
+          printf "  %-10s ${CYAN}%-8s${NC} %-20s %-22s %s\n" "$time_str" "send" "$from → $to" "$task_id" "\"$text\""
+          ;;
+        start)
+          agent=$(echo "$line" | jq -r '.agent')
+          from=$(echo "$line" | jq -r '.from')
+          printf "  %-10s ${YELLOW}%-8s${NC} %-20s %-22s %s\n" "$time_str" "start" "$agent" "$task_id" "from $from"
+          ;;
+        done)
+          agent=$(echo "$line" | jq -r '.agent')
+          elapsed=$(echo "$line" | jq -r '.elapsed // "?"')
+          printf "  %-10s ${GREEN}%-8s${NC} %-20s %-22s %s\n" "$time_str" "done" "$agent ✓" "$task_id" "${elapsed}s"
+          ;;
+      esac
+    done
+    echo ""
+  fi
+}
+
+# ═══════════════════════════════════════════════
 # sage tool {add|ls}
 # ═══════════════════════════════════════════════
 cmd_tool() {
@@ -1254,6 +1385,7 @@ cmd_help() {
 
   DEBUG
     logs <name> [-f|--clear]    View/tail/clear agent logs
+    trace [--tree] [-n N]       Show agent interaction trace
     attach [name]               Attach to tmux session
 
   TOOLS
@@ -1293,6 +1425,7 @@ case "${1:-}" in
   peek)    shift; cmd_peek "$@" ;;
   inbox)   shift; cmd_inbox "$@" ;;
   logs)    cmd_logs "${2:-}" "${3:-}" ;;
+  trace)   shift; cmd_trace "$@" ;;
   attach)  cmd_attach "${2:-}" ;;
   ls)      cmd_ls ;;
   rm)      cmd_rm "${2:-}" ;;
