@@ -93,6 +93,31 @@ sage steer orch "Wrong approach entirely" --restart
 
 `--restart` cascades: stops all child agents, stops the orchestrator, writes the steering context, re-queues the in-flight task, and restarts. The orch re-creates sub-agents as needed.
 
+## Tracing
+
+See how agents work together — full timeline or call tree:
+
+```bash
+# Chronological timeline of all events
+sage trace
+#   17:00:40  send   cli → orch        "Build the app..."
+#   17:01:02  send   orch → sub1       "Write fibonacci..."
+#   17:01:20  done   sub1 ✓            18s
+#   17:02:08  done   orch ✓            88s
+
+# Call hierarchy
+sage trace --tree
+#   t-123 cli → orch "Build the app" (88s) ✓
+#     ├─ t-456 orch → sub1 "Write fibonacci..." (18s) ✓
+#     └─ t-789 orch → sub2 "Write factorial..." (16s) ✓
+
+# Filter by agent
+sage trace orch              # only events involving orch
+sage trace sub1 --tree       # sub1's call tree
+sage trace -n 100            # last 100 events
+sage trace --clear           # wipe trace log
+```
+
 ## Runtimes
 
 | Runtime | Backend | How it works |
@@ -140,6 +165,7 @@ MESSAGING & TASKS
 
 DEBUG
   logs <name> [-f|--clear]         View/tail/clear logs
+  trace [name] [--tree] [-n N]     Show agent interaction trace
   attach [name]                    Attach to tmux session
 
 TOOLS
