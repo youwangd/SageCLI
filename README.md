@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License">
   <br>
   <img src="https://img.shields.io/badge/Claude_Code-supported-7C3AED?logo=anthropic&logoColor=white" alt="Claude Code">
-  <img src="https://img.shields.io/badge/Cline-supported-F97316?logo=cline&logoColor=white" alt="Cline">
+  <img src="https://img.shields.io/badge/Cline-supported-F97316?logo=data:image/svg%2bxml;base64,PHN2ZyBmaWxsPSJ3aGl0ZSIgcm9sZT0iaW1nIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0ibTIzLjM2NSAxMy41NTYtMS40NDItMi44OTVWOC45OTRjMC0yLjc2NC0yLjIxOC01LjAwMi00Ljk1NC01LjAwMmgtMi40NjRjLjE3OC0uMzY3LjI3Ni0uNzc5LjI3Ni0xLjIxM0EyLjc3IDIuNzcgMCAwIDAgMTIuMDE4IDBhMi43NyAyLjc3IDAgMCAwLTIuNzYzIDIuNzc5YzAgLjQzNC4wOTguODQ2LjI3NiAxLjIxM0g3LjA2N2MtMi43MzYgMC00Ljk1NCAyLjIzOC00Ljk1NCA1LjAwMnYxLjY2N0wuNjQgMTMuNTQ5Yy0uMTQ5LjI5LS4xNDkuNjM2IDAgLjkyN2wxLjQ3MiAyLjg1NXYxLjY2N0MyLjExMyAyMS43NjIgNC4zMyAyNCA3LjA2NyAyNGg5LjkwMmMyLjczNiAwIDQuOTU0LTIuMjM4IDQuOTU0LTUuMDAyVjE3LjMzbDEuNDQtMi44NjVjLjE0My0uMjg2LjE0My0uNjIyLjAwMi0uOTFtLTEyLjg1NCAyLjM2YTIuMjcgMi4yNyAwIDAgMS0yLjI2MSAyLjI3MyAyLjI3IDIuMjcgMCAwIDEtMi4yNjEtMi4yNzN2LTQuMDQyQTIuMjcgMi4yNyAwIDAgMSA4LjI0OSA5LjZhMi4yNjcgMi4yNjcgMCAwIDEgMi4yNjIgMi4yNzR6bTcuMjg1IDBhMi4yNyAyLjI3IDAgMCAxLTIuMjYgMi4yNzMgMi4yNyAyLjI3IDAgMCAxLTIuMjYyLTIuMjczdi00LjA0MkEyLjI2NyAyLjI2NyAwIDAgMSAxNS41MzUgOS42YTIuMjY3IDIuMjY3IDAgMCAxIDIuMjYxIDIuMjc0eiIvPjwvc3ZnPg==" alt="Cline">
   <img src="https://img.shields.io/badge/Bash-supported-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
 </p>
 
