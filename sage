@@ -586,8 +586,6 @@ _acp_process_events() {
       esac
     fi
   done
-
-  echo "$output"
 }
 
 runtime_start() {
@@ -632,9 +630,11 @@ $full_prompt"
   ((_acp_rpc_id++))
   _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$prompt_id,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"$_acp_session_id\",\"prompt\":[{\"type\":\"text\",\"text\":$escaped_prompt}]}}"
 
-  local output
-  output=$(_acp_process_events "$prompt_id" "$live_output")
+  # Process events — output goes directly to tmux pane (stdout)
+  # Text is also accumulated in $live_output file
+  _acp_process_events "$prompt_id" "$live_output"
 
+  local output=$(cat "$live_output")
   log "ACP finished: $(echo "$output" | tail -1 | head -c 120)"
 
   # Write result
