@@ -275,7 +275,11 @@ PROMPT
   [[ -n "$model" ]] && cline_args+=(-m "$model")
 
   local live_output="$agent_dir/.live_output"
-  cline "${cline_args[@]}" "$(cat "$prompt_file")" 2>&1 | tee "$live_output" || true
+  > "$live_output"
+  tail -f "$live_output" &
+  local tail_pid=$!
+  cline "${cline_args[@]}" "$(cat "$prompt_file")" > "$live_output" 2>&1 || true
+  sleep 0.2; kill "$tail_pid" 2>/dev/null; wait "$tail_pid" 2>/dev/null
   output=$(cat "$live_output")
   rm -f "$prompt_file"
 
@@ -352,7 +356,21 @@ PROMPT
   [[ -n "$model" ]] && claude_args+=(--model "$model")
 
   local live_output="$agent_dir/.live_output"
-  cat "$prompt_file" | claude "${claude_args[@]}" 2>&1 | tee "$live_output" || true
+  > "$live_output"
+
+  # Run claude writing to file, tail -f shows live output in tmux pane
+  cat "$prompt_file" | claude "${claude_args[@]}" > "$live_output" 2>&1 &
+  local claude_pid=$!
+
+  # Stream file content to tmux pane as it appears
+  tail -f "$live_output" --pid=$claude_pid 2>/dev/null &
+  local tail_pid=$!
+
+  # Wait for claude to finish
+  wait "$claude_pid" 2>/dev/null || true
+  sleep 0.3
+  kill "$tail_pid" 2>/dev/null; wait "$tail_pid" 2>/dev/null
+
   output=$(cat "$live_output")
   rm -f "$prompt_file"
 
