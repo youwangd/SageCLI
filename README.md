@@ -14,11 +14,13 @@ sage init
 
 ```bash
 sage create worker --runtime claude-code   # or: cline, bash
-sage start worker
-sage call worker "Build hello.py that prints hello" 60
+sage send worker "Build hello.py that prints hello"
+# agent auto-starts if not running, returns task ID
+sage peek worker                           # live progress
 sage status
-sage logs worker
 ```
+
+`sage start` is optional — `send` and `call` auto-start agents that aren't running.
 
 Messages can be inline or read from a file:
 
@@ -27,6 +29,33 @@ sage send worker "Build hello.py"           # inline text
 sage send worker @prompt.md                 # from file
 sage call worker @detailed-task.txt 120     # file + sync wait
 ```
+
+## Live Monitoring
+
+Both CLI runtimes stream events in real-time. `sage peek` shows live progress:
+
+```bash
+sage peek master --lines 20
+#  ⚡ peek: master
+#
+#  Live output:
+#    I'll create a professional restaurant template...
+#
+#  Runner log:
+#    [22:15:28] master: invoking claude-code...
+#    I'll create a professional restaurant template...
+#      → ToolSearch
+#      → TodoWrite
+#      → Write
+#      → TodoWrite
+#      → Write
+#
+#  Workspace: 4 file(s)
+#    22:17  19889  styles.css
+#    22:16  23212  index.html
+```
+
+`sage attach` drops you into the tmux pane for full terminal access.
 
 ## Long-Running Tasks
 
@@ -123,8 +152,10 @@ sage trace --clear           # wipe trace log
 | Runtime | Backend | How it works |
 |---|---|---|
 | `bash` | Shell script | handler.sh processes messages |
-| `cline` | Cline CLI | Each message invokes `cline --act` |
-| `claude-code` | Claude Code CLI | Each message invokes `claude -p` (supports Bedrock) |
+| `cline` | Cline CLI | Each message invokes `cline --act --json` (streams events live) |
+| `claude-code` | Claude Code CLI | Each message invokes `claude -p --output-format stream-json` (streams events live) |
+
+Both CLI runtimes stream real-time progress to the tmux pane — tool calls, text responses, and completion. `sage peek` and `sage attach` show live output during execution.
 
 Adding a new runtime = one file with two functions. See [DEVELOPMENT.md](DEVELOPMENT.md).
 

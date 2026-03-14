@@ -72,6 +72,33 @@ sage send worker @prompt.md              → reads message from file
 
 Track with: `sage tasks [name]` · `sage result <task-id>` · `sage peek <name>`
 
+## Live Streaming
+
+CLI runtimes stream events to the tmux pane in real-time. The pattern:
+
+1. CLI outputs structured JSON events (one per line)
+2. A `while read` loop in the runtime parses each event
+3. Meaningful events (tool calls, text, completion) are printed to stdout (the tmux pane)
+4. Text is also appended to `.live_output` for `sage peek`'s Live output section
+
+### Claude Code events (`--output-format stream-json --verbose`)
+- `system` — init (model, tools, session_id)
+- `assistant` — text content + tool_use blocks
+- `tool_result` — tool execution results
+- `result` — final summary text + cost + duration
+
+### Cline events (`--json`)
+- `task_started` — task begins
+- `say:api_req_started` — API call in progress
+- `say:reasoning` — thinking/reasoning text
+- `say:text` — response text
+- `say:tool` — tool execution
+- `say:completion_result` — task complete
+
+### Why not just pipe stdout?
+
+`claude -p` in print mode buffers ALL output until completion, regardless of TTY. Even with `tee`, `script(1)`, or process substitution — nothing appears during execution. The `--output-format stream-json` flag is the only way to get real-time events. Similarly, `cline --json` streams while plain `cline --act` may buffer.
+
 ## Parent-Child Tracking
 
 When an agent creates a sub-agent, the parent is automatically recorded:
@@ -130,7 +157,7 @@ Runtime prompt construction:
 ```
 sage send worker "do X"                  # inline
 sage send worker @task.md                # from file
-  → returns task ID immediately (non-blocking)
+  → auto-starts agent if not running
   → returns task ID immediately (non-blocking)
   → writes JSON to ~/.sage/agents/worker/inbox/<task-id>.json
   → creates results/<task-id>.status.json (queued)
@@ -144,6 +171,7 @@ sage send worker @task.md                # from file
 ```
 sage call worker "do X" 60               # inline, 60s timeout
 sage call worker @task.md 120            # from file, 120s timeout
+  → auto-starts agent if not running
   → writes JSON with reply_dir to worker's inbox
   → polls reply_dir for response (up to 60s)
   → runner picks up message, calls runtime_inject()
@@ -236,9 +264,19 @@ PROMPT
   # ── Invoke the CLI (THIS IS THE ONLY PART YOU CUSTOMIZE) ──
   log "invoking <name>..."
   cd "$workdir"
+  local live_output="$agent_dir/.live_output"
+  > "$live_output"
 
-  local output
-  output=$(<YOUR_CLI_COMMAND> "$(cat "$prompt_file")" 2>&1) || true
+  # Option A: Streaming (preferred — live output in tmux pane)
+  <YOUR_CLI> --json "$(cat "$prompt_file")" 2>&1 | while IFS= read -r line; do
+    # Parse events and echo to terminal + live_output
+    echo "$line"  # customize parsing per CLI
+  done
+  local output=$(cat "$live_output")
+
+  # Option B: Simple capture (no live output, result only after completion)
+  # local output=$(<YOUR_CLI_COMMAND> "$(cat "$prompt_file")" 2>&1) || true
+
   rm -f "$prompt_file"
 
   log "<name> finished: $(echo "$output" | tail -1 | head -c 120)"
@@ -259,16 +297,54 @@ PROMPT
 }
 ```
 
-### Step 2: The CLI invocation examples
+### Step 2: The CLI invocation patterns
+
+**Streaming (preferred) — output appears live in tmux pane:**
 
 ```bash
-# Cline
-output=$(cline --act -c "$workdir" "$(cat "$prompt_file")" 2>&1) || true
+# Claude Code (stream-json — events parsed live)
+cd "$workdir"
+cat "$prompt_file" | claude -p --output-format stream-json --verbose \
+  --allowedTools "Bash(*)" "Write(*)" "Read(*)" "Edit(*)" \
+  ${model:+--model "$model"} 2>&1 | while IFS= read -r line; do
+  local evt=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
+  case "$evt" in
+    assistant)
+      local tools text
+      tools=$(echo "$line" | jq -r '[.message.content[]? | select(.type == "tool_use") | .name] | join(", ")' 2>/dev/null)
+      text=$(echo "$line" | jq -r '[.message.content[]? | select(.type == "text") | .text] | join("")' 2>/dev/null)
+      [[ -n "$tools" ]] && printf "\033[36m  → %s\033[0m\n" "$tools"
+      [[ -n "$text" ]] && { echo "$text"; echo "$text" >> "$live_output"; }
+      ;;
+    result)
+      local result_text
+      result_text=$(echo "$line" | jq -r '.result // empty' 2>/dev/null)
+      [[ -n "$result_text" ]] && { echo "$result_text"; echo "$result_text" >> "$live_output"; }
+      ;;
+  esac
+done
 
-# Claude Code (Bedrock)
-export CLAUDE_CODE_USE_BEDROCK=1
-output=$(cat "$prompt_file" | claude -p --output-format text --allowedTools "Bash(*)" "Write(*)" "Read(*)" "Edit(*)" 2>&1) || true
+# Cline (--json — events parsed live)
+cd "$workdir"
+cline --act -c "$workdir" --json ${model:+-m "$model"} "$(cat "$prompt_file")" 2>&1 | while IFS= read -r line; do
+  local say_type
+  say_type=$(echo "$line" | jq -r '.say // .type // empty' 2>/dev/null)
+  case "$say_type" in
+    text|completion_result)
+      local text=$(echo "$line" | jq -r '.text // empty' 2>/dev/null)
+      [[ -n "$text" ]] && { echo "$text"; echo "$text" >> "$live_output"; }
+      ;;
+    tool)
+      local tool_name=$(echo "$line" | jq -r '.text // empty' | jq -r '.tool // empty' 2>/dev/null)
+      [[ -n "$tool_name" ]] && printf "\033[36m  → %s\033[0m\n" "$tool_name"
+      ;;
+  esac
+done
+```
 
+**Simple (for CLIs without streaming JSON):**
+
+```bash
 # Aider
 output=$(aider --yes --message "$(cat "$prompt_file")" 2>&1) || true
 
