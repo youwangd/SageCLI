@@ -62,7 +62,7 @@ brew install sage
 
 **npm** (cross-platform):
 ```bash
-npm install -g sagecli
+npm install -g @youwangd/sage
 ```
 
 **curl** (one-liner):
