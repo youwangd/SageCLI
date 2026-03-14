@@ -274,7 +274,9 @@ PROMPT
   local cline_args=(--act -c "$workdir")
   [[ -n "$model" ]] && cline_args+=(-m "$model")
 
-  output=$(cline "${cline_args[@]}" "$(cat "$prompt_file")" 2>&1) || true
+  local live_output="$agent_dir/.live_output"
+  cline "${cline_args[@]}" "$(cat "$prompt_file")" 2>&1 | tee "$live_output" || true
+  output=$(cat "$live_output")
   rm -f "$prompt_file"
 
   log "cline finished: $(echo "$output" | tail -1 | head -c 120)"
@@ -349,7 +351,9 @@ PROMPT
   local claude_args=(-p --output-format text --allowedTools "Bash(*)" "Write(*)" "Read(*)" "Edit(*)")
   [[ -n "$model" ]] && claude_args+=(--model "$model")
 
-  output=$(cat "$prompt_file" | claude "${claude_args[@]}" 2>&1) || true
+  local live_output="$agent_dir/.live_output"
+  cat "$prompt_file" | claude "${claude_args[@]}" 2>&1 | tee "$live_output" || true
+  output=$(cat "$live_output")
   rm -f "$prompt_file"
 
   log "claude-code finished: $(echo "$output" | tail -1 | head -c 120)"
@@ -1165,7 +1169,21 @@ cmd_peek() {
 
   printf "\n${BOLD}  ⚡ peek: %s${NC}\n\n" "$name"
 
-  # Show pane content (filter empty lines)
+  # Show live CLI output if agent is currently running a task
+  local live_output="$AGENTS_DIR/$name/.live_output"
+  if agent_pid "$name" >/dev/null 2>&1 && [[ -f "$live_output" ]]; then
+    local live_size=$(wc -c < "$live_output" 2>/dev/null || echo 0)
+    if [[ "$live_size" -gt 0 ]]; then
+      printf "  ${BOLD}Live output:${NC}\n"
+      tail -"$lines" "$live_output" | while IFS= read -r line; do
+        printf "  ${DIM}%s${NC}\n" "$line"
+      done
+      echo ""
+    fi
+  fi
+
+  # Show pane content (runner logs)
+  printf "  ${BOLD}Runner log:${NC}\n"
   echo "$content" | grep -v '^$' | tail -"$lines" | while IFS= read -r line; do
     printf "  %s\n" "$line"
   done
