@@ -1039,7 +1039,7 @@ cmd_status() {
 
     printf "  %-16s %-12s ${status_color}%-10s${NC} %-8s %-6s %s\n" \
       "$display_name" "$runtime" "$status_text" "$pid_text" "$inbox_count" "$last_active"
-    ((count++))
+    ((count++)) || true
   done
 
   [[ $count -eq 0 ]] && printf "  ${DIM}no agents. Run: sage create <name>${NC}\n"
@@ -1430,7 +1430,7 @@ cmd_tasks() {
 
     for status_file in $(ls -t "$results_dir"/*.status.json 2>/dev/null | head -20); do
       [[ -f "$status_file" ]] || continue
-      ((found++))
+      ((found++)) || true
 
       local task_id=$(jq -r '.id' "$status_file")
       local status=$(jq -r '.status' "$status_file")
@@ -1584,7 +1584,7 @@ cmd_inbox() {
   local msg_count=0
   for msg_file in $(ls -t "$inbox"/*.json 2>/dev/null); do
     [[ -f "$msg_file" ]] || continue
-    ((msg_count++))
+    ((msg_count++)) || true
 
     if [[ "$format" == "json" ]]; then
       cat "$msg_file"
@@ -2620,7 +2620,7 @@ INST
             local st=$(jq -r '.status' "$sf" 2>/dev/null)
             if [[ "$st" == "done" ]]; then
               wave_done[$t_id]=1
-              ((completed++))
+              ((completed++)) || true
 
               # Collect result
               local rf="$AGENTS_DIR/$a_name/results/${s_tid}.result.json"
@@ -2715,7 +2715,7 @@ _plan_list() {
   local found=0
   for pf in "$PLANS_DIR"/*.json; do
     [[ -f "$pf" ]] || continue
-    ((found++))
+    ((found++)) || true
     local status=$(jq -r '.status // "unknown"' "$pf")
     local goal=$(jq -r '.goal // "?"' "$pf" | head -c 50)
     local tasks=$(jq '.tasks | length' "$pf")
