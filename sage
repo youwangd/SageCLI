@@ -1919,6 +1919,7 @@ INST
 
         # Cleanup ephemeral agent
         cmd_stop "$agent_name" 2>/dev/null || true
+        rm -rf "$AGENTS_DIR/$agent_name" 2>/dev/null || true
         echo ""
         return 0
       fi
@@ -1929,7 +1930,7 @@ INST
   warn "timeout after ${timeout}s — agent still running"
   info "monitor: sage peek $agent_name"
   info "result:  sage result $task_id"
-  info "stop:    sage stop $agent_name"
+  info "cleanup: sage stop $agent_name && rm -rf ~/.sage/agents/$agent_name"
   return 1
 }
 
@@ -2082,20 +2083,105 @@ PLANINST
 
   [[ -n "$plan_json" ]] || die "planning timed out — no plan generated"
 
-  # Extract JSON from the response (agent might wrap it in text)
-  plan_json=$(echo "$plan_json" | grep -oP '\{[^}]*"tasks"[^}]*\[.*\].*\}' | head -1 || true)
-  # More robust: try to extract JSON block
-  if [[ -z "$plan_json" ]] || ! echo "$plan_json" | jq . >/dev/null 2>&1; then
-    local live_output="$AGENTS_DIR/$plan_agent/.live_output"
-    if [[ -f "$live_output" ]]; then
-      # Try to find JSON in the full output
-      plan_json=$(sed -n '/^{/,/^}/p' "$live_output" | jq -s '.[0]' 2>/dev/null || true)
-    fi
+  # Extract JSON from the response
+  local extracted=""
+  local live_output="$AGENTS_DIR/$plan_agent/.live_output"
+  local raw_text="$plan_json"
+  [[ -f "$live_output" ]] && raw_text=$(cat "$live_output")
+
+  # Use python3 for robust JSON extraction and normalization
+  extracted=$(python3 -c "
+import json, re, sys
+
+raw = '''$( echo "$raw_text" | sed "s/'''/\\\\'\\\\'\\\\'/" )'''
+
+# Strip markdown code fences
+raw = re.sub(r'\`\`\`json\s*', '', raw)
+raw = re.sub(r'\`\`\`\s*', '', raw)
+
+# Find the first JSON object
+depth = 0
+start = -1
+for i, c in enumerate(raw):
+    if c == '{':
+        if depth == 0: start = i
+        depth += 1
+    elif c == '}':
+        depth -= 1
+        if depth == 0 and start >= 0:
+            try:
+                obj = json.loads(raw[start:i+1])
+                print(json.dumps(obj))
+                sys.exit(0)
+            except json.JSONDecodeError:
+                start = -1
+                continue
+
+sys.exit(1)
+" 2>/dev/null) || true
+
+  if [[ -z "$extracted" ]] || ! echo "$extracted" | jq . >/dev/null 2>&1; then
+    die "could not parse plan JSON. Check: sage logs $plan_agent"
   fi
 
-  if [[ -z "$plan_json" ]] || ! echo "$plan_json" | jq . >/dev/null 2>&1; then
-    die "could not parse plan JSON. Raw output in: sage logs $plan_agent"
-  fi
+  plan_json="$extracted"
+
+  # Normalize — agents use wildly different field names
+  # Map: steps→tasks, dependencies→depends, actions→description, assign templates
+  local templates_list
+  templates_list=$(ls "$TASKS_DIR"/*.md 2>/dev/null | xargs -I{} basename {} .md | tr '\n' ',' | sed 's/,$//')
+
+  plan_json=$(python3 -c "
+import json, re
+
+plan = json.loads('''$(echo "$plan_json" | sed "s/'''/\\\\'\\\\'\\\\'/" )''')
+templates = '$templates_list'.split(',')
+
+# Normalize tasks array
+tasks = plan.get('tasks', plan.get('steps', []))
+normalized = []
+for t in tasks:
+    desc = t.get('description', t.get('title', ''))
+    # If actions list exists, fold into description
+    actions = t.get('actions', [])
+    if actions and isinstance(actions, list):
+        desc += '. ' + '; '.join(str(a) for a in actions)
+
+    # Assign template based on description keywords
+    template = t.get('template', None)
+    if not template or template not in templates:
+        desc_lower = desc.lower()
+        if any(w in desc_lower for w in ['test', 'verify', 'check', 'assert']):
+            template = 'test'
+        elif any(w in desc_lower for w in ['spec', 'design', 'plan', 'define', 'determine', 'choose', 'select']):
+            template = 'spec'
+        elif any(w in desc_lower for w in ['review', 'audit', 'inspect']):
+            template = 'review'
+        elif any(w in desc_lower for w in ['refactor', 'clean', 'restructure']):
+            template = 'refactor'
+        elif any(w in desc_lower for w in ['document', 'readme', 'docs', 'docstring']):
+            template = 'document'
+        elif any(w in desc_lower for w in ['debug', 'fix', 'diagnose', 'reproduce']):
+            template = 'debug'
+        else:
+            template = 'implement'
+
+    normalized.append({
+        'id': t.get('id', len(normalized) + 1),
+        'template': template,
+        'description': desc,
+        'depends': t.get('depends', t.get('dependencies', [])),
+        'files': t.get('files', [])
+    })
+
+plan['tasks'] = normalized
+# Remove non-standard fields
+for key in list(plan.keys()):
+    if key not in ('goal', 'tasks', 'plan_id', 'status'):
+        del plan[key]
+
+print(json.dumps(plan))
+" 2>/dev/null) || die "failed to normalize plan"
 
   # Save the plan
   local plan_id="plan-$(date +%s)"
@@ -2177,28 +2263,36 @@ _plan_display() {
 # Compute execution waves from dependencies
 _compute_waves() {
   local plan_file="$1"
-  local task_count=$(jq '.tasks | length' "$plan_file")
 
-  # Use jq to compute waves
-  jq -r '
-    .tasks as $tasks |
-    # Assign wave numbers
-    [range($tasks | length)] |
-    reduce .[] as $i (
-      {};
-      . as $waves |
-      ($tasks[$i].depends // []) as $deps |
-      if ($deps | length) == 0 then
-        . + {($tasks[$i].id | tostring): 1}
-      else
-        ($deps | map($waves[tostring] // 1) | max) + 1 |
-        $waves + {($tasks[$i].id | tostring): .}
-      end
-    ) as $wave_map |
-    ($wave_map | values | max // 0) as $max_wave |
-    [range(1; $max_wave + 1)] | .[] as $w |
-    "  Wave \($w): \([$tasks[] | select(($wave_map[.id | tostring] // 1) == $w) | "#\(.id)"] | join(", "))\(if ([$tasks[] | select(($wave_map[.id | tostring] // 1) == $w)] | length) > 1 then " (parallel)" else "" end)"
-  ' "$plan_file" 2>/dev/null || echo "  (could not compute waves)"
+  # Use python3 for reliable wave computation (jq can't do iterative graph algorithms cleanly)
+  python3 -c "
+import json, sys
+
+with open('$plan_file') as f:
+    plan = json.load(f)
+
+tasks = plan.get('tasks', [])
+if not tasks:
+    sys.exit(0)
+
+# Build wave assignments via topological sort
+waves = {}
+for task in tasks:
+    tid = task['id']
+    deps = task.get('depends', [])
+    if not deps:
+        waves[tid] = 1
+    else:
+        max_dep_wave = max(waves.get(d, 1) for d in deps)
+        waves[tid] = max_dep_wave + 1
+
+max_wave = max(waves.values()) if waves else 0
+for w in range(1, max_wave + 1):
+    ids = [t['id'] for t in tasks if waves.get(t['id']) == w]
+    id_str = ', '.join(f'#{i}' for i in ids)
+    parallel = ' (parallel)' if len(ids) > 1 else ''
+    print(f'  Wave {w}: {id_str}{parallel}')
+" 2>/dev/null || echo "  (could not compute waves)"
 }
 
 # Interactive plan editor
@@ -2324,30 +2418,38 @@ _plan_execute() {
   export SAGE_AGENT_NAME="${SAGE_AGENT_NAME:-cli}"
   source "$TOOLS_DIR/common.sh"
 
-  # Compute wave assignments
-  local wave_assignments
-  wave_assignments=$(jq -r '
-    .tasks as $tasks |
-    reduce range($tasks | length) as $i (
-      {};
-      . as $waves |
-      ($tasks[$i].depends // []) as $deps |
-      if ($deps | length) == 0 then
-        . + {($tasks[$i].id | tostring): 1}
-      else
-        ($deps | map($waves[tostring] // 1) | max) + 1 |
-        $waves + {($tasks[$i].id | tostring): .}
-      end
-    )
-  ' "$plan_file")
+  # Compute wave assignments using python3
+  local wave_json
+  wave_json=$(python3 -c "
+import json
+with open('$plan_file') as f:
+    plan = json.load(f)
+tasks = plan.get('tasks', [])
+waves = {}
+for task in tasks:
+    tid = task['id']
+    deps = task.get('depends', [])
+    if not deps:
+        waves[tid] = 1
+    else:
+        max_dep_wave = max(waves.get(d, 1) for d in deps)
+        waves[tid] = max_dep_wave + 1
+print(json.dumps(waves))
+" 2>/dev/null) || die "failed to compute waves"
 
-  local max_wave=$(echo "$wave_assignments" | jq 'values | max')
+  local max_wave=$(echo "$wave_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(max(d.values()) if d else 0)")
   local prev_results="{}"
 
   for wave_num in $(seq 1 "$max_wave"); do
     # Get tasks in this wave
     local wave_task_ids
-    wave_task_ids=$(echo "$wave_assignments" | jq -r "to_entries[] | select(.value == $wave_num) | .key")
+    wave_task_ids=$(echo "$wave_json" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+for k, v in d.items():
+    if v == $wave_num:
+        print(k)
+")
 
     [[ -n "$wave_task_ids" ]] || continue
 
@@ -2362,7 +2464,7 @@ _plan_execute() {
     local -a wave_agents=()
     local -a wave_task_tracking=()
 
-    # Launch all tasks in this wave
+    # Launch all tasks in this wave (with staggered starts for ACP stability)
     while IFS= read -r tid; do
       [[ -n "$tid" ]] || continue
 
@@ -2399,7 +2501,11 @@ _plan_execute() {
       local agent_name="sage-plan-${tid}-$(date +%s)"
       local create_flags="--runtime $tmpl_runtime"
       [[ "$tmpl_runtime" == "acp" ]] && create_flags+=" --agent claude-code"
-      cmd_create "$agent_name" $create_flags 2>/dev/null
+      
+      if ! cmd_create "$agent_name" $create_flags 2>/dev/null; then
+        warn "failed to create agent for task #$tid — skipping"
+        continue
+      fi
 
       # Inject template as instructions
       if [[ -f "$tmpl_file" ]]; then
@@ -2415,8 +2521,13 @@ ${original_instr}
 INST
       fi
 
-      # Start agent
-      cmd_start "$agent_name" 2>/dev/null
+      # Start agent (stagger ACP starts to avoid resource contention)
+      if ! cmd_start "$agent_name" 2>/dev/null; then
+        warn "failed to start agent $agent_name — skipping task #$tid"
+        rm -rf "$AGENTS_DIR/$agent_name" 2>/dev/null
+        continue
+      fi
+      sleep 2  # give ACP time to initialize before launching next
 
       # Build message with description + dependency context + file refs
       local msg_text="$task_desc"
@@ -2493,6 +2604,7 @@ INST
 
               # Stop the ephemeral agent
               cmd_stop "$a_name" 2>/dev/null || true
+              rm -rf "$AGENTS_DIR/$a_name" 2>/dev/null || true
             fi
           fi
         done
