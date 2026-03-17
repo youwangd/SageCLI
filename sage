@@ -923,7 +923,12 @@ start_agent() {
 
   local runtime=$(jq -r '.runtime // "bash"' "$AGENTS_DIR/$name/runtime.json" 2>/dev/null || echo "bash")
 
-  tmux new-window -t "$TMUX_SESSION" -n "$name" \
+  # Kill any stale tmux window with the same name
+  tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null || true
+
+  # NOTE: -t "$TMUX_SESSION:" (trailing colon) = next available index
+  # Without colon, tmux tries to create at the current active window index → collision
+  tmux new-window -t "$TMUX_SESSION:" -n "$name" \
     "bash $SAGE_HOME/runner.sh $AGENTS_DIR/$name; echo '[exited — press enter]'; read" 2>/dev/null
 
   ok "started $name (runtime=$runtime)"
@@ -964,6 +969,8 @@ stop_agent() {
     tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null
     ok "stopped $name (pid $pid)"
   else
+    # No running process — still clean up stale tmux window
+    tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null
     info "$name not running"
   fi
 }
@@ -2464,7 +2471,9 @@ for k, v in d.items():
     local -a wave_agents=()
     local -a wave_task_tracking=()
 
-    # Launch all tasks in this wave (with staggered starts for ACP stability)
+    # Phase 1: Create and start all agents for this wave
+    local wave_data_dir=$(mktemp -d)
+
     while IFS= read -r tid; do
       [[ -n "$tid" ]] || continue
 
@@ -2521,15 +2530,46 @@ ${original_instr}
 INST
       fi
 
-      # Start agent (stagger ACP starts to avoid resource contention)
+      # Start agent
       if ! cmd_start "$agent_name" 2>/dev/null; then
         warn "failed to start agent $agent_name — skipping task #$tid"
         rm -rf "$AGENTS_DIR/$agent_name" 2>/dev/null
         continue
       fi
-      sleep 2  # give ACP time to initialize before launching next
 
-      # Build message with description + dependency context + file refs
+      # Store data for phase 2 as JSON files (avoids delimiter issues)
+      jq -n \
+        --arg tid "$tid" \
+        --arg agent "$agent_name" \
+        --arg template "$task_template" \
+        --arg desc "$task_desc" \
+        --arg deps "$dep_context" \
+        --arg files "$task_files" \
+        '{tid:$tid, agent:$agent, template:$template, desc:$desc, deps:$deps, files:$files}' \
+        > "$wave_data_dir/${tid}.json"
+
+      sleep 1  # stagger starts
+    done <<< "$wave_task_ids"
+
+    # Phase 2: Wait for all ACP runtimes to initialize
+    local wave_count=$(ls "$wave_data_dir"/*.json 2>/dev/null | wc -l)
+    if [[ $wave_count -gt 0 ]]; then
+      info "agents started, waiting for runtime initialization..."
+      sleep 4
+    fi
+
+    # Phase 3: Send messages to all agents
+    for data_file in "$wave_data_dir"/*.json; do
+      [[ -f "$data_file" ]] || continue
+
+      local tid=$(jq -r '.tid' "$data_file")
+      local agent_name=$(jq -r '.agent' "$data_file")
+      local task_template=$(jq -r '.template' "$data_file")
+      local task_desc=$(jq -r '.desc' "$data_file")
+      local dep_context=$(jq -r '.deps' "$data_file")
+      local task_files=$(jq -r '.files' "$data_file")
+
+      # Build message
       local msg_text="$task_desc"
       [[ -n "$dep_context" ]] && msg_text+="\n$(echo -e "$dep_context")"
       if [[ -n "$task_files" ]]; then
@@ -2648,6 +2688,9 @@ INST
         esac
       fi
     fi
+
+    # Cleanup wave temp data
+    rm -rf "$wave_data_dir" 2>/dev/null
 
     echo ""
   done
