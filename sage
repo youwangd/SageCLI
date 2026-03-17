@@ -61,7 +61,14 @@ cmd_init() {
     return
   fi
 
-  mkdir -p "$AGENTS_DIR" "$TOOLS_DIR" "$RUNTIMES_DIR" "$LOGS_DIR" "$AGENTS_DIR/.cli/replies"
+  mkdir -p "$AGENTS_DIR" "$TOOLS_DIR" "$RUNTIMES_DIR" "$LOGS_DIR" "$AGENTS_DIR/.cli/replies" "$SAGE_HOME/tasks" "$SAGE_HOME/plans"
+
+  # ── Install task templates ──
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -d "$script_dir/tasks" ]]; then
+    cp "$script_dir/tasks"/*.md "$SAGE_HOME/tasks/" 2>/dev/null || true
+  fi
 
   # ── common.sh ──
   cat > "$TOOLS_DIR/common.sh" << 'TOOLEOF'
@@ -1729,6 +1736,851 @@ cmd_tool() {
 }
 
 # ═══════════════════════════════════════════════
+# Task template helpers
+# ═══════════════════════════════════════════════
+TASKS_DIR="$SAGE_HOME/tasks"
+PLANS_DIR="$SAGE_HOME/plans"
+
+# Parse YAML frontmatter from a task template
+# Usage: _parse_frontmatter <file> <key>
+_parse_frontmatter() {
+  local file="$1" key="$2"
+  sed -n '/^---$/,/^---$/p' "$file" | grep -E "^${key}:" | sed "s/^${key}:[[:space:]]*//" | sed 's/[[:space:]]*#.*//' | tr -d '"' | tr -d "'"
+}
+
+# List available task templates with metadata
+_list_templates() {
+  local tasks_dir="$1"
+  for tmpl in "$tasks_dir"/*.md; do
+    [[ -f "$tmpl" ]] || continue
+    local name=$(basename "$tmpl" .md)
+    local desc=$(_parse_frontmatter "$tmpl" "description")
+    local rt=$(_parse_frontmatter "$tmpl" "runtime")
+    printf "  %-12s %-8s %s\n" "$name" "($rt)" "$desc"
+  done
+}
+
+# Get template body (everything after the second ---)
+_template_body() {
+  local file="$1"
+  awk 'BEGIN{n=0} /^---$/{n++; next} n>=2{print}' "$file"
+}
+
+# ═══════════════════════════════════════════════
+# sage task <template> [files...] [flags]
+# ═══════════════════════════════════════════════
+cmd_task() {
+  local template="" message="" runtime_override="" timeout=300 background=false
+  local -a files=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --message|-m)    message="$2"; shift 2 ;;
+      --runtime|-r)    runtime_override="$2"; shift 2 ;;
+      --timeout|-t)    timeout="$2"; shift 2 ;;
+      --background|-b) background=true; shift ;;
+      --list|-l)       _list_templates "$TASKS_DIR"; return 0 ;;
+      -*)              die "unknown flag: $1" ;;
+      *)
+        if [[ -z "$template" ]]; then
+          template="$1"
+        else
+          files+=("$1")
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  [[ -n "$template" ]] || die "usage: sage task <template> [files...] [--message \"...\"] [--runtime <rt>] [--timeout <sec>] [--background]
+  sage task --list  — show available templates"
+
+  ensure_init
+  local tmpl_file="$TASKS_DIR/${template}.md"
+  [[ -f "$tmpl_file" ]] || die "template '$template' not found. Available: $(ls "$TASKS_DIR"/*.md 2>/dev/null | xargs -I{} basename {} .md | tr '\n' ' ')"
+
+  # Parse template metadata
+  local tmpl_runtime=$(_parse_frontmatter "$tmpl_file" "runtime")
+  local tmpl_input=$(_parse_frontmatter "$tmpl_file" "input")
+  local tmpl_desc=$(_parse_frontmatter "$tmpl_file" "description")
+  local tmpl_body=$(_template_body "$tmpl_file")
+
+  # Determine runtime
+  local use_runtime="${runtime_override:-$tmpl_runtime}"
+  [[ "$use_runtime" == "auto" ]] && use_runtime="acp"
+
+  # Validate input
+  if [[ "$tmpl_input" == "files" && ${#files[@]} -eq 0 && -z "$message" ]]; then
+    die "template '$template' expects files. Usage: sage task $template <file1> [file2...]"
+  fi
+
+  # Build task content
+  local task_content=""
+
+  # Include file contents
+  if [[ ${#files[@]} -gt 0 ]]; then
+    task_content+="## Files to process\n\n"
+    for f in "${files[@]}"; do
+      local filepath="$f"
+      [[ -f "$filepath" ]] || die "file not found: $filepath"
+      local content
+      content=$(cat "$filepath")
+      local basename_f=$(basename "$filepath")
+      task_content+="### $filepath\n\`\`\`\n${content}\n\`\`\`\n\n"
+    done
+  fi
+
+  # Include user message
+  if [[ -n "$message" ]]; then
+    task_content+="## Additional Context\n\n${message}\n"
+  fi
+
+  # Create ephemeral agent
+  local agent_name="sage-task-${template}-$(date +%s)"
+  local agent_dir="$AGENTS_DIR/$agent_name"
+
+  info "task: ${BOLD}$template${NC} — $tmpl_desc"
+  info "agent: $agent_name (runtime=$use_runtime)"
+
+  # Create the agent
+  local create_flags="--runtime $use_runtime"
+  [[ "$use_runtime" == "acp" ]] && create_flags+=" --agent claude-code"
+  cmd_create "$agent_name" $create_flags 2>/dev/null
+
+  # Replace instructions.md with template body + original instructions
+  local original_instructions=""
+  [[ -f "$agent_dir/instructions.md" ]] && original_instructions=$(cat "$agent_dir/instructions.md")
+  cat > "$agent_dir/instructions.md" << INST
+${tmpl_body}
+
+---
+
+${original_instructions}
+INST
+
+  # Start the agent
+  cmd_start "$agent_name" 2>/dev/null
+
+  # Send the task
+  export SAGE_AGENT_NAME="${SAGE_AGENT_NAME:-cli}"
+  source "$TOOLS_DIR/common.sh"
+
+  local payload
+  payload=$(jq -n --arg t "$(echo -e "$task_content")" '{text:$t}')
+
+  local task_id
+  task_id=$(send_msg "$agent_name" "$payload")
+
+  # Trace
+  _trace "{\"ts\":$(date +%s),\"type\":\"task\",\"template\":\"$template\",\"agent\":\"$agent_name\",\"task_id\":\"$task_id\",\"files\":\"${files[*]}\"}"
+
+  if [[ "$background" == true ]]; then
+    ok "task ${BOLD}${task_id}${NC} → $agent_name (background)"
+    info "track: sage peek $agent_name | sage tasks $agent_name | sage result $task_id"
+    return 0
+  fi
+
+  # Wait for completion
+  info "executing... (timeout: ${timeout}s)"
+  local deadline=$((SECONDS + timeout))
+  local result_file="$agent_dir/results/${task_id}.result.json"
+  local status_file="$agent_dir/results/${task_id}.status.json"
+
+  while [[ $SECONDS -lt $deadline ]]; do
+    if [[ -f "$status_file" ]]; then
+      local status=$(jq -r '.status' "$status_file" 2>/dev/null)
+      if [[ "$status" == "done" ]]; then
+        echo ""
+        ok "task completed"
+
+        # Show result
+        if [[ -f "$result_file" ]]; then
+          echo ""
+          cat "$result_file"
+        else
+          # Check live output
+          local live="$agent_dir/.live_output"
+          if [[ -f "$live" && -s "$live" ]]; then
+            echo ""
+            cat "$live"
+          else
+            info "no structured result — check: sage logs $agent_name"
+          fi
+        fi
+
+        # Show workspace files
+        local ws="$agent_dir/workspace"
+        local file_count=$(find "$ws" -maxdepth 2 -type f 2>/dev/null | wc -l)
+        if [[ $file_count -gt 0 ]]; then
+          echo ""
+          printf "  ${BOLD}Files created/modified:${NC}\n"
+          find "$ws" -maxdepth 2 -type f -printf "    %P\n" 2>/dev/null
+        fi
+
+        # Cleanup ephemeral agent
+        cmd_stop "$agent_name" 2>/dev/null || true
+        echo ""
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+
+  warn "timeout after ${timeout}s — agent still running"
+  info "monitor: sage peek $agent_name"
+  info "result:  sage result $task_id"
+  info "stop:    sage stop $agent_name"
+  return 1
+}
+
+# ═══════════════════════════════════════════════
+# sage plan <goal> [flags]
+# ═══════════════════════════════════════════════
+cmd_plan() {
+  local goal="" save_file="" run_file="" resume_file="" auto_approve=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --save)     save_file="$2"; shift 2 ;;
+      --run)      run_file="$2"; shift 2 ;;
+      --resume)   resume_file="$2"; shift 2 ;;
+      --yes|-y)   auto_approve=true; shift ;;
+      --list|-l)  _plan_list; return 0 ;;
+      -*)         die "unknown flag: $1" ;;
+      *)          goal="$goal $1"; shift ;;
+    esac
+  done
+
+  goal=$(echo "$goal" | sed 's/^ *//')
+  ensure_init
+  mkdir -p "$PLANS_DIR"
+
+  # Resume from existing plan
+  if [[ -n "$resume_file" ]]; then
+    [[ -f "$resume_file" ]] || die "plan file not found: $resume_file"
+    _plan_execute "$resume_file" "resume"
+    return $?
+  fi
+
+  # Run from saved plan file
+  if [[ -n "$run_file" ]]; then
+    [[ -f "$run_file" ]] || die "plan file not found: $run_file"
+    _plan_execute "$run_file" "fresh"
+    return $?
+  fi
+
+  [[ -n "$goal" ]] || die "usage: sage plan <goal> [--save file] [--run file] [--resume file] [--yes]"
+
+  # Build template catalog for the planning prompt
+  local template_catalog=""
+  for tmpl in "$TASKS_DIR"/*.md; do
+    [[ -f "$tmpl" ]] || continue
+    local name=$(basename "$tmpl" .md)
+    local desc=$(_parse_frontmatter "$tmpl" "description")
+    local rt=$(_parse_frontmatter "$tmpl" "runtime")
+    template_catalog+="  - ${name}: ${desc} (runtime: ${rt})\n"
+  done
+
+  info "planning: ${BOLD}$goal${NC}"
+
+  # Create planning agent
+  local plan_agent="sage-planner-$(date +%s)"
+  cmd_create "$plan_agent" --runtime acp --agent claude-code 2>/dev/null
+
+  # Write planning instructions
+  cat > "$AGENTS_DIR/$plan_agent/instructions.md" << PLANINST
+# Task Planner
+
+You are a task planner for the sage orchestration system. You break down goals into independent, parallelizable tasks.
+
+## Available Task Templates
+
+$(echo -e "$template_catalog")
+
+## Your Job
+
+Given a goal, produce a JSON plan. Each task uses one of the templates above.
+
+Think carefully about:
+- What order tasks need to happen in
+- Which tasks can run in parallel (no dependencies between them)
+- What the minimum set of tasks is to achieve the goal
+- What context each task needs from previous tasks
+
+## Output Format
+
+Return ONLY valid JSON, no markdown fences, no explanation:
+
+{
+  "goal": "the original goal",
+  "tasks": [
+    {
+      "id": 1,
+      "template": "spec",
+      "description": "What specifically this task should do",
+      "depends": [],
+      "files": []
+    },
+    {
+      "id": 2,
+      "template": "implement",
+      "description": "Implement the token endpoint per the spec",
+      "depends": [1],
+      "files": ["src/auth/"]
+    }
+  ]
+}
+
+Rules:
+- Use real template names from the list above
+- Task IDs are sequential integers starting at 1
+- depends is an array of task IDs that must complete first
+- files is an array of file paths relevant to this task (can be empty)
+- Keep descriptions specific and actionable, not vague
+- Prefer fewer tasks over many tiny ones
+- Don't create circular dependencies
+PLANINST
+
+  cmd_start "$plan_agent" 2>/dev/null
+
+  # Send the goal
+  export SAGE_AGENT_NAME="${SAGE_AGENT_NAME:-cli}"
+  source "$TOOLS_DIR/common.sh"
+
+  local payload
+  payload=$(jq -n --arg t "Plan the following goal. Return ONLY JSON.\n\nGoal: $goal" '{text:$t}')
+  local task_id
+  task_id=$(send_msg "$plan_agent" "$payload")
+
+  # Wait for the plan
+  info "thinking..."
+  local deadline=$((SECONDS + 120))
+  local plan_json=""
+
+  while [[ $SECONDS -lt $deadline ]]; do
+    local status_file="$AGENTS_DIR/$plan_agent/results/${task_id}.status.json"
+    if [[ -f "$status_file" ]]; then
+      local status=$(jq -r '.status' "$status_file" 2>/dev/null)
+      if [[ "$status" == "done" ]]; then
+        # Get the result
+        local result_file="$AGENTS_DIR/$plan_agent/results/${task_id}.result.json"
+        local live_output="$AGENTS_DIR/$plan_agent/.live_output"
+
+        if [[ -f "$result_file" ]]; then
+          plan_json=$(cat "$result_file")
+        elif [[ -f "$live_output" ]]; then
+          plan_json=$(cat "$live_output")
+        fi
+        break
+      fi
+    fi
+    sleep 1
+  done
+
+  # Stop the planning agent
+  cmd_stop "$plan_agent" 2>/dev/null || true
+
+  [[ -n "$plan_json" ]] || die "planning timed out — no plan generated"
+
+  # Extract JSON from the response (agent might wrap it in text)
+  plan_json=$(echo "$plan_json" | grep -oP '\{[^}]*"tasks"[^}]*\[.*\].*\}' | head -1 || true)
+  # More robust: try to extract JSON block
+  if [[ -z "$plan_json" ]] || ! echo "$plan_json" | jq . >/dev/null 2>&1; then
+    local live_output="$AGENTS_DIR/$plan_agent/.live_output"
+    if [[ -f "$live_output" ]]; then
+      # Try to find JSON in the full output
+      plan_json=$(sed -n '/^{/,/^}/p' "$live_output" | jq -s '.[0]' 2>/dev/null || true)
+    fi
+  fi
+
+  if [[ -z "$plan_json" ]] || ! echo "$plan_json" | jq . >/dev/null 2>&1; then
+    die "could not parse plan JSON. Raw output in: sage logs $plan_agent"
+  fi
+
+  # Save the plan
+  local plan_id="plan-$(date +%s)"
+  local plan_file="$PLANS_DIR/${plan_id}.json"
+
+  echo "$plan_json" | jq --arg id "$plan_id" --arg status "pending" \
+    '. + {plan_id: $id, status: $status}' > "$plan_file"
+
+  # Display the plan
+  _plan_display "$plan_file"
+
+  # Save to custom file if requested
+  if [[ -n "$save_file" ]]; then
+    cp "$plan_file" "$save_file"
+    ok "plan saved to $save_file"
+  fi
+
+  # Approval
+  if [[ "$auto_approve" == true ]]; then
+    _plan_execute "$plan_file" "fresh"
+    return $?
+  fi
+
+  echo ""
+  printf "  ${BOLD}[a]${NC}pprove  ${BOLD}[e]${NC}dit  ${BOLD}[r]${NC}eject  "
+  read -r choice
+
+  case "$choice" in
+    a|approve)
+      _plan_execute "$plan_file" "fresh"
+      ;;
+    e|edit)
+      _plan_edit "$plan_file"
+      _plan_display "$plan_file"
+      echo ""
+      printf "  ${BOLD}[a]${NC}pprove  ${BOLD}[r]${NC}eject  "
+      read -r choice2
+      if [[ "$choice2" == "a" || "$choice2" == "approve" ]]; then
+        _plan_execute "$plan_file" "fresh"
+      else
+        info "plan rejected"
+      fi
+      ;;
+    r|reject)
+      info "plan rejected"
+      ;;
+    *)
+      warn "unknown choice. Plan saved at: $plan_file"
+      info "run later: sage plan --run $plan_file"
+      ;;
+  esac
+
+  # Cleanup planning agent
+  rm -rf "$AGENTS_DIR/$plan_agent" 2>/dev/null || true
+}
+
+# Display a plan
+_plan_display() {
+  local plan_file="$1"
+  local goal=$(jq -r '.goal' "$plan_file")
+  local task_count=$(jq '.tasks | length' "$plan_file")
+
+  echo ""
+  printf "  ${BOLD}📋 Plan: %s${NC}\n\n" "$goal"
+
+  # Display tasks
+  jq -r '.tasks[] | "  #\(.id) [\(.template)] \(.description)\(if (.depends | length) > 0 then " (depends: \(.depends | map("#\(.)") | join(", ")))" else "" end)"' "$plan_file" | while IFS= read -r line; do
+    printf "%s\n" "$line"
+  done
+
+  # Compute and display waves
+  echo ""
+  printf "  ${BOLD}Waves:${NC}\n"
+  _compute_waves "$plan_file" | while IFS= read -r wave_line; do
+    printf "  %s\n" "$wave_line"
+  done
+}
+
+# Compute execution waves from dependencies
+_compute_waves() {
+  local plan_file="$1"
+  local task_count=$(jq '.tasks | length' "$plan_file")
+
+  # Use jq to compute waves
+  jq -r '
+    .tasks as $tasks |
+    # Assign wave numbers
+    [range($tasks | length)] |
+    reduce .[] as $i (
+      {};
+      . as $waves |
+      ($tasks[$i].depends // []) as $deps |
+      if ($deps | length) == 0 then
+        . + {($tasks[$i].id | tostring): 1}
+      else
+        ($deps | map($waves[tostring] // 1) | max) + 1 |
+        $waves + {($tasks[$i].id | tostring): .}
+      end
+    ) as $wave_map |
+    ($wave_map | values | max // 0) as $max_wave |
+    [range(1; $max_wave + 1)] | .[] as $w |
+    "  Wave \($w): \([$tasks[] | select(($wave_map[.id | tostring] // 1) == $w) | "#\(.id)"] | join(", "))\(if ([$tasks[] | select(($wave_map[.id | tostring] // 1) == $w)] | length) > 1 then " (parallel)" else "" end)"
+  ' "$plan_file" 2>/dev/null || echo "  (could not compute waves)"
+}
+
+# Interactive plan editor
+_plan_edit() {
+  local plan_file="$1"
+
+  echo ""
+  printf "  ${BOLD}Edit commands:${NC}\n"
+  printf "  ${DIM}drop <id>                     — remove a task${NC}\n"
+  printf "  ${DIM}add <template> \"desc\" [--depends N,M] — add a task${NC}\n"
+  printf "  ${DIM}edit <id> \"new description\"   — change task description${NC}\n"
+  printf "  ${DIM}depends <id> <dep1,dep2,...>   — set dependencies${NC}\n"
+  printf "  ${DIM}done                          — finish editing${NC}\n"
+  echo ""
+
+  while true; do
+    printf "  ${CYAN}edit>${NC} "
+    read -r cmd args
+
+    case "$cmd" in
+      drop)
+        local drop_id=$(echo "$args" | tr -d ' ')
+        if jq -e ".tasks[] | select(.id == ($drop_id))" "$plan_file" >/dev/null 2>&1; then
+          local tmp=$(mktemp)
+          jq "(.tasks) |= map(select(.id != ($drop_id))) | (.tasks) |= map(if .depends then .depends |= map(select(. != ($drop_id))) else . end)" "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+          ok "dropped task #$drop_id"
+        else
+          warn "task #$drop_id not found"
+        fi
+        ;;
+
+      add)
+        local tmpl="" desc="" deps=""
+        # Parse: add <template> "description" [--depends N,M]
+        tmpl=$(echo "$args" | awk '{print $1}')
+        desc=$(echo "$args" | grep -oP '"[^"]*"' | tr -d '"' | head -1)
+        deps=$(echo "$args" | grep -oP '\-\-depends\s+\K[0-9,]+' || echo "")
+
+        if [[ -z "$tmpl" || -z "$desc" ]]; then
+          warn "usage: add <template> \"description\" [--depends N,M]"
+          continue
+        fi
+
+        # Check template exists
+        if [[ ! -f "$TASKS_DIR/${tmpl}.md" ]]; then
+          warn "template '$tmpl' not found"
+          continue
+        fi
+
+        # Get next ID
+        local next_id=$(jq '[.tasks[].id] | max + 1' "$plan_file")
+        local deps_array="[]"
+        if [[ -n "$deps" ]]; then
+          deps_array=$(echo "$deps" | tr ',' '\n' | jq -R 'tonumber' | jq -s '.')
+        fi
+
+        local tmp=$(mktemp)
+        jq --arg tmpl "$tmpl" --arg desc "$desc" --argjson id "$next_id" --argjson deps "$deps_array" \
+          '.tasks += [{"id": $id, "template": $tmpl, "description": $desc, "depends": $deps, "files": []}]' \
+          "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+        ok "added task #$next_id [$tmpl] $desc"
+        ;;
+
+      edit)
+        local edit_id=$(echo "$args" | awk '{print $1}')
+        local new_desc=$(echo "$args" | grep -oP '"[^"]*"' | tr -d '"' | head -1)
+        if [[ -z "$edit_id" || -z "$new_desc" ]]; then
+          warn "usage: edit <id> \"new description\""
+          continue
+        fi
+        local tmp=$(mktemp)
+        jq --argjson id "$edit_id" --arg desc "$new_desc" \
+          '(.tasks[] | select(.id == $id)).description = $desc' \
+          "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+        ok "updated task #$edit_id"
+        ;;
+
+      depends)
+        local dep_id=$(echo "$args" | awk '{print $1}')
+        local dep_list=$(echo "$args" | awk '{print $2}')
+        if [[ -z "$dep_id" || -z "$dep_list" ]]; then
+          warn "usage: depends <id> <dep1,dep2,...>"
+          continue
+        fi
+        local deps_array=$(echo "$dep_list" | tr ',' '\n' | jq -R 'tonumber' | jq -s '.')
+        local tmp=$(mktemp)
+        jq --argjson id "$dep_id" --argjson deps "$deps_array" \
+          '(.tasks[] | select(.id == $id)).depends = $deps' \
+          "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+        ok "set dependencies for #$dep_id"
+        ;;
+
+      done|d|approve|a)
+        break
+        ;;
+
+      show|s)
+        _plan_display "$plan_file"
+        ;;
+
+      *)
+        warn "unknown command: $cmd (try: drop, add, edit, depends, show, done)"
+        ;;
+    esac
+  done
+}
+
+# Execute a plan
+_plan_execute() {
+  local plan_file="$1" mode="$2"
+  local goal=$(jq -r '.goal' "$plan_file")
+  local task_count=$(jq '.tasks | length' "$plan_file")
+
+  echo ""
+  printf "  ${BOLD}⚡ Executing plan: %s${NC}\n" "$goal"
+  printf "  ${DIM}%d tasks${NC}\n\n" "$task_count"
+
+  # Update plan status
+  local tmp=$(mktemp)
+  jq '.status = "running"' "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+
+  # Source tools for send_msg
+  export SAGE_AGENT_NAME="${SAGE_AGENT_NAME:-cli}"
+  source "$TOOLS_DIR/common.sh"
+
+  # Compute wave assignments
+  local wave_assignments
+  wave_assignments=$(jq -r '
+    .tasks as $tasks |
+    reduce range($tasks | length) as $i (
+      {};
+      . as $waves |
+      ($tasks[$i].depends // []) as $deps |
+      if ($deps | length) == 0 then
+        . + {($tasks[$i].id | tostring): 1}
+      else
+        ($deps | map($waves[tostring] // 1) | max) + 1 |
+        $waves + {($tasks[$i].id | tostring): .}
+      end
+    )
+  ' "$plan_file")
+
+  local max_wave=$(echo "$wave_assignments" | jq 'values | max')
+  local prev_results="{}"
+
+  for wave_num in $(seq 1 "$max_wave"); do
+    # Get tasks in this wave
+    local wave_task_ids
+    wave_task_ids=$(echo "$wave_assignments" | jq -r "to_entries[] | select(.value == $wave_num) | .key")
+
+    [[ -n "$wave_task_ids" ]] || continue
+
+    local wave_count=$(echo "$wave_task_ids" | wc -l)
+    printf "  ${BOLD}Wave %d${NC} (%d task%s)\n" "$wave_num" "$wave_count" "$([ "$wave_count" -gt 1 ] && echo 's' || echo '')"
+
+    # Update plan current_wave
+    tmp=$(mktemp)
+    jq --argjson w "$wave_num" '.current_wave = $w' "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+
+    # Track agents for this wave
+    local -a wave_agents=()
+    local -a wave_task_tracking=()
+
+    # Launch all tasks in this wave
+    while IFS= read -r tid; do
+      [[ -n "$tid" ]] || continue
+
+      # Skip if already done (resume mode)
+      local task_status=$(jq -r ".tasks[] | select(.id == $tid) | .status // \"pending\"" "$plan_file")
+      if [[ "$mode" == "resume" && "$task_status" == "done" ]]; then
+        printf "    ${DIM}#%s — skipped (already done)${NC}\n" "$tid"
+        continue
+      fi
+
+      local task_template=$(jq -r ".tasks[] | select(.id == $tid) | .template" "$plan_file")
+      local task_desc=$(jq -r ".tasks[] | select(.id == $tid) | .description" "$plan_file")
+      local task_deps=$(jq -r ".tasks[] | select(.id == $tid) | .depends // [] | join(\",\")" "$plan_file")
+      local task_files=$(jq -r ".tasks[] | select(.id == $tid) | .files // [] | join(\" \")" "$plan_file")
+
+      # Build context from dependencies
+      local dep_context=""
+      if [[ -n "$task_deps" ]]; then
+        for dep_id in $(echo "$task_deps" | tr ',' ' '); do
+          local dep_result=$(echo "$prev_results" | jq -r ".\"$dep_id\" // \"\"")
+          if [[ -n "$dep_result" && "$dep_result" != "" ]]; then
+            dep_context+="\n## Result from task #$dep_id\n$dep_result\n"
+          fi
+        done
+      fi
+
+      # Determine runtime from template
+      local tmpl_file="$TASKS_DIR/${task_template}.md"
+      local tmpl_runtime="acp"
+      [[ -f "$tmpl_file" ]] && tmpl_runtime=$(_parse_frontmatter "$tmpl_file" "runtime")
+      [[ "$tmpl_runtime" == "auto" ]] && tmpl_runtime="acp"
+
+      # Create ephemeral agent
+      local agent_name="sage-plan-${tid}-$(date +%s)"
+      local create_flags="--runtime $tmpl_runtime"
+      [[ "$tmpl_runtime" == "acp" ]] && create_flags+=" --agent claude-code"
+      cmd_create "$agent_name" $create_flags 2>/dev/null
+
+      # Inject template as instructions
+      if [[ -f "$tmpl_file" ]]; then
+        local tmpl_body=$(_template_body "$tmpl_file")
+        local original_instr=""
+        [[ -f "$AGENTS_DIR/$agent_name/instructions.md" ]] && original_instr=$(cat "$AGENTS_DIR/$agent_name/instructions.md")
+        cat > "$AGENTS_DIR/$agent_name/instructions.md" << INST
+${tmpl_body}
+
+---
+
+${original_instr}
+INST
+      fi
+
+      # Start agent
+      cmd_start "$agent_name" 2>/dev/null
+
+      # Build message with description + dependency context + file refs
+      local msg_text="$task_desc"
+      [[ -n "$dep_context" ]] && msg_text+="\n$(echo -e "$dep_context")"
+      if [[ -n "$task_files" ]]; then
+        msg_text+="\n\n## Relevant files\n"
+        for f in $task_files; do
+          [[ -f "$f" ]] && msg_text+="\n### $f\n\`\`\`\n$(cat "$f")\n\`\`\`\n"
+        done
+      fi
+
+      local payload
+      payload=$(jq -n --arg t "$(echo -e "$msg_text")" '{text:$t}')
+      local sent_task_id
+      sent_task_id=$(send_msg "$agent_name" "$payload")
+
+      printf "    ${CYAN}#%s${NC} [%s] → %s (%s)\n" "$tid" "$task_template" "$agent_name" "$sent_task_id"
+
+      wave_agents+=("$agent_name")
+      wave_task_tracking+=("$tid:$agent_name:$sent_task_id")
+
+      # Update plan state
+      tmp=$(mktemp)
+      jq --argjson tid "$tid" --arg agent "$agent_name" --arg st "$sent_task_id" \
+        '(.tasks[] | select(.id == $tid)) |= . + {status: "running", agent: $agent, sage_task_id: $st}' \
+        "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+
+    done <<< "$wave_task_ids"
+
+    # Wait for all agents in this wave
+    if [[ ${#wave_agents[@]} -gt 0 ]]; then
+      printf "    ${DIM}waiting for wave %d...${NC}\n" "$wave_num"
+
+      local wave_timeout=$((600 * wave_count))
+      local wave_deadline=$((SECONDS + wave_timeout))
+      local completed=0
+      local total=${#wave_task_tracking[@]}
+      local -A wave_done
+
+      while [[ $completed -lt $total && $SECONDS -lt $wave_deadline ]]; do
+        for tracking in "${wave_task_tracking[@]}"; do
+          local t_id=$(echo "$tracking" | cut -d: -f1)
+          local a_name=$(echo "$tracking" | cut -d: -f2)
+          local s_tid=$(echo "$tracking" | cut -d: -f3)
+
+          [[ -n "${wave_done[$t_id]:-}" ]] && continue
+
+          local sf="$AGENTS_DIR/$a_name/results/${s_tid}.status.json"
+          if [[ -f "$sf" ]]; then
+            local st=$(jq -r '.status' "$sf" 2>/dev/null)
+            if [[ "$st" == "done" ]]; then
+              wave_done[$t_id]=1
+              ((completed++))
+
+              # Collect result
+              local rf="$AGENTS_DIR/$a_name/results/${s_tid}.result.json"
+              local lo="$AGENTS_DIR/$a_name/.live_output"
+              local result_text=""
+              if [[ -f "$rf" ]]; then
+                result_text=$(cat "$rf" | head -c 2000)
+              elif [[ -f "$lo" ]]; then
+                result_text=$(cat "$lo" | head -c 2000)
+              fi
+
+              # Store result for downstream tasks
+              prev_results=$(echo "$prev_results" | jq --arg k "$t_id" --arg v "$result_text" '. + {($k): $v}')
+
+              # Update plan
+              tmp=$(mktemp)
+              jq --argjson tid "$t_id" '.tasks[] |= (if .id == $tid then .status = "done" else . end)' \
+                "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+
+              printf "    ${GREEN}✓${NC} #%s completed (%d/%d)\n" "$t_id" "$completed" "$total"
+
+              # Stop the ephemeral agent
+              cmd_stop "$a_name" 2>/dev/null || true
+            fi
+          fi
+        done
+        sleep 2
+      done
+
+      if [[ $completed -lt $total ]]; then
+        echo ""
+        warn "wave $wave_num: $((total - completed)) task(s) timed out"
+
+        for tracking in "${wave_task_tracking[@]}"; do
+          local t_id=$(echo "$tracking" | cut -d: -f1)
+          local a_name=$(echo "$tracking" | cut -d: -f2)
+          [[ -n "${wave_done[$t_id]:-}" ]] && continue
+          printf "    ${RED}✗${NC} #%s timed out (agent: %s)\n" "$t_id" "$a_name"
+
+          # Update plan
+          tmp=$(mktemp)
+          jq --argjson tid "$t_id" '.tasks[] |= (if .id == $tid then .status = "failed" else . end)' \
+            "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+        done
+
+        echo ""
+        printf "  ${BOLD}[r]${NC}etry  ${BOLD}[s]${NC}kip  ${BOLD}[a]${NC}bort  "
+        read -r fail_choice
+        case "$fail_choice" in
+          r|retry)
+            info "retrying wave $wave_num..."
+            # Decrement wave to re-run
+            ((wave_num--))
+            continue
+            ;;
+          s|skip)
+            warn "skipping failed tasks — downstream tasks may fail"
+            ;;
+          a|abort|*)
+            tmp=$(mktemp)
+            jq '.status = "aborted"' "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+            die "plan aborted"
+            ;;
+        esac
+      fi
+    fi
+
+    echo ""
+  done
+
+  # Mark plan as completed
+  tmp=$(mktemp)
+  jq '.status = "completed"' "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+
+  echo ""
+  ok "plan completed! ($task_count tasks across $max_wave waves)"
+  info "plan file: $plan_file"
+}
+
+# List saved plans
+_plan_list() {
+  ensure_init
+  mkdir -p "$PLANS_DIR"
+
+  printf "\n${BOLD}  📋 Plans${NC}\n\n"
+  printf "  ${DIM}%-30s %-12s %-6s %s${NC}\n" "FILE" "STATUS" "TASKS" "GOAL"
+
+  local found=0
+  for pf in "$PLANS_DIR"/*.json; do
+    [[ -f "$pf" ]] || continue
+    ((found++))
+    local status=$(jq -r '.status // "unknown"' "$pf")
+    local goal=$(jq -r '.goal // "?"' "$pf" | head -c 50)
+    local tasks=$(jq '.tasks | length' "$pf")
+    local fname=$(basename "$pf")
+
+    local status_color="$NC"
+    case "$status" in
+      completed) status_color="$GREEN" ;;
+      running)   status_color="$YELLOW" ;;
+      failed|aborted) status_color="$RED" ;;
+    esac
+
+    printf "  %-30s ${status_color}%-12s${NC} %-6s %s\n" "$fname" "$status" "$tasks" "$goal"
+  done
+
+  [[ $found -eq 0 ]] && printf "  ${DIM}no plans${NC}\n"
+  echo ""
+}
+
+# ═══════════════════════════════════════════════
 # sage help
 # ═══════════════════════════════════════════════
 cmd_help() {
@@ -1759,6 +2611,22 @@ cmd_help() {
     peek <name> [--lines N]     See what agent is doing (tmux pane + workspace)
     steer <name> <msg> [--restart] Course-correct a running agent
     inbox [--json] [--clear]    View/clear messages sent to you (.cli)
+
+  TASK TEMPLATES
+    task --list                 Show available templates
+    task <template> [files...]  Execute a task template
+      [--message "..."]         Additional context
+      [--runtime <rt>]          Override template runtime
+      [--timeout <sec>]         Timeout (default: 300s)
+      [--background]            Run async, return task ID
+
+  PLAN ORCHESTRATOR
+    plan <goal>                 Decompose goal into task waves
+      [--save <file>]           Save plan to file
+      [--yes]                   Auto-approve (skip interactive)
+    plan --run <file>           Execute a saved plan
+    plan --resume <file>        Resume from failure point
+    plan --list                 Show saved plans
 
   DEBUG
     logs <name> [-f|--clear]    View/tail/clear agent logs
@@ -1812,6 +2680,8 @@ case "${1:-}" in
   rm)      cmd_rm "${2:-}" ;;
   clean)   cmd_clean ;;
   tool)    shift; cmd_tool "$@" ;;
+  task)    shift; cmd_task "$@" ;;
+  plan)    shift; cmd_plan "$@" ;;
   help|-h|--help|"") cmd_help ;;
   *)       die "unknown command: $1. Run: sage help" ;;
 esac
