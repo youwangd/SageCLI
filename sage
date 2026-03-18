@@ -603,7 +603,16 @@ _acp_process_events() {
         fs/write_text_file)
           local path=$(echo "$event" | jq -r '.params.path // empty' 2>/dev/null)
           local content=$(echo "$event" | jq -r '.params.content // empty' 2>/dev/null)
-          [[ -n "$path" ]] && { mkdir -p "$(dirname "$path")" 2>/dev/null; printf '%s' "$content" > "$path"; }
+          # Security: resolve path and ensure it doesn't escape working directory
+          if [[ -n "$path" ]]; then
+            local resolved=$(realpath -m "$path" 2>/dev/null || echo "$path")
+            local cwd_resolved=$(realpath -m "$(pwd)" 2>/dev/null || pwd)
+            if [[ "$resolved" == "$cwd_resolved"* ]]; then
+              mkdir -p "$(dirname "$path")" 2>/dev/null; printf '%s' "$content" > "$path"
+            else
+              log "BLOCKED write to $resolved (outside workspace $cwd_resolved)"
+            fi
+          fi
           _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$rid,\"result\":{}}"
           ;;
         fs/read_text_file)
@@ -706,6 +715,12 @@ mkdir -p "$INBOX" "$STATE" "$AGENT_DIR/replies"
 
 # Read runtime config
 RUNTIME=$(jq -r '.runtime // "bash"' "$AGENT_DIR/runtime.json" 2>/dev/null || echo "bash")
+
+# Validate runtime name (prevent path traversal)
+if [[ ! "$RUNTIME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  echo "error: invalid runtime name '$RUNTIME'" >&2
+  exit 1
+fi
 
 # Source tools
 for tool in "$SAGE_HOME/tools"/*.sh; do
@@ -1197,6 +1212,8 @@ cmd_logs() {
   local name="${1:-}" flag="${2:-}"
   [[ -n "$name" ]] || die "usage: sage logs <name> [-f|--clear]"
   ensure_init
+  # Validate name to prevent path traversal
+  [[ "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "invalid agent name"
   local logfile="$LOGS_DIR/$name.log"
 
   if [[ "$flag" == "--clear" ]]; then
@@ -1249,8 +1266,14 @@ cmd_rm() {
 # ═══════════════════════════════════════════════
 cmd_clean() {
   ensure_init
-  # Clean up temp files, stale pid files, empty replies
-  find "$AGENTS_DIR" -name ".pid" -exec sh -c 'kill -0 $(cat "$1") 2>/dev/null || rm -f "$1"' _ {} \;
+  # Clean up stale pid files (where process is no longer running)
+  while IFS= read -r -d '' pidfile; do
+    local pid_val
+    pid_val=$(cat "$pidfile" 2>/dev/null)
+    if [[ "$pid_val" =~ ^[0-9]+$ ]] && ! kill -0 "$pid_val" 2>/dev/null; then
+      rm -f "$pidfile"
+    fi
+  done < <(find "$AGENTS_DIR" -name ".pid" -print0 2>/dev/null)
   find /tmp -name "sage-*" -mmin +60 -delete 2>/dev/null || true
   find "$AGENTS_DIR" -path "*/replies/*.json" -mmin +60 -delete 2>/dev/null || true
   ok "cleaned up stale files"
@@ -1297,8 +1320,25 @@ cmd_wait() {
       done
     fi
 
-    # Check for completion marker in NEW lines only
-    if echo "$new_lines" | grep -qE "finished|DONE|completed" 2>/dev/null; then
+    # Check for completion via status files (authoritative) + log heuristics (fallback)
+    local any_done=false
+    if [[ -d "$AGENTS_DIR/$name/results" ]]; then
+      # Check if latest running task is now done
+      local latest_status
+      latest_status=$(ls -t "$AGENTS_DIR/$name/results/"*.status.json 2>/dev/null | head -1)
+      if [[ -n "$latest_status" ]]; then
+        local st=$(jq -r '.status' "$latest_status" 2>/dev/null)
+        if [[ "$st" == "done" ]]; then
+          any_done=true
+        fi
+      fi
+    fi
+    # Fallback: check log text for completion markers
+    if [[ "$any_done" != true ]] && echo "$new_lines" | grep -qE "finished|DONE|completed" 2>/dev/null; then
+      any_done=true
+    fi
+
+    if [[ "$any_done" == true ]]; then
       # Verify no active CLI process under the runner
       local pid
       if pid=$(agent_pid "$name"); then
