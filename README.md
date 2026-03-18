@@ -52,6 +52,7 @@ That's it. Three commands. Your agent is running in a tmux pane, writing files, 
 - **Runtime-agnostic** — Plug in Claude Code, Cline, or any ACP agent. Adding a new runtime is one file with two functions.
 - **Mechanical, not behavioral** — Task tracking, parent-child relationships, and tracing are handled by the engine, not by asking LLMs to remember protocols.
 - **Observable** — Real-time streaming, `peek` into any agent, `trace` the full call tree. You always know what's happening.
+- **Secure by default** — Agent name validation, workspace sandboxing for file I/O, atomic writes to prevent partial reads, and path traversal prevention at every layer.
 - **Zero lock-in** — It's a single bash script. Read it, fork it, modify it. Your agents' state is plain files on disk.
 
 ---
@@ -202,6 +203,96 @@ echo "$RESULT"
 
 ---
 
+## Task Templates
+
+Predefined task templates with checklists, constraints, and structured output:
+
+```bash
+sage task --list
+#  review       (auto)  Code review with prioritized findings
+#  test         (auto)  Generate comprehensive test suite
+#  spec         (auto)  Write technical specification
+#  implement    (auto)  Implement a feature from spec
+#  refactor     (auto)  Refactor code while preserving behavior
+#  document     (auto)  Generate documentation
+#  debug        (auto)  Debug and fix a reported issue
+
+# Run a template against files
+sage task review src/auth.py src/middleware.py
+sage task test src/api/ --message "Focus on edge cases"
+sage task refactor src/legacy.py --timeout 180
+sage task debug --message "Users report 500 on /login after upgrade"
+```
+
+Templates live in `~/.sage/tasks/` as markdown files with YAML frontmatter. Each template specifies:
+- Runtime preference (`auto` defaults to ACP)
+- Input type (`files`, `description`, or `both`)
+- A detailed checklist the agent follows
+
+Run in background with `--background`:
+```bash
+sage task implement --message "Add JWT refresh tokens" --background
+# ✓ task t-123 → sage-task-implement-... (background)
+# Track: sage peek sage-task-implement-... | sage result t-123
+```
+
+---
+
+## Plan Orchestrator
+
+Decompose complex goals into dependency-aware task waves with automatic parallel execution:
+
+```bash
+sage plan "Build a Python REST API with auth, CRUD endpoints, tests, and docs"
+
+#  📋 Plan: Build a Python REST API...
+#
+#  #1 [spec] Define API schema and auth strategy
+#  #2 [implement] Build auth module (depends: #1)
+#  #3 [implement] Build CRUD endpoints (depends: #1)
+#  #4 [test] Write test suite (depends: #2, #3)
+#  #5 [document] Generate API docs (depends: #2, #3)
+#
+#  Waves:
+#    Wave 1: #1
+#    Wave 2: #2, #3 (parallel)
+#    Wave 3: #4, #5 (parallel)
+#
+#  [a]pprove  [e]dit  [r]eject
+```
+
+The plan orchestrator:
+1. Creates a planning agent to decompose your goal
+2. Normalizes the output (handles different JSON formats from different LLMs)
+3. Computes dependency waves with cycle detection
+4. Executes each wave in parallel — agents in the same wave run simultaneously
+5. Passes results from completed tasks as context to downstream dependencies
+
+```bash
+# Auto-approve (skip interactive prompt)
+sage plan "Refactor auth module to use OAuth2" --yes
+
+# Save plan for later
+sage plan "Migrate database" --save migration.json
+
+# Run a saved plan
+sage plan --run migration.json
+
+# Resume from where it left off (skips completed tasks)
+sage plan --resume ~/.sage/plans/plan-1710347041.json
+
+# List saved plans
+sage plan --list
+
+# Interactive editing before execution
+sage plan "Build a dashboard"
+# > edit> drop 3
+# > edit> add test "Integration tests for API" --depends 1,2
+# > edit> done
+```
+
+---
+
 ## Live Monitoring
 
 Both CLI runtimes stream events in real-time. Tool calls, text responses, and progress appear as they happen:
@@ -332,8 +423,10 @@ sage CLI
 │   ├── results/        # task status + output
 │   ├── steer.md        # steering context
 │   └── .live_output    # current task's live output
-├── runtimes/           # bash, cline, claude-code
+├── runtimes/           # bash, cline, claude-code, acp
 ├── tools/              # shared utilities
+├── tasks/              # task templates (review, test, spec, ...)
+├── plans/              # saved execution plans
 ├── trace.jsonl         # append-only event log
 └── runner.sh           # agent process loop
 ```
@@ -345,7 +438,7 @@ sage CLI
 ```
 AGENTS
   init [--force]                     Initialize ~/.sage/
-  create <name> [--runtime R]        Create agent (bash|cline|claude-code)
+  create <name> [--runtime R]        Create agent (bash|cline|claude-code|acp)
   start [name|--all]                 Start in tmux
   stop [name|--all]                  Stop (kills process group)
   restart [name|--all]               Restart
@@ -356,6 +449,7 @@ AGENTS
 
 MESSAGING & TASKS
   send <to> <message|@file>          Fire-and-forget (returns task ID)
+    [--force]                        Cancel running task first
   call <to> <message|@file> [t]      Sync request/response (default 60s)
   tasks [name]                       List tasks with status
   result <task-id>                   Get task result
@@ -363,6 +457,22 @@ MESSAGING & TASKS
   peek <name> [--lines N]            Live output + workspace
   steer <name> <msg> [--restart]     Course-correct agent
   inbox [--json] [--clear]           View/clear CLI messages
+
+TASK TEMPLATES
+  task --list                        Show available templates
+  task <template> [files...]         Execute a task template
+    [--message "..."]                Additional context
+    [--runtime <rt>]                 Override template runtime
+    [--timeout <sec>]                Timeout (default: 300s)
+    [--background]                   Run async, return task ID
+
+PLAN ORCHESTRATOR
+  plan <goal>                        Decompose goal into task waves
+    [--save <file>]                  Save plan to file
+    [--yes]                          Auto-approve (skip interactive)
+  plan --run <file>                  Execute a saved plan
+  plan --resume <file>               Resume from failure point
+  plan --list                        Show saved plans
 
 DEBUG & OBSERVABILITY
   logs <name> [-f|--clear]           View/tail/clear logs
@@ -400,7 +510,7 @@ sage is a single bash script. Read it, understand it, improve it.
 
 ```bash
 # The entire engine
-wc -l sage    # ~1500 lines
+wc -l sage    # ~3000 lines
 
 # Run from source
 ./sage init --force

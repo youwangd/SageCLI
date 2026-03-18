@@ -44,7 +44,16 @@ sage (CLI)
 │   └── acp.sh                 # Universal ACP bridge (cline, claude-code, goose, kiro, gemini...)
 ├── tools/
 │   ├── common.sh              # send_msg, call_agent, reply, broadcast
-│   └── llm.sh                 # raw LLM API helper
+│   └── llm.sh                 # raw LLM API helper (120s timeout)
+├── tasks/                     # Task templates (review, test, spec, implement, refactor, document, debug)
+│   ├── review.md
+│   ├── test.md
+│   ├── spec.md
+│   ├── implement.md
+│   ├── refactor.md
+│   ├── document.md
+│   └── debug.md
+├── plans/                     # Saved execution plans (JSON)
 ├── logs/
 │   └── <agent>.log
 └── runner.sh                  # agent process loop
@@ -67,7 +76,8 @@ sage send worker @prompt.md              → reads message from file
                                     └─────┬─────┘
                                           │  runtime_inject() completes
                                     ┌─────▼─────┐
-                                    │   done     │  runner updates status + runtime writes result
+                                    │  done │    │  runner updates status + runtime writes result
+                                    │  failed   │  if runtime_inject() returns nonzero
                                     └────────────┘
 ```
 
@@ -338,6 +348,9 @@ $task
 $completion_instruction
 PROMPT
 
+  # Remove steer file after reading (prevents leaking into subsequent tasks)
+  [[ -f "$steer_file" ]] && rm -f "$steer_file"
+
   # ── Invoke the CLI (THIS IS THE ONLY PART YOU CUSTOMIZE) ──
   log "invoking <name>..."
   cd "$workdir"
@@ -358,18 +371,20 @@ PROMPT
 
   log "<name> finished: $(echo "$output" | tail -1 | head -c 120)"
 
-  # ── Write result for task tracking (copy as-is) ──
+  # ── Write result for task tracking (copy as-is — atomic write) ──
   local results_dir="$AGENTS_DIR/$name/results"
   if [[ -d "$results_dir" && -n "$msg_id" ]]; then
     local json_out
     json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
-    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$results_dir/${msg_id}.result.json" 2>/dev/null
+    local _rtmp=$(mktemp "$results_dir/.tmp.XXXXXX")
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$_rtmp" && mv "$_rtmp" "$results_dir/${msg_id}.result.json" || rm -f "$_rtmp"
   fi
 
-  # ── Write reply for sync calls (copy as-is) ──
+  # ── Write reply for sync calls (copy as-is — atomic write) ──
   if [[ -n "$reply_dir" ]]; then
     mkdir -p "$reply_dir"
-    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$reply_dir/${msg_id}.json"
+    local _rptmp=$(mktemp "$reply_dir/.tmp.XXXXXX")
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$_rptmp" && mv "$_rptmp" "$reply_dir/${msg_id}.json" || rm -f "$_rptmp"
   fi
 }
 ```
@@ -473,13 +488,14 @@ sage stop --all; sage rm test-agent; sage rm orch
 ### Checklist
 
 - [ ] `runtimes/<name>.sh` with `runtime_start` + `runtime_inject`
-- [ ] steer.md read and injected into prompt
-- [ ] Result written to `results/<task-id>.result.json`
-- [ ] Reply written for sync calls (reply_dir check)
+- [ ] steer.md read, injected into prompt, and **deleted after reading**
+- [ ] Result written atomically to `results/<task-id>.result.json` (mktemp + mv)
+- [ ] Reply written atomically for sync calls (reply_dir check, mktemp + mv)
 - [ ] Embedded in `sage init`
 - [ ] Help text updated
 - [ ] E2E: `sage call` returns result
 - [ ] E2E: `sage send` → `sage tasks` shows done → `sage result` works
+- [ ] E2E: failed runtime returns nonzero → task status shows "failed"
 - [ ] Orchestrator test: orch creates sub-agents with this runtime
 
 ## Known Patterns
@@ -528,3 +544,162 @@ sage result <task-id>                            # collect result
 - `claude-agent-acp` — Claude Code ACP adapter (`npm i -g @zed-industries/claude-agent-acp`)
 - Any ACP-compatible agent CLI (goose, kiro, gemini, etc.)
 - Future: `aider`, `gemini`, `codex`, `ollama`
+
+## Security Model
+
+sage enforces security at multiple layers:
+
+### Agent Name Validation
+All agent names are validated against `^[a-zA-Z0-9][a-zA-Z0-9._-]*$` — preventing path traversal attacks (`../escape`). This is enforced at:
+- `agent_exists()` — single point of enforcement for all commands that reference agents
+- `cmd_create()` — agent creation
+- `send_msg()` / `call_agent()` — agent-to-agent messaging (prevents a compromised agent from targeting paths outside `$AGENTS_DIR`)
+
+### Workspace Sandboxing (ACP Runtime)
+The ACP runtime sandboxes file I/O to the agent's working directory:
+- `fs/write_text_file` — resolved via `realpath`, blocked if outside `$cwd`
+- `fs/read_text_file` — same sandbox check
+- Blocked writes/reads are logged: `"BLOCKED write to /etc/shadow (outside workspace /home/user/project)"`
+- Note: ACP agents still have `terminal` capability (shell access) — this is by design in the ACP protocol
+
+### Runtime Validation
+The runner validates runtime names against `^[a-zA-Z0-9_-]+$` before sourcing `runtimes/<name>.sh`, preventing path injection via a malicious `runtime.json`.
+
+### Atomic Writes
+All result and reply files use `mktemp` + `mv` to prevent readers (like `cmd_call`'s 0.3s poll loop) from seeing partially-written JSON. This applies to:
+- `results/<task-id>.result.json` (all 3 runtimes)
+- `reply_dir/<task-id>.json` (all 3 runtimes + `reply()` in common.sh)
+- Status file updates (via `jq > tmp && mv tmp`)
+
+### FIFO Security (ACP)
+ACP FIFOs are created inside a secure temporary directory (`mktemp -d`) rather than using `mktemp -u` (which has a TOCTOU race between name generation and `mkfifo`).
+
+### Steer File Lifecycle
+All runtimes delete `steer.md` after reading it, preventing stale steering context from leaking into subsequent tasks.
+
+## Task Templates
+
+Templates live in `~/.sage/tasks/` as markdown files with YAML frontmatter:
+
+```yaml
+---
+name: review
+description: Code review with prioritized findings
+input: files
+output: structured
+parallel: true
+runtime: auto
+---
+
+# Code Review Template
+
+Review the provided code for:
+1. Security vulnerabilities (🔴 Critical)
+2. Correctness bugs (🟡 Important)
+3. Performance issues (🟠 Warning)
+...
+```
+
+### Frontmatter Fields
+
+| Field | Values | Description |
+|---|---|---|
+| `name` | string | Template identifier |
+| `description` | string | Human-readable description |
+| `input` | `files` / `description` / `both` | What the template expects |
+| `output` | `structured` / `freeform` | Output format hint |
+| `parallel` | `true` / `false` | Whether tasks using this template can run in parallel |
+| `runtime` | `auto` / `acp` / `bash` | Preferred runtime (`auto` → `acp`) |
+
+### Template Body
+
+Everything after the second `---` is injected as the agent's instructions. Templates can include:
+- Checklists the agent must follow
+- Output format requirements
+- Constraints and priorities
+- Example output
+
+### Custom Templates
+
+Add your own templates to `~/.sage/tasks/`:
+
+```bash
+cat > ~/.sage/tasks/security-audit.md << 'EOF'
+---
+name: security-audit
+description: Security audit with OWASP Top 10 focus
+input: files
+output: structured
+parallel: true
+runtime: auto
+---
+
+# Security Audit
+
+Audit the provided code against OWASP Top 10:
+1. Injection (SQL, command, LDAP)
+2. Broken authentication
+...
+EOF
+```
+
+## Plan Orchestrator
+
+Plans decompose goals into dependency-aware task waves.
+
+### Plan File Format
+
+```json
+{
+  "plan_id": "plan-1710347041",
+  "goal": "Build a REST API with auth and tests",
+  "status": "completed",
+  "tasks": [
+    {
+      "id": 1,
+      "template": "spec",
+      "description": "Define API schema and auth strategy",
+      "depends": [],
+      "files": [],
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "template": "implement",
+      "description": "Build auth module",
+      "depends": [1],
+      "files": ["src/auth/"],
+      "status": "done",
+      "agent": "sage-plan-2-1710347060",
+      "sage_task_id": "t-1710347065-12345"
+    }
+  ]
+}
+```
+
+### Wave Computation
+
+Dependencies are resolved using recursive topological sort with cycle detection:
+- Tasks with no dependencies go in Wave 1
+- Each task's wave = `max(wave of dependencies) + 1`
+- Circular dependencies are detected and broken (task placed in Wave 1)
+- Tasks in the same wave execute in parallel
+
+### Execution Phases (per wave)
+
+1. **Phase 1: Create + Start** — Create ephemeral agents for each task, start them with 1s stagger
+2. **Phase 2: Init Wait** — 4s pause for ACP runtime initialization
+3. **Phase 3: Send Messages** — Send task descriptions + dependency context to all agents
+4. **Phase 4: Wait** — Poll status files until all tasks complete or timeout (600s per task)
+
+### Resume Mode
+
+`sage plan --resume <file>` skips completed tasks and resets stale "running" tasks (from crashes) back to "pending". Results from previously completed tasks are passed as context to downstream dependencies.
+
+### LLM Output Normalization
+
+Planning agents return wildly different JSON formats. The normalizer handles:
+- `steps` → `tasks`, `dependencies` → `depends`, `title` → `description`
+- Auto-assigns templates by keyword matching when not specified
+- Strips markdown code fences (`\`\`\`json ... \`\`\``)
+- Extracts the first valid JSON object from the response
