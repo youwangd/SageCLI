@@ -792,6 +792,11 @@ cmd_create() {
 
   [[ -n "$name" ]] || die "usage: sage create <name> [--runtime bash|cline|claude-code|acp] [--agent <agent>] [--model <model>]"
 
+  # Validate agent name: alphanumeric, hyphens, underscores only
+  if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
+    die "invalid agent name '$name' — use alphanumeric, hyphens, underscores, dots only"
+  fi
+
   # If --agent is specified without --runtime, default to acp
   if [[ -n "$acp_agent" && "$runtime" == "bash" ]]; then
     runtime="acp"
@@ -928,8 +933,23 @@ start_agent() {
 
   # NOTE: -t "$TMUX_SESSION:" (trailing colon) = next available index
   # Without colon, tmux tries to create at the current active window index → collision
-  tmux new-window -t "$TMUX_SESSION:" -n "$name" \
-    "bash $SAGE_HOME/runner.sh $AGENTS_DIR/$name; echo '[exited — press enter]'; read" 2>/dev/null
+  if ! tmux new-window -t "$TMUX_SESSION:" -n "$name" \
+    "bash $SAGE_HOME/runner.sh $AGENTS_DIR/$name; echo '[exited — press enter]'; read" 2>/dev/null; then
+    warn "failed to create tmux window for $name"
+    return 1
+  fi
+
+  # Wait briefly and verify the runner actually started
+  sleep 0.5
+  if ! agent_pid "$name" >/dev/null 2>&1; then
+    # Check if tmux window exists but runner hasn't written PID yet
+    sleep 1
+    if ! agent_pid "$name" >/dev/null 2>&1; then
+      warn "$name: tmux window created but runner failed to start"
+      tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null || true
+      return 1
+    fi
+  fi
 
   ok "started $name (runtime=$runtime)"
 }
@@ -1118,8 +1138,31 @@ cmd_send() {
 # sage call <to> <payload> [timeout]
 # ═══════════════════════════════════════════════
 cmd_call() {
-  local to="${1:-}" message="${2:-}" timeout="${3:-60}"
-  [[ -n "$to" && -n "$message" ]] || die "usage: sage call <agent> <message|@file> [timeout]"
+  local to="" message="" timeout="60"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --timeout|-t) timeout="$2"; shift 2 ;;
+      -*)           die "unknown flag: $1" ;;
+      *)
+        if [[ -z "$to" ]]; then
+          to="$1"
+        elif [[ -z "$message" ]]; then
+          message="$1"
+        else
+          # If third positional looks like a number, treat as timeout (legacy)
+          if [[ "$1" =~ ^[0-9]+$ && -z "${2:-}" ]]; then
+            timeout="$1"
+          else
+            message="$message $1"
+          fi
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  [[ -n "$to" && -n "$message" ]] || die "usage: sage call <agent> <message|@file> [timeout] [--timeout N]"
   ensure_init; agent_exists "$to"
 
   # Auto-start if not running
@@ -2097,10 +2140,14 @@ PLANINST
   [[ -f "$live_output" ]] && raw_text=$(cat "$live_output")
 
   # Use python3 for robust JSON extraction and normalization
+  local raw_file=$(mktemp)
+  echo "$raw_text" > "$raw_file"
+
   extracted=$(python3 -c "
 import json, re, sys
 
-raw = '''$( echo "$raw_text" | sed "s/'''/\\\\'\\\\'\\\\'/" )'''
+with open('$raw_file') as f:
+    raw = f.read()
 
 # Strip markdown code fences
 raw = re.sub(r'\`\`\`json\s*', '', raw)
@@ -2126,6 +2173,7 @@ for i, c in enumerate(raw):
 
 sys.exit(1)
 " 2>/dev/null) || true
+  rm -f "$raw_file"
 
   if [[ -z "$extracted" ]] || ! echo "$extracted" | jq . >/dev/null 2>&1; then
     die "could not parse plan JSON. Check: sage logs $plan_agent"
@@ -2138,10 +2186,14 @@ sys.exit(1)
   local templates_list
   templates_list=$(ls "$TASKS_DIR"/*.md 2>/dev/null | xargs -I{} basename {} .md | tr '\n' ',' | sed 's/,$//')
 
+  local norm_input=$(mktemp)
+  echo "$plan_json" > "$norm_input"
+
   plan_json=$(python3 -c "
 import json, re
 
-plan = json.loads('''$(echo "$plan_json" | sed "s/'''/\\\\'\\\\'\\\\'/" )''')
+with open('$norm_input') as f:
+    plan = json.load(f)
 templates = '$templates_list'.split(',')
 
 # Normalize tasks array
@@ -2189,6 +2241,7 @@ for key in list(plan.keys()):
 
 print(json.dumps(plan))
 " 2>/dev/null) || die "failed to normalize plan"
+  rm -f "$norm_input"
 
   # Save the plan
   local plan_id="plan-$(date +%s)"
@@ -2209,7 +2262,9 @@ print(json.dumps(plan))
   # Approval
   if [[ "$auto_approve" == true ]]; then
     _plan_execute "$plan_file" "fresh"
-    return $?
+    local exec_rc=$?
+    rm -rf "$AGENTS_DIR/$plan_agent" 2>/dev/null || true
+    return $exec_rc
   fi
 
   echo ""
@@ -2271,7 +2326,6 @@ _plan_display() {
 _compute_waves() {
   local plan_file="$1"
 
-  # Use python3 for reliable wave computation (jq can't do iterative graph algorithms cleanly)
   python3 -c "
 import json, sys
 
@@ -2282,20 +2336,38 @@ tasks = plan.get('tasks', [])
 if not tasks:
     sys.exit(0)
 
-# Build wave assignments via topological sort
+# Build adjacency and compute waves with proper topological ordering
+task_map = {t['id']: t for t in tasks}
 waves = {}
-for task in tasks:
-    tid = task['id']
+max_iter = len(tasks) + 1  # cycle detection
+
+def get_wave(tid, visited=None):
+    if tid in waves:
+        return waves[tid]
+    if visited is None:
+        visited = set()
+    if tid in visited:
+        return 1  # cycle detected — break it
+    visited.add(tid)
+    task = task_map.get(tid)
+    if not task:
+        return 1
     deps = task.get('depends', [])
     if not deps:
         waves[tid] = 1
-    else:
-        max_dep_wave = max(waves.get(d, 1) for d in deps)
-        waves[tid] = max_dep_wave + 1
+        return 1
+    max_dep = max(get_wave(d, visited.copy()) for d in deps)
+    waves[tid] = max_dep + 1
+    return waves[tid]
+
+for t in tasks:
+    get_wave(t['id'])
 
 max_wave = max(waves.values()) if waves else 0
 for w in range(1, max_wave + 1):
     ids = [t['id'] for t in tasks if waves.get(t['id']) == w]
+    if not ids:
+        continue
     id_str = ', '.join(f'#{i}' for i in ids)
     parallel = ' (parallel)' if len(ids) > 1 else ''
     print(f'  Wave {w}: {id_str}{parallel}')
@@ -2425,23 +2497,38 @@ _plan_execute() {
   export SAGE_AGENT_NAME="${SAGE_AGENT_NAME:-cli}"
   source "$TOOLS_DIR/common.sh"
 
-  # Compute wave assignments using python3
+  # Compute wave assignments using python3 (handles arbitrary task ordering + cycles)
   local wave_json
   wave_json=$(python3 -c "
 import json
 with open('$plan_file') as f:
     plan = json.load(f)
 tasks = plan.get('tasks', [])
+task_map = {t['id']: t for t in tasks}
 waves = {}
-for task in tasks:
-    tid = task['id']
+
+def get_wave(tid, visited=None):
+    if tid in waves:
+        return waves[tid]
+    if visited is None:
+        visited = set()
+    if tid in visited:
+        return 1
+    visited.add(tid)
+    task = task_map.get(tid)
+    if not task:
+        return 1
     deps = task.get('depends', [])
     if not deps:
         waves[tid] = 1
-    else:
-        max_dep_wave = max(waves.get(d, 1) for d in deps)
-        waves[tid] = max_dep_wave + 1
-print(json.dumps(waves))
+        return 1
+    max_dep = max(get_wave(d, visited.copy()) for d in deps)
+    waves[tid] = max_dep + 1
+    return waves[tid]
+
+for t in tasks:
+    get_wave(t['id'])
+print(json.dumps({str(k): v for k, v in waves.items()}))
 " 2>/dev/null) || die "failed to compute waves"
 
   local max_wave=$(echo "$wave_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(max(d.values()) if d else 0)")
@@ -2552,8 +2639,8 @@ INST
     done <<< "$wave_task_ids"
 
     # Phase 2: Wait for all ACP runtimes to initialize
-    local wave_count=$(ls "$wave_data_dir"/*.json 2>/dev/null | wc -l)
-    if [[ $wave_count -gt 0 ]]; then
+    local started_count=$(ls "$wave_data_dir"/*.json 2>/dev/null | wc -l)
+    if [[ $started_count -gt 0 ]]; then
       info "agents started, waiting for runtime initialization..."
       sleep 4
     fi
@@ -2595,16 +2682,16 @@ INST
         '(.tasks[] | select(.id == $tid)) |= . + {status: "running", agent: $agent, sage_task_id: $st}' \
         "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
 
-    done <<< "$wave_task_ids"
+    done  # end Phase 3 for loop
 
     # Wait for all agents in this wave
     if [[ ${#wave_agents[@]} -gt 0 ]]; then
       printf "    ${DIM}waiting for wave %d...${NC}\n" "$wave_num"
 
-      local wave_timeout=$((600 * wave_count))
-      local wave_deadline=$((SECONDS + wave_timeout))
       local completed=0
       local total=${#wave_task_tracking[@]}
+      local wave_timeout=$((600 * total))
+      local wave_deadline=$((SECONDS + wave_timeout))
       local -A wave_done
 
       while [[ $completed -lt $total && $SECONDS -lt $wave_deadline ]]; do
@@ -2820,8 +2907,8 @@ case "${1:-}" in
   stop)    cmd_stop "${2:-}" ;;
   restart) cmd_restart "${2:-}" ;;
   status)  cmd_status ;;
-  send)    cmd_send "${2:-}" "${3:-}" ;;
-  call)    cmd_call "${2:-}" "${3:-}" "${4:-}" ;;
+  send)    shift; cmd_send "$@" ;;
+  call)    shift; cmd_call "$@" ;;
   tasks)   cmd_tasks "${2:-}" ;;
   result)  cmd_result "${2:-}" ;;
   steer)   shift; cmd_steer "$@" ;;
