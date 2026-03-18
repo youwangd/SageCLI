@@ -155,7 +155,7 @@ MSGEOF
   while [[ $SECONDS -lt $deadline ]]; do
     if [[ -f "$reply_dir/${task_id}.json" ]]; then
       cat "$reply_dir/${task_id}.json"
-      rm "$reply_dir/${task_id}.json"
+      rm -f "$reply_dir/${task_id}.json"
       return 0
     fi
     sleep 0.3
@@ -170,7 +170,8 @@ reply() {
   local msg_id=$(echo "$msg" | jq -r '.id')
   if [[ -n "$reply_dir" ]]; then
     mkdir -p "$reply_dir"
-    echo "$result" > "$reply_dir/${msg_id}.json"
+    local _rptmp=$(mktemp "$reply_dir/.tmp.XXXXXX")
+    echo "$result" > "$_rptmp" && mv "$_rptmp" "$reply_dir/${msg_id}.json" || rm -f "$_rptmp"
   fi
 }
 
@@ -190,7 +191,7 @@ TOOLEOF
 llm() {
   local prompt="$1" model="${2:-claude-sonnet-4-20250514}"
   if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-    curl -s https://api.anthropic.com/v1/messages \
+    curl -s --max-time 120 https://api.anthropic.com/v1/messages \
       -H "x-api-key: $ANTHROPIC_API_KEY" \
       -H "anthropic-version: 2023-06-01" \
       -H "content-type: application/json" \
@@ -198,7 +199,7 @@ llm() {
         '{model:$m,max_tokens:4096,messages:[{role:"user",content:$p}]}')" \
       | jq -r '.content[0].text'
   elif [[ -n "${OPENAI_API_KEY:-}" ]]; then
-    curl -s https://api.openai.com/v1/chat/completions \
+    curl -s --max-time 120 https://api.openai.com/v1/chat/completions \
       -H "Authorization: Bearer $OPENAI_API_KEY" \
       -H "content-type: application/json" \
       -d "$(jq -n --arg m "${model:-gpt-4o}" --arg p "$prompt" \
@@ -273,6 +274,9 @@ $task
 ---
 $completion_instruction
 PROMPT
+
+  # Remove steer file after reading (so it doesn't affect subsequent tasks)
+  [[ -f "$steer_file" ]] && rm -f "$steer_file"
 
   log "invoking cline..."
   local output
@@ -379,6 +383,9 @@ $task
 ---
 $completion_instruction
 PROMPT
+
+  # Remove steer file after reading (so it doesn't affect subsequent tasks)
+  [[ -f "$steer_file" ]] && rm -f "$steer_file"
 
   export CLAUDE_CODE_USE_BEDROCK=1
 
@@ -623,7 +630,17 @@ _acp_process_events() {
           ;;
         fs/read_text_file)
           local path=$(echo "$event" | jq -r '.params.path // empty' 2>/dev/null)
-          local c=""; [[ -f "$path" ]] && c=$(cat "$path" | jq -Rs .)
+          # Security: resolve path and ensure it doesn't escape working directory
+          local c=""
+          if [[ -n "$path" ]]; then
+            local resolved=$(realpath -m "$path" 2>/dev/null || echo "$path")
+            local cwd_resolved=$(realpath -m "$(pwd)" 2>/dev/null || pwd)
+            if [[ "$resolved" == "$cwd_resolved"* && -f "$path" ]]; then
+              c=$(cat "$path" | jq -Rs .)
+            elif [[ "$resolved" != "$cwd_resolved"* ]]; then
+              log "BLOCKED read from $resolved (outside workspace $cwd_resolved)"
+            fi
+          fi
           _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$rid,\"result\":{\"text\":${c:-\"\"}}}"
           ;;
         *)
@@ -777,16 +794,19 @@ while true; do
 
     # Process the message
     task_start_ts=$(date +%s)
-    runtime_inject "$AGENT_NAME" "$msg"
+    local task_rc=0
+    runtime_inject "$AGENT_NAME" "$msg" || task_rc=$?
     task_elapsed=$(( $(date +%s) - task_start_ts ))
 
-    # Update task status → done
+    # Update task status based on runtime exit code
+    local final_status="done"
+    [[ $task_rc -ne 0 ]] && final_status="failed"
     if [[ -f "$status_file" ]]; then
-      jq --arg ts "$(date +%s)" '.status="done" | .finished_at=($ts|tonumber)' "$status_file" > "${status_file}.tmp" && mv "${status_file}.tmp" "$status_file"
+      jq --arg ts "$(date +%s)" --arg st "$final_status" '.status=$st | .finished_at=($ts|tonumber)' "$status_file" > "${status_file}.tmp" && mv "${status_file}.tmp" "$status_file"
     fi
 
-    # Trace: task done
-    echo "{\"ts\":$(date +%s),\"type\":\"done\",\"agent\":\"$AGENT_NAME\",\"task_id\":\"$local_task_id\",\"elapsed\":$task_elapsed}" >> "$SAGE_HOME/trace.jsonl" 2>/dev/null
+    # Trace: task done/failed
+    echo "{\"ts\":$(date +%s),\"type\":\"done\",\"agent\":\"$AGENT_NAME\",\"task_id\":\"$local_task_id\",\"elapsed\":$task_elapsed,\"status\":\"$final_status\"}" >> "$SAGE_HOME/trace.jsonl" 2>/dev/null
   done
   sleep 0.3
 done
@@ -1987,9 +2007,13 @@ INST
   while [[ $SECONDS -lt $deadline ]]; do
     if [[ -f "$status_file" ]]; then
       local status=$(jq -r '.status' "$status_file" 2>/dev/null)
-      if [[ "$status" == "done" ]]; then
+      if [[ "$status" == "done" || "$status" == "failed" ]]; then
         echo ""
-        ok "task completed"
+        if [[ "$status" == "done" ]]; then
+          ok "task completed"
+        else
+          warn "task failed"
+        fi
 
         # Show result
         if [[ -f "$result_file" ]]; then
@@ -2759,7 +2783,7 @@ INST
           local sf="$AGENTS_DIR/$a_name/results/${s_tid}.status.json"
           if [[ -f "$sf" ]]; then
             local st=$(jq -r '.status' "$sf" 2>/dev/null)
-            if [[ "$st" == "done" ]]; then
+            if [[ "$st" == "done" || "$st" == "failed" ]]; then
               wave_done[$t_id]=1
               ((completed++)) || true
 
@@ -2778,10 +2802,14 @@ INST
 
               # Update plan
               tmp=$(mktemp)
-              jq --argjson tid "$t_id" '.tasks[] |= (if .id == $tid then .status = "done" else . end)' \
+              jq --argjson tid "$t_id" --arg st "$st" '.tasks[] |= (if .id == $tid then .status = $st else . end)' \
                 "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
 
-              printf "    ${GREEN}✓${NC} #%s completed (%d/%d)\n" "$t_id" "$completed" "$total"
+              if [[ "$st" == "done" ]]; then
+                printf "    ${GREEN}✓${NC} #%s completed (%d/%d)\n" "$t_id" "$completed" "$total"
+              else
+                printf "    ${RED}✗${NC} #%s failed (%d/%d)\n" "$t_id" "$completed" "$total"
+              fi
 
               # Stop the ephemeral agent
               cmd_stop "$a_name" 2>/dev/null || true
