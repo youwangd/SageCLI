@@ -322,13 +322,15 @@ PROMPT
   if [[ -d "$results_dir" && -n "$msg_id" ]]; then
     local json_out
     json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
-    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$results_dir/${msg_id}.result.json" 2>/dev/null
+    local _rtmp=$(mktemp "$results_dir/.tmp.XXXXXX")
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$_rtmp" && mv "$_rtmp" "$results_dir/${msg_id}.result.json" || rm -f "$_rtmp"
   fi
 
   # Write reply for sync calls
   if [[ -n "$reply_dir" ]]; then
     mkdir -p "$reply_dir"
-    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$reply_dir/${msg_id}.json"
+    local _rptmp=$(mktemp "$reply_dir/.tmp.XXXXXX")
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$_rptmp" && mv "$_rptmp" "$reply_dir/${msg_id}.json" || rm -f "$_rptmp"
   fi
 }
 RTEOF
@@ -423,13 +425,15 @@ PROMPT
   if [[ -d "$results_dir" && -n "$msg_id" ]]; then
     local json_out
     json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
-    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$results_dir/${msg_id}.result.json" 2>/dev/null
+    local _rtmp=$(mktemp "$results_dir/.tmp.XXXXXX")
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$_rtmp" && mv "$_rtmp" "$results_dir/${msg_id}.result.json" || rm -f "$_rtmp"
   fi
 
   # Write reply for sync calls
   if [[ -n "$reply_dir" ]]; then
     mkdir -p "$reply_dir"
-    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$reply_dir/${msg_id}.json"
+    local _rptmp=$(mktemp "$reply_dir/.tmp.XXXXXX")
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$_rptmp" && mv "$_rptmp" "$reply_dir/${msg_id}.json" || rm -f "$_rptmp"
   fi
 }
 RTEOF
@@ -461,6 +465,7 @@ _acp_cleanup() {
   exec 7>&- 2>/dev/null; exec 8<&- 2>/dev/null
   [[ -n "$_acp_agent_pid" ]] && kill "$_acp_agent_pid" 2>/dev/null && wait "$_acp_agent_pid" 2>/dev/null
   rm -f "$_acp_fifo_in" "$_acp_fifo_out"
+  [[ -n "${_acp_tmpdir:-}" ]] && rm -rf "$_acp_tmpdir" 2>/dev/null
   _acp_agent_pid=""
   _acp_session_id=""
 }
@@ -481,8 +486,9 @@ _acp_start_agent() {
     *)           acp_cmd="$_acp_agent_type --acp" ;;
   esac
 
-  _acp_fifo_in=$(mktemp -u /tmp/sage-acp-in-XXXXX)
-  _acp_fifo_out=$(mktemp -u /tmp/sage-acp-out-XXXXX)
+  local _acp_tmpdir=$(mktemp -d /tmp/sage-acp-XXXXX)
+  _acp_fifo_in="$_acp_tmpdir/in"
+  _acp_fifo_out="$_acp_tmpdir/out"
   mkfifo "$_acp_fifo_in" "$_acp_fifo_out"
 
   cd "$workdir"
@@ -682,13 +688,15 @@ $full_prompt"
   if [[ -d "$results_dir" && -n "$msg_id" ]]; then
     local json_out
     json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
-    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$results_dir/${msg_id}.result.json" 2>/dev/null
+    local _rtmp=$(mktemp "$results_dir/.tmp.XXXXXX")
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$_rtmp" && mv "$_rtmp" "$results_dir/${msg_id}.result.json" || rm -f "$_rtmp"
   fi
 
   # Write reply for sync calls
   if [[ -n "$reply_dir" ]]; then
     mkdir -p "$reply_dir"
-    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$reply_dir/${msg_id}.json"
+    local _rptmp=$(mktemp "$reply_dir/.tmp.XXXXXX")
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$_rptmp" && mv "$_rptmp" "$reply_dir/${msg_id}.json" || rm -f "$_rptmp"
   fi
 }
 RTEOF
@@ -2604,11 +2612,17 @@ for k, v in d.items():
     while IFS= read -r tid; do
       [[ -n "$tid" ]] || continue
 
-      # Skip if already done (resume mode)
+      # Skip if already done (resume mode); reset stale "running" to pending
       local task_status=$(jq -r ".tasks[] | select(.id == $tid) | .status // \"pending\"" "$plan_file")
       if [[ "$mode" == "resume" && "$task_status" == "done" ]]; then
         printf "    ${DIM}#%s — skipped (already done)${NC}\n" "$tid"
         continue
+      fi
+      if [[ "$mode" == "resume" && "$task_status" == "running" ]]; then
+        # Stale from a crash — reset to pending
+        tmp=$(mktemp)
+        jq --argjson tid "$tid" '(.tasks[] | select(.id == $tid)).status = "pending"' "$plan_file" > "$tmp" && mv "$tmp" "$plan_file"
+        printf "    ${YELLOW}↻${NC} #%s — reset from stale 'running' to pending\n" "$tid"
       fi
 
       local task_template=$(jq -r ".tasks[] | select(.id == $tid) | .template" "$plan_file")
