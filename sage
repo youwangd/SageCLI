@@ -23,7 +23,10 @@ ok()   { echo -e "${GREEN}✓${NC} $*"; }
 warn() { echo -e "${YELLOW}⚠${NC} $*"; }
 
 ensure_init() { [[ -d "$SAGE_HOME" ]] || die "not initialized. Run: sage init"; }
-agent_exists() { [[ -d "$AGENTS_DIR/$1" ]] || die "agent '$1' not found"; }
+agent_exists() {
+  [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "invalid agent name '$1'"
+  [[ -d "$AGENTS_DIR/$1" ]] || die "agent '$1' not found"
+}
 
 agent_pid() {
   local pidfile="$AGENTS_DIR/$1/.pid"
@@ -91,6 +94,10 @@ send_msg() {
   local to="$1" payload="$2"
   local task_id="$(_task_id)"
   local me="${SAGE_AGENT_NAME:-cli}"
+  # Validate target name (prevent path traversal in agent-to-agent messaging)
+  if [[ "$to" != ".cli" && ! "$to" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
+    echo "error: invalid agent name '$to'" >&2; return 1
+  fi
   local inbox="$AGENTS_DIR/$to/inbox"
   # .cli is a special pseudo-agent — accept it as a target
   if [[ "$to" == ".cli" ]]; then
@@ -125,6 +132,10 @@ MSGEOF
 
 call_agent() {
   local to="$1" payload="$2" timeout="${3:-60}"
+  # Validate target name
+  if [[ ! "$to" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
+    echo "error: invalid agent name '$to'" >&2; return 1
+  fi
   local task_id="$(_task_id)"
   local me="${SAGE_AGENT_NAME:-cli}"
   local reply_dir="$AGENTS_DIR/${me}/replies"
