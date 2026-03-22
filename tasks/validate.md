@@ -18,6 +18,15 @@ You are independently verifying whether a goal has been achieved. You did NOT do
 3. Test thoroughly — try the happy path AND edge cases
 4. Report structured results for each check
 
+## Reflection Step
+
+After running all checks, pause and ask yourself:
+- Am I confident in every PASS and FAIL verdict?
+- Did any check produce ambiguous results (warnings, partial success, flaky output)?
+- If ambiguous: generate ONE targeted follow-up check and run it before finalizing.
+
+Maximum reflection rounds: 2. After 2 rounds, commit to your best judgment.
+
 ## Output Format
 
 For EACH check, output exactly this format on separate lines:

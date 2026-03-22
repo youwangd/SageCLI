@@ -1919,6 +1919,12 @@ Generate a JSON array of checks to verify this goal is achieved. Each check has:
 
 Prefer mechanical checks when possible. Use agent tier only when a shell command truly cannot verify it. Use manual tier only for subjective aesthetics.
 
+IMPORTANT rules:
+- Generate the MINIMUM number of checks needed. One good check beats three redundant ones.
+- For test suites, a single \"exit 0\" check is sufficient — don't also check output text.
+- For \"contains\" expectations, use EXACT text from the tool's actual output format (don't guess).
+- Never generate two checks that run the same command.
+
 Return ONLY a valid JSON array, no markdown fences, no explanation."
 
   # Try Gemini first, then Anthropic, then OpenAI
@@ -2045,7 +2051,21 @@ _build_worker_summary() {
   if [[ "$cycle" -gt 0 ]]; then
     echo ""
     echo "Previous attempts (${cycle} cycles so far):"
-    jq -r '.attempts[]? | "- Cycle \(.cycle): \(.status): \(.failed_reason[:200] // "unknown")"' "$state_file" 2>/dev/null
+
+    if [[ "$cycle" -le 3 ]]; then
+      # Show all attempts in detail
+      jq -r '.attempts[]? | "- Cycle \(.cycle): \(.status): \(.failed_reason[:200] // "unknown")"' "$state_file" 2>/dev/null
+    else
+      # Summarize old attempts, detail only last 3
+      local old_count=$((cycle - 3))
+      local old_reasons
+      old_reasons=$(jq -r "[.attempts[:${old_count}][]? | .failed_reason[:80] // \"unknown\"] | join(\"; \")" "$state_file" 2>/dev/null)
+      echo "Summary of cycles 1-${old_count}: ${old_reasons}"
+      echo ""
+      # Detail last 3
+      jq -r ".attempts[-3:][]? | \"- Cycle \(.cycle): \(.status): \(.failed_reason[:200] // \"unknown\")\"" "$state_file" 2>/dev/null
+    fi
+
     echo ""
     echo "Latest validation feedback:"
     echo "$feedback"
