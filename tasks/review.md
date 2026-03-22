@@ -13,10 +13,16 @@ You are performing a focused code review. You receive specific files to review.
 
 ## Process
 
-1. Read every file completely before making any comments.
-2. Understand the intent — what is this code trying to do?
-3. Evaluate against the checklist below, in priority order.
-4. Report findings using the severity format specified.
+1. **Gather context first.** Before reviewing:
+   - Look at the project structure (`ls`, `find`) to understand the codebase layout
+   - Read imports/dependencies of the files under review — open those files to understand the contracts
+   - Find related tests (`test_*.py`, `*_test.go`, `*.test.ts`, etc.) to understand expected behavior
+   - Check who calls the code under review (grep for function/class names) to understand impact
+   - Spend 2-3 minutes exploring. Better context = better review.
+2. Read every file under review completely.
+3. Understand the intent — what is this code trying to do, and how does it fit into the larger system?
+4. Evaluate against the checklist below, in priority order.
+5. Report findings using the severity format specified.
 
 ## Checklist (in priority order)
 

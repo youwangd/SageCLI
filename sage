@@ -1895,21 +1895,501 @@ _template_body() {
   awk 'BEGIN{n=0} /^---$/{n++; next} n>=2{print}' "$file"
 }
 
+
+# ═══════════════════════════════════════════════
+# Goal-driven task loop
+# ═══════════════════════════════════════════════
+RUNS_DIR="$SAGE_HOME/runs"
+
+_generate_checks() {
+  local goal="$1" project_context="$2"
+
+  local prompt="You are generating validation checks for a software task.
+
+Goal: ${goal}
+
+Project context (files in project):
+${project_context}
+
+Generate a JSON array of checks to verify this goal is achieved. Each check has:
+- \"tier\": \"mechanical\" (shell command) or \"agent\" (needs browser/complex inspection) or \"manual\" (subjective, needs human)
+- \"command\": for mechanical tier, the exact shell command to run
+- \"expect\": for mechanical tier, \"exit 0\" or \"contains TEXT\"
+- \"description\": human-readable description of what this checks
+
+Prefer mechanical checks when possible. Use agent tier only when a shell command truly cannot verify it. Use manual tier only for subjective aesthetics.
+
+Return ONLY a valid JSON array, no markdown fences, no explanation."
+
+  # Try Gemini first, then Anthropic, then OpenAI
+  if [[ -n "${GEMINI_API_KEY:-}" ]]; then
+    curl -s --max-time 60 \
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}" \
+      -H "Content-Type: application/json" \
+      -d "$(jq -n --arg p "$prompt" '{contents:[{parts:[{text:$p}]}],generationConfig:{temperature:0.1}}')" \
+      | jq -r '.candidates[0].content.parts[0].text' 2>/dev/null
+  elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+    source "$TOOLS_DIR/llm.sh"
+    llm "$prompt"
+  elif [[ -n "${OPENAI_API_KEY:-}" ]]; then
+    source "$TOOLS_DIR/llm.sh"
+    llm "$prompt"
+  else
+    echo "error: no LLM API key set (need GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)" >&2
+    return 1
+  fi
+}
+
+_run_mechanical_checks() {
+  local checks_file="$1" results_file="$2"
+  local all_pass=true
+  local results="[]"
+  local check_items
+  check_items=$(jq -c '[.[] | select(.tier == "mechanical")]' "$checks_file")
+  local n=$(echo "$check_items" | jq 'length')
+
+  for i in $(seq 0 $((n - 1))); do
+    local cmd=$(echo "$check_items" | jq -r ".[$i].command")
+    local expect=$(echo "$check_items" | jq -r ".[$i].expect")
+    local desc=$(echo "$check_items" | jq -r ".[$i].description")
+
+    local output exit_code=0
+    output=$(eval "$cmd" 2>&1) || exit_code=$?
+
+    local status="PASS"
+    if [[ "$expect" == "exit 0" && "$exit_code" -ne 0 ]]; then
+      status="FAIL"
+      all_pass=false
+    elif [[ "$expect" == contains\ * ]]; then
+      local expected_text="${expect#contains }"
+      if ! echo "$output" | grep -qF "$expected_text"; then
+        status="FAIL"
+        all_pass=false
+      fi
+    fi
+
+    local trunc_output="${output:0:2000}"
+    results=$(echo "$results" | jq \
+      --arg d "$desc" --arg s "$status" --arg o "$trunc_output" --arg c "$cmd" --argjson e "$exit_code" \
+      '. + [{"description":$d,"status":$s,"exit_code":$e,"output":$o,"command":$c}]')
+  done
+
+  echo "$results" > "$results_file"
+  [[ "$all_pass" == true ]]
+}
+
+_run_validator() {
+  local checks_file="$1" output_file="$2" run_dir="$3" stimeout="$4"
+  local agent_checks
+  agent_checks=$(jq -r '[.[] | select(.tier == "agent")] | .[] | .description' "$checks_file")
+  [[ -z "$agent_checks" ]] && { echo "VERDICT: PASS" > "$output_file"; return 0; }
+
+  local agent_name="sage-validator-$(date +%s)"
+  local agent_dir="$AGENTS_DIR/$agent_name"
+  local tmpl_body
+  tmpl_body=$(_template_body "$TASKS_DIR/validate.md")
+
+  cmd_create "$agent_name" --runtime acp --agent claude-code 2>/dev/null
+  echo "$tmpl_body" > "$agent_dir/instructions.md"
+  cmd_start "$agent_name" 2>/dev/null
+
+  local check_prompt="Please verify these checks independently:\n\n"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && check_prompt+="- ${line}\n"
+  done <<< "$agent_checks"
+
+  source "$TOOLS_DIR/common.sh"
+  local payload
+  payload=$(jq -n --arg t "$(echo -e "$check_prompt")" '{text:$t}')
+  local task_id
+  task_id=$(send_msg "$agent_name" "$payload")
+
+  local deadline=$((SECONDS + stimeout))
+  local status_file="$agent_dir/results/${task_id}.status.json"
+
+  while [[ $SECONDS -lt $deadline ]]; do
+    if [[ -f "$status_file" ]]; then
+      local st
+      st=$(jq -r '.status' "$status_file" 2>/dev/null)
+      [[ "$st" == "done" || "$st" == "failed" ]] && break
+    fi
+    sleep 2
+  done
+
+  local result=""
+  local rf="$agent_dir/results/${task_id}.result.json"
+  local lf="$agent_dir/.live_output"
+  [[ -f "$rf" ]] && result=$(cat "$rf")
+  [[ -z "$result" && -f "$lf" ]] && result=$(cat "$lf")
+  echo "$result" > "$output_file"
+
+  cmd_stop "$agent_name" 2>/dev/null || true
+  rm -rf "$agent_dir" 2>/dev/null || true
+
+  echo "$result" | grep -q "VERDICT: PASS"
+}
+
+_build_worker_summary() {
+  local goal="$1" state_file="$2" feedback="$3" tmpl_body="$4"
+  local cycle
+  cycle=$(jq -r '.current_cycle // 0' "$state_file" 2>/dev/null)
+
+  echo "$tmpl_body"
+  echo ""
+  echo "---"
+  echo ""
+  echo "## Your Task"
+  echo ""
+  echo "Goal: ${goal}"
+
+  if [[ "$cycle" -gt 0 ]]; then
+    echo ""
+    echo "Previous attempts (${cycle} cycles so far):"
+    jq -r '.attempts[]? | "- Cycle \(.cycle): \(.status): \(.failed_reason[:200] // "unknown")"' "$state_file" 2>/dev/null
+    echo ""
+    echo "Latest validation feedback:"
+    echo "$feedback"
+    echo ""
+    echo "The codebase is in the current directory. All previous changes are present. Address the failing checks."
+  fi
+}
+
+_goal_loop() {
+  local template="$1" goal="$2" max_retries="$3" stimeout="$4" task_content="$5"
+  local tmpl_file="$TASKS_DIR/${template}.md"
+  local tmpl_body
+  tmpl_body=$(_template_body "$tmpl_file")
+  local tmpl_runtime
+  tmpl_runtime=$(_parse_frontmatter "$tmpl_file" "runtime")
+  local use_runtime="$tmpl_runtime"
+  [[ "$use_runtime" == "auto" ]] && use_runtime="acp"
+
+  local run_id="${template}-$(date +%s)"
+  local run_dir="$RUNS_DIR/$run_id"
+  mkdir -p "$run_dir/cycles"
+
+  info "generating validation checks..."
+  local project_context
+  project_context=$(find . -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './__pycache__/*' -not -path './venv/*' 2>/dev/null | head -50)
+
+  local checks_raw
+  checks_raw=$(_generate_checks "$goal" "$project_context")
+
+  local checks_json
+  checks_json=$(echo "$checks_raw" | sed 's/^```json//;s/^```//;s/```$//' | jq '.' 2>/dev/null)
+  if [[ -z "$checks_json" || "$checks_json" == "null" ]]; then
+    die "failed to generate valid checks. Raw output:\n$checks_raw"
+  fi
+
+  echo "$checks_json" > "$run_dir/checks.json"
+
+  echo ""
+  printf "  ${BOLD}Generated validation checks:${NC}\n"
+  local idx=0
+  echo "$checks_json" | jq -c '.[]' | while IFS= read -r check; do
+    ((idx++)) || true
+    local tier desc cmd
+    tier=$(echo "$check" | jq -r '.tier')
+    desc=$(echo "$check" | jq -r '.description')
+    cmd=$(echo "$check" | jq -r '.command // "-"')
+    local label
+    case "$tier" in
+      mechanical) label="MECHANICAL" ;;
+      agent)      label="AGENT" ;;
+      manual)     label="MANUAL ⚠️" ;;
+      *)          label="$tier" ;;
+    esac
+    if [[ "$cmd" != "-" ]]; then
+      printf "    ${idx}. [${label}] ${desc}\n       → ${cmd}\n"
+    else
+      printf "    ${idx}. [${label}] ${desc}\n"
+    fi
+  done
+  echo ""
+
+  printf "  Accept? [Y/n] "
+  read -r approval
+  if [[ "$approval" =~ ^[Nn] ]]; then
+    info "aborted"
+    rm -rf "$run_dir"
+    return 1
+  fi
+
+  local state_file="$run_dir/state.json"
+  jq -n --arg g "$goal" --arg id "$run_id" --arg t "$template" \
+    '{run_id:$id, template:$t, goal:$g, status:"running", current_cycle:0, attempts:[]}' \
+    > "$state_file"
+
+  cat > "$run_dir/run.md" << RUNMD
+# Run: ${run_id}
+Goal: ${goal}
+Started: $(date '+%Y-%m-%d %H:%M %Z')
+Template: ${template}
+
+## Checks
+$(echo "$checks_json" | jq -r '.[] | "- [\(.tier | ascii_upcase)] \(.description)"')
+
+---
+RUNMD
+
+  info "run ${BOLD}${run_id}${NC} — max ${max_retries} retries, ${stimeout}s per cycle"
+  echo ""
+
+  local cycle=0 feedback="" last_failure="" consecutive_same=0
+  local run_start=$SECONDS
+
+  while [[ $cycle -lt $max_retries ]]; do
+    ((cycle++)) || true
+    local cycle_start=$SECONDS
+    local pad=$(printf '%03d' $cycle)
+
+    info "── cycle ${BOLD}${cycle}/${max_retries}${NC} ──"
+
+    local worker_instructions
+    worker_instructions=$(_build_worker_summary "$goal" "$state_file" "$feedback" "$tmpl_body")
+
+    local worker_name="sage-goal-worker-${cycle}-$(date +%s)"
+    local worker_dir="$AGENTS_DIR/$worker_name"
+
+    cmd_create "$worker_name" --runtime acp --agent claude-code 2>/dev/null
+    # Point worker at the actual project directory, not its isolated workspace
+    local project_dir
+    project_dir=$(pwd)
+    jq --arg wd "$project_dir" '.workdir = $wd' "$worker_dir/runtime.json" > "${worker_dir}/runtime.json.tmp" \
+      && mv "${worker_dir}/runtime.json.tmp" "$worker_dir/runtime.json"
+    echo "$worker_instructions" > "$worker_dir/instructions.md"
+    cmd_start "$worker_name" 2>/dev/null
+
+    export SAGE_AGENT_NAME="${SAGE_AGENT_NAME:-cli}"
+    source "$TOOLS_DIR/common.sh"
+    local payload
+    payload=$(jq -n --arg t "$(printf '%s\n\nGoal: %s' "$task_content" "$goal")" '{text:$t}')
+    local task_id
+    task_id=$(send_msg "$worker_name" "$payload")
+
+    info "worker running... (timeout: ${stimeout}s)"
+    local deadline=$((SECONDS + stimeout))
+    local w_status="$worker_dir/results/${task_id}.status.json"
+
+    while [[ $SECONDS -lt $deadline ]]; do
+      if [[ -f "$w_status" ]]; then
+        local ws
+        ws=$(jq -r '.status' "$w_status" 2>/dev/null)
+        [[ "$ws" == "done" || "$ws" == "failed" ]] && break
+      fi
+      sleep 2
+    done
+
+    local worker_output=""
+    local w_result="$worker_dir/results/${task_id}.result.json"
+    local w_live="$worker_dir/.live_output"
+    [[ -f "$w_result" ]] && worker_output=$(cat "$w_result")
+    [[ -z "$worker_output" && -f "$w_live" ]] && worker_output=$(cat "$w_live")
+    echo "$worker_output" > "$run_dir/cycles/${pad}-worker.md"
+
+    cmd_stop "$worker_name" 2>/dev/null || true
+    rm -rf "$worker_dir" 2>/dev/null || true
+
+    # ── Mechanical checks ──
+    local mech_results="$run_dir/cycles/${pad}-mechanical.json"
+    local mech_pass=true
+    local has_mechanical
+    has_mechanical=$(jq '[.[] | select(.tier == "mechanical")] | length' "$run_dir/checks.json")
+
+    if [[ "$has_mechanical" -gt 0 ]]; then
+      info "mechanical checks..."
+      _run_mechanical_checks "$run_dir/checks.json" "$mech_results" || mech_pass=false
+    fi
+
+    # ── Agent checks ──
+    local has_agent
+    has_agent=$(jq '[.[] | select(.tier == "agent")] | length' "$run_dir/checks.json")
+    local agent_pass=true
+    local validator_output="$run_dir/cycles/${pad}-validator.md"
+
+    if [[ "$mech_pass" == true && "$has_agent" -gt 0 ]]; then
+      info "agent validation..."
+      _run_validator "$run_dir/checks.json" "$validator_output" "$run_dir" "$stimeout" || agent_pass=false
+    elif [[ "$has_agent" -eq 0 ]]; then
+      echo "No agent checks." > "$validator_output"
+    else
+      echo "Skipped — mechanical checks failed." > "$validator_output"
+    fi
+
+    # ── Build feedback ──
+    local cycle_duration=$(( SECONDS - cycle_start ))
+    local cycle_status="FAIL"
+    feedback=""
+
+    if [[ "$mech_pass" == true && "$agent_pass" == true ]]; then
+      cycle_status="PASS"
+    else
+      if [[ "$mech_pass" == false && -f "$mech_results" ]]; then
+        feedback+="Mechanical check failures:\n"
+        feedback+=$(jq -r '.[] | select(.status == "FAIL") | "  ❌ \(.description)\n     Command: \(.command)\n     Exit code: \(.exit_code)\n     Output:\n\(.output[:500])\n"' "$mech_results" 2>/dev/null)
+      fi
+      if [[ "$agent_pass" == false && -f "$validator_output" ]]; then
+        feedback+="\nAgent check failures:\n"
+        local fail_lines
+        fail_lines=$(grep -B1 -A3 "STATUS: FAIL" "$validator_output" 2>/dev/null || echo "  (no details)")
+        feedback+="$fail_lines"
+      fi
+    fi
+
+    # ── Append to run.md ──
+    cat >> "$run_dir/run.md" << CYCLEMD
+
+## Cycle ${cycle} — $(date '+%H:%M')
+**Duration:** ${cycle_duration}s
+**Checks:**
+CYCLEMD
+    if [[ -f "$mech_results" ]]; then
+      jq -r '.[] | (if .status == "PASS" then "  ✅ " else "  ❌ " end) + .description' "$mech_results" >> "$run_dir/run.md"
+    fi
+    if [[ "$has_agent" -gt 0 && -f "$validator_output" ]]; then
+      grep -E "^(CHECK|STATUS):" "$validator_output" 2>/dev/null | paste - - | \
+        sed 's/CHECK: \(.*\)\tSTATUS: PASS/  ✅ \1/;s/CHECK: \(.*\)\tSTATUS: FAIL/  ❌ \1/' \
+        >> "$run_dir/run.md" 2>/dev/null || true
+    fi
+    echo "**Result:** ${cycle_status}" >> "$run_dir/run.md"
+
+    # ── Update state ──
+    local attempt_json
+    attempt_json=$(jq -n --argjson c "$cycle" --arg s "$cycle_status" \
+      --arg r "$(echo -e "${feedback:0:500}")" --argjson d "$cycle_duration" \
+      '{cycle:$c, status:$s, failed_reason:$r, duration_s:$d}')
+    jq --argjson a "$attempt_json" --argjson c "$cycle" \
+      '.current_cycle = $c | .attempts += [$a]' "$state_file" > "${state_file}.tmp" \
+      && mv "${state_file}.tmp" "$state_file"
+
+    # ── Trace ──
+    _trace "{\"ts\":$(date +%s),\"type\":\"goal_cycle\",\"run\":\"$run_id\",\"cycle\":$cycle,\"status\":\"$cycle_status\"}"
+
+    # ── Decision ──
+    if [[ "$cycle_status" == "PASS" ]]; then
+      local total_duration=$(( SECONDS - run_start ))
+      echo "" >> "$run_dir/run.md"
+      echo "## Result: PASS ✅ — ${cycle} cycle(s), ${total_duration}s total" >> "$run_dir/run.md"
+      jq '.status = "passed"' "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
+      echo ""
+      ok "PASS after ${cycle} cycle(s), ${total_duration}s"
+      info "run log: sage runs ${run_id}"
+      return 0
+    fi
+
+    # Circle detection
+    local current_failure="${feedback:0:200}"
+    if [[ "$current_failure" == "$last_failure" && -n "$current_failure" ]]; then
+      ((consecutive_same++)) || true
+    else
+      consecutive_same=1
+      last_failure="$current_failure"
+    fi
+
+    if [[ $consecutive_same -ge 3 ]]; then
+      local total_duration=$(( SECONDS - run_start ))
+      echo "" >> "$run_dir/run.md"
+      echo "## Result: ESCALATED — same failure 3x (${total_duration}s)" >> "$run_dir/run.md"
+      jq '.status = "escalated"' "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
+      echo ""
+      warn "same failure 3 times — escalating"
+      printf "  ${BOLD}Last failure:${NC}\n"
+      echo -e "$feedback" | head -20
+      echo ""
+      info "run log: sage runs ${run_id}"
+      return 1
+    fi
+
+    warn "cycle ${cycle} failed — retrying"
+    echo ""
+  done
+
+  local total_duration=$(( SECONDS - run_start ))
+  echo "" >> "$run_dir/run.md"
+  echo "## Result: FAILED — max retries (${max_retries}) exhausted (${total_duration}s)" >> "$run_dir/run.md"
+  jq '.status = "failed"' "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
+  echo ""
+  warn "max retries (${max_retries}) exhausted after ${total_duration}s"
+  info "run log: sage runs ${run_id}"
+  return 1
+}
+
+cmd_runs() {
+  local run_id="" cycle_num="" show_active=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --active|-a) show_active=true; shift ;;
+      -c)          cycle_num="$2"; shift 2 ;;
+      -*)          die "unknown flag: $1" ;;
+      *)           run_id="$1"; shift ;;
+    esac
+  done
+
+  ensure_init
+  mkdir -p "$RUNS_DIR"
+
+  if [[ -z "$run_id" ]]; then
+    if [[ "$show_active" == true ]]; then
+      printf "  ${BOLD}%-35s %-10s %s${NC}\n" "RUN" "STATUS" "CYCLES"
+      for d in "$RUNS_DIR"/*/state.json; do
+        [[ -f "$d" ]] || continue
+        local st=$(jq -r '.status' "$d")
+        [[ "$st" == "running" ]] || continue
+        local id=$(jq -r '.run_id' "$d")
+        local cy=$(jq -r '.current_cycle' "$d")
+        printf "  %-35s %-10s %s\n" "$id" "$st" "$cy"
+      done
+    else
+      printf "  ${BOLD}%-35s %-10s %-8s %s${NC}\n" "RUN" "STATUS" "CYCLES" "GOAL"
+      for d in "$RUNS_DIR"/*/state.json; do
+        [[ -f "$d" ]] || continue
+        local id=$(jq -r '.run_id' "$d")
+        local st=$(jq -r '.status' "$d")
+        local cy=$(jq -r '.current_cycle' "$d")
+        local gl=$(jq -r '.goal[:50]' "$d")
+        printf "  %-35s %-10s %-8s %s\n" "$id" "$st" "$cy" "$gl"
+      done
+    fi
+    return 0
+  fi
+
+  local rd="$RUNS_DIR/$run_id"
+  [[ -d "$rd" ]] || die "run '$run_id' not found"
+
+  if [[ -n "$cycle_num" ]]; then
+    local p=$(printf '%03d' "$cycle_num")
+    echo "=== Worker output (cycle ${cycle_num}) ==="
+    cat "$rd/cycles/${p}-worker.md" 2>/dev/null || echo "(not found)"
+    echo ""
+    echo "=== Mechanical checks (cycle ${cycle_num}) ==="
+    cat "$rd/cycles/${p}-mechanical.json" 2>/dev/null | jq '.' 2>/dev/null || echo "(not found)"
+    echo ""
+    echo "=== Validator output (cycle ${cycle_num}) ==="
+    cat "$rd/cycles/${p}-validator.md" 2>/dev/null || echo "(not found)"
+  else
+    cat "$rd/run.md"
+  fi
+}
+
 # ═══════════════════════════════════════════════
 # sage task <template> [files...] [flags]
 # ═══════════════════════════════════════════════
 cmd_task() {
   local template="" message="" runtime_override="" timeout=300 background=false
+  local goal="" max_retries=10 session_timeout=600
   local -a files=()
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --message|-m)    message="$2"; shift 2 ;;
-      --runtime|-r)    runtime_override="$2"; shift 2 ;;
-      --timeout|-t)    timeout="$2"; shift 2 ;;
-      --background|-b) background=true; shift ;;
-      --list|-l)       _list_templates "$TASKS_DIR"; return 0 ;;
-      -*)              die "unknown flag: $1" ;;
+      --message|-m)         message="$2"; shift 2 ;;
+      --runtime|-r)         runtime_override="$2"; shift 2 ;;
+      --timeout|-t)         timeout="$2"; shift 2 ;;
+      --background|-b)      background=true; shift ;;
+      --goal|-g)            goal="$2"; shift 2 ;;
+      --retries)            max_retries="$2"; shift 2 ;;
+      --session-timeout)    session_timeout="$2"; shift 2 ;;
+      --list|-l)            _list_templates "$TASKS_DIR"; return 0 ;;
+      -*)                   die "unknown flag: $1" ;;
       *)
         if [[ -z "$template" ]]; then
           template="$1"
@@ -1962,6 +2442,13 @@ cmd_task() {
   # Include user message
   if [[ -n "$message" ]]; then
     task_content+="## Additional Context\n\n${message}\n"
+  fi
+
+  # ── Goal-driven loop mode ──
+  if [[ -n "$goal" ]]; then
+    mkdir -p "$RUNS_DIR"
+    _goal_loop "$template" "$goal" "$max_retries" "$session_timeout" "$(echo -e "$task_content")"
+    return $?
   fi
 
   # Create ephemeral agent
@@ -3016,6 +3503,7 @@ case "${1:-}" in
   clean)   cmd_clean ;;
   tool)    shift; cmd_tool "$@" ;;
   task)    shift; cmd_task "$@" ;;
+  runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;
   help|-h|--help|"") cmd_help ;;
   *)       die "unknown command: $1. Run: sage help" ;;
