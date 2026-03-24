@@ -54,10 +54,13 @@ sage status
 1. Wait 2-3 minutes for agents to work
 2. Check each agent: `sage peek oncall-<id> --lines 20`
 3. Collect findings into a consolidated report
-4. Report to the human with format:
+4. Report to the human with format below
+5. **STOP and say "Waiting for your instructions." — do NOT continue until human responds**
+
+The human will reply via `sage send`. That becomes your next message. Parse it and proceed to Phase 3.
 
 ```
-=== ONCALL STATUS REPORT ===
+=== ONCALL STATUS REPORT (Round N) ===
 
 JIRA-123 (oncall-123): ✅ FINDING
   → Found bug in auth.py line 42. Session cookie not set. Recommends: add Set-Cookie header.
