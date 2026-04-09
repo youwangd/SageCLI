@@ -102,3 +102,57 @@ teardown() {
   # File should exist on main branch now
   [ -f "$TEST_REPO/test.txt" ]
 }
+
+# --- merge --dry-run ---
+
+@test "merge --dry-run reports clean merge without merging" {
+  cd "$TEST_REPO"
+  "$SAGE" create worker --worktree feat-dr
+  local ws
+  ws=$(jq -r '.workdir' "$SAGE_HOME/agents/worker/runtime.json")
+  echo "new" > "$ws/file.txt"
+  git -C "$ws" add file.txt
+  git -C "$ws" commit -q -m "add file"
+  run "$SAGE" merge worker --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "clean" ]]
+  # File should NOT exist on main — dry-run doesn't merge
+  [ ! -f "$TEST_REPO/file.txt" ]
+}
+
+@test "merge --dry-run detects conflicts" {
+  cd "$TEST_REPO"
+  "$SAGE" create worker --worktree feat-conflict
+  local ws
+  ws=$(jq -r '.workdir' "$SAGE_HOME/agents/worker/runtime.json")
+  # Create conflicting changes
+  echo "main-version" > "$TEST_REPO/clash.txt"
+  git -C "$TEST_REPO" add clash.txt
+  git -C "$TEST_REPO" commit -q -m "main change"
+  echo "branch-version" > "$ws/clash.txt"
+  git -C "$ws" add clash.txt
+  git -C "$ws" commit -q -m "branch change"
+  run "$SAGE" merge worker --dry-run
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "conflict" ]]
+}
+
+@test "merge --dry-run shows diffstat on clean merge" {
+  cd "$TEST_REPO"
+  "$SAGE" create worker --worktree feat-stat
+  local ws
+  ws=$(jq -r '.workdir' "$SAGE_HOME/agents/worker/runtime.json")
+  echo "data" > "$ws/stats.txt"
+  git -C "$ws" add stats.txt
+  git -C "$ws" commit -q -m "add stats"
+  run "$SAGE" merge worker --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "stats.txt" ]]
+}
+
+@test "merge --dry-run fails for non-worktree agent" {
+  "$SAGE" create worker
+  run "$SAGE" merge worker --dry-run
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "worktree" ]]
+}
