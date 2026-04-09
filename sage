@@ -831,7 +831,7 @@ RUNNER
 # sage create <name> [--runtime <rt>] [--model <m>]
 # ═══════════════════════════════════════════════
 cmd_create() {
-  local name="" runtime="bash" model="" parent="" acp_agent="" worktree_branch=""
+  local name="" runtime="bash" model="" parent="" acp_agent="" worktree_branch="" mcp_servers=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -840,6 +840,7 @@ cmd_create() {
       --agent|-a)     acp_agent="$2"; shift 2 ;;
       --parent)       parent="$2"; shift 2 ;;
       --worktree|-w)  worktree_branch="$2"; shift 2 ;;
+      --mcp)          mcp_servers="$2"; shift 2 ;;
       -*)             die "unknown flag: $1" ;;
       *)              name="$1"; shift ;;
     esac
@@ -869,6 +870,15 @@ cmd_create() {
   # Validate runtime
   [[ -f "$RUNTIMES_DIR/${runtime}.sh" ]] || die "unknown runtime: $runtime (available: $(ls "$RUNTIMES_DIR" | sed 's/.sh//' | tr '\n' ' '))"
 
+  # Validate MCP servers exist in registry
+  local mcp_list=()
+  if [[ -n "$mcp_servers" ]]; then
+    IFS=',' read -ra mcp_list <<< "$mcp_servers"
+    for srv in "${mcp_list[@]}"; do
+      [[ -f "$SAGE_HOME/mcp/${srv}.json" ]] || die "unknown MCP server: $srv (register with: sage mcp add $srv --command <cmd> --args <args>)"
+    done
+  fi
+
   mkdir -p "$agent_dir"/{inbox,state,replies,workspace}
 
   # Git worktree isolation
@@ -891,6 +901,10 @@ cmd_create() {
   # Write runtime config
   local wt="false" wb=""
   if [[ -n "$worktree_branch" ]]; then wt="true"; wb="$worktree_branch"; fi
+  local mcp_json_arr="[]"
+  if [[ ${#mcp_list[@]} -gt 0 ]]; then
+    mcp_json_arr=$(printf '%s\n' "${mcp_list[@]}" | jq -R . | jq -s .)
+  fi
   jq -n \
     --arg rt "$runtime" \
     --arg m "$model" \
@@ -899,8 +913,18 @@ cmd_create() {
     --arg aa "$acp_agent" \
     --argjson wt "$wt" \
     --arg wb "$wb" \
-    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, acp_agent:$aa, worktree:$wt, worktree_branch:$wb, created:(now|todate)}' \
+    --argjson mcp "$mcp_json_arr" \
+    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, acp_agent:$aa, worktree:$wt, worktree_branch:$wb, mcp_servers:$mcp, created:(now|todate)}' \
     > "$agent_dir/runtime.json"
+
+  # Assemble mcp.json from registry
+  if [[ ${#mcp_list[@]} -gt 0 ]]; then
+    local mcp_cfg="{\"mcpServers\":{}}"
+    for srv in "${mcp_list[@]}"; do
+      mcp_cfg=$(echo "$mcp_cfg" | jq --arg s "$srv" --slurpfile c "$SAGE_HOME/mcp/${srv}.json" '.mcpServers[$s] = $c[0]')
+    done
+    echo "$mcp_cfg" > "$agent_dir/mcp.json"
+  fi
 
   # Generate instructions for CLI runtimes
   if [[ "$runtime" != "bash" ]]; then
@@ -3521,6 +3545,53 @@ _plan_list() {
 }
 
 # ═══════════════════════════════════════════════
+# sage mcp — manage MCP server registry
+# ═══════════════════════════════════════════════
+cmd_mcp() {
+  local subcmd="${1:-}"
+  shift 2>/dev/null || true
+  ensure_init
+  mkdir -p "$SAGE_HOME/mcp"
+
+  case "$subcmd" in
+    add)
+      local name="" command="" args=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --command) command="$2"; shift 2 ;;
+          --args)    args="$2"; shift 2 ;;
+          -*)        die "unknown flag: $1" ;;
+          *)         name="$1"; shift ;;
+        esac
+      done
+      [[ -n "$name" ]] || die "usage: sage mcp add <name> --command <cmd> [--args <comma-separated>]"
+      [[ -n "$command" ]] || die "usage: sage mcp add <name> --command <cmd> [--args <comma-separated>]"
+      local args_json="[]"
+      if [[ -n "$args" ]]; then
+        args_json=$(echo "$args" | tr ',' '\n' | jq -R . | jq -s .)
+      fi
+      jq -n --arg c "$command" --argjson a "$args_json" '{command:$c, args:$a}' > "$SAGE_HOME/mcp/${name}.json"
+      echo "registered MCP server: $name"
+      ;;
+    rm)
+      local name="${1:-}"
+      [[ -n "$name" ]] || die "usage: sage mcp rm <name>"
+      rm -f "$SAGE_HOME/mcp/${name}.json"
+      echo "removed MCP server: $name"
+      ;;
+    ls)
+      for f in "$SAGE_HOME/mcp"/*.json; do
+        [[ -f "$f" ]] || { echo "no MCP servers registered"; return; }
+        local n=$(basename "$f" .json)
+        local cmd=$(jq -r '.command' "$f")
+        echo "$n  ($cmd)"
+      done
+      ;;
+    *) die "usage: sage mcp {add|rm|ls}" ;;
+  esac
+}
+
+# ═══════════════════════════════════════════════
 # sage help
 # ═══════════════════════════════════════════════
 cmd_help() {
@@ -3621,6 +3692,7 @@ case "${1:-}" in
   merge)   shift; cmd_merge "$@" ;;
   clean)   cmd_clean ;;
   tool)    shift; cmd_tool "$@" ;;
+  mcp)     shift; cmd_mcp "$@" ;;
   task)    shift; cmd_task "$@" ;;
   runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;

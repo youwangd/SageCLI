@@ -9,7 +9,7 @@ SAGE="$REPO_ROOT/sage"
 mapfile -t commands < <(grep -oP '^cmd_\K[a-z_]+' "$SAGE" | sort -u)
 
 # Extract all commands tested in bats files
-mapfile -t tested < <(grep -rohP '"\$SAGE"\s+\K[a-z_]+' "$REPO_ROOT"/tests/*.bats | sort -u)
+mapfile -t tested < <(grep -rohP '("\$SAGE"|sage)\s+\K[a-z_]+' "$REPO_ROOT"/tests/*.bats | sort -u)
 
 total=${#commands[@]}
 covered=0
