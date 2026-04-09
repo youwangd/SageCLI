@@ -73,7 +73,7 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 **Use case**: "I want to refactor sage without breaking anything"
 
 - [ ] Create `tests/` directory with bats-core test framework
-- [~] Unit tests for every command — create, rm done (10 tests), more commands pending
+- [~] Unit tests for every command — create, rm (10), ls/clean/status/inbox/send (13) done, 30 total
 - [ ] Integration tests: full lifecycle (create → send → wait → result)
 - [ ] CI via GitHub Actions (test on ubuntu + macos)
 - [ ] Shellcheck linting on every PR
