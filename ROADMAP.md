@@ -82,9 +82,9 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 ### Phase 1: Git Worktree Isolation
 **Use case**: "Run 3 agents implementing different features in parallel without merge conflicts"
 
-- [ ] `sage create worker --worktree feature-auth` — auto-creates git worktree
-- [ ] Each agent works in isolated branch
-- [ ] `sage merge worker` — merges worktree back to main
+- [x] `sage create worker --worktree feature-auth` — auto-creates git worktree
+- [x] Each agent works in isolated branch
+- [x] `sage merge worker` — merges worktree back to main
 - [ ] Conflict detection before merge
 
 ### Phase 2: Headless/CI Mode
