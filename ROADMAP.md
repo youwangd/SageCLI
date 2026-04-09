@@ -90,7 +90,7 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 ### Phase 2: Headless/CI Mode
 **Use case**: "Run sage in GitHub Actions to auto-review PRs"
 
-- [ ] `sage run --headless "Review this PR"` — no tmux required
+- [x] `sage run --headless "Review this PR"` — no tmux required
 - [ ] JSON output mode for CI parsing
 - [ ] Exit codes for pass/fail
 - [ ] GitHub Action wrapper
