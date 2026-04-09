@@ -77,7 +77,7 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 - [ ] Integration tests: full lifecycle (create → send → wait → result)
 - [x] CI via GitHub Actions (test on ubuntu + macos) — `.github/workflows/ci.yml`
 - [x] Shellcheck linting on every PR — `--severity=error` in CI
-- [ ] Coverage tracking
+- [x] Coverage tracking — `tests/coverage.sh` reports 80% command coverage (20/25), CI integrated
 
 ### Phase 1: Git Worktree Isolation
 **Use case**: "Run 3 agents implementing different features in parallel without merge conflicts"
