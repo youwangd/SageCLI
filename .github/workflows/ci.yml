@@ -13,6 +13,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Configure git identity
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@test"
       - name: Install bats
         run: |
           git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats
