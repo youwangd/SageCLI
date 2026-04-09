@@ -85,7 +85,7 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 - [x] `sage create worker --worktree feature-auth` — auto-creates git worktree
 - [x] Each agent works in isolated branch
 - [x] `sage merge worker` — merges worktree back to main
-- [ ] Conflict detection before merge
+- [x] Conflict detection before merge
 
 ### Phase 2: Headless/CI Mode
 **Use case**: "Run sage in GitHub Actions to auto-review PRs"
