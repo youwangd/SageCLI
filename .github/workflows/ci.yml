@@ -25,6 +25,8 @@ jobs:
           fi
       - name: Run tests
         run: bats tests/
+      - name: Coverage report
+        run: tests/coverage.sh
 
   shellcheck:
     runs-on: ubuntu-latest
