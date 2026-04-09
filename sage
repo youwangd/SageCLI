@@ -524,8 +524,12 @@ _acp_start_agent() {
   local aver=$(echo "$r" | jq -r '.result.agentInfo.version // "?"' 2>/dev/null)
   log "ACP connected: $aname v$aver"
 
-  # Create session
-  _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$_acp_rpc_id,\"method\":\"session/new\",\"params\":{\"workspaceRoots\":[{\"uri\":\"file://$workdir\"}],\"cwd\":\"$workdir\",\"mcpServers\":[]}}"
+  # Create session — inject MCP servers if configured
+  local _mcp_arr="[]"
+  if [[ -f "$agent_dir/mcp.json" ]]; then
+    _mcp_arr=$(jq -c '[.mcpServers | to_entries[] | {name:.key, command:.value.command, args:.value.args}]' "$agent_dir/mcp.json" 2>/dev/null || echo "[]")
+  fi
+  _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$_acp_rpc_id,\"method\":\"session/new\",\"params\":{\"workspaceRoots\":[{\"uri\":\"file://$workdir\"}],\"cwd\":\"$workdir\",\"mcpServers\":$_mcp_arr}}"
   ((_acp_rpc_id++))
   r=$(_acp_read 15)
   _acp_session_id=$(echo "$r" | jq -r '.result.sessionId // empty' 2>/dev/null)
@@ -1051,6 +1055,9 @@ start_agent() {
     fi
   fi
 
+  # Start MCP servers if configured
+  [[ -f "$AGENTS_DIR/$name/mcp.json" ]] && cmd_mcp start-servers "$name" 2>/dev/null || true
+
   ok "started $name (runtime=$runtime)"
 }
 
@@ -1077,6 +1084,8 @@ cmd_stop() {
 
 stop_agent() {
   local name="$1" pid
+  # Stop MCP servers first
+  [[ -f "$AGENTS_DIR/$name/.mcp-pids" ]] && cmd_mcp stop-servers "$name" 2>/dev/null || true
   if pid=$(agent_pid "$name"); then
     # Kill entire process group (catches child cline/claude processes)
     local pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
@@ -3587,7 +3596,64 @@ cmd_mcp() {
         echo "$n  ($cmd)"
       done
       ;;
-    *) die "usage: sage mcp {add|rm|ls}" ;;
+    start-servers)
+      local name="${1:-}"
+      [[ -n "$name" ]] || die "usage: sage mcp start-servers <agent>"
+      agent_exists "$name"
+      local rt_file="$AGENTS_DIR/$name/runtime.json"
+      local mcp_json="$AGENTS_DIR/$name/mcp.json"
+      [[ -f "$mcp_json" ]] || die "$name has no MCP servers configured"
+      local pid_file="$AGENTS_DIR/$name/.mcp-pids"
+      : > "$pid_file"
+      local servers
+      servers=$(jq -r '.mcpServers | keys[]' "$mcp_json" 2>/dev/null) || die "invalid mcp.json"
+      while IFS= read -r srv; do
+        [[ -n "$srv" ]] || continue
+        local cmd args_arr
+        cmd=$(jq -r ".mcpServers[\"$srv\"].command" "$mcp_json")
+        args_arr=$(jq -r ".mcpServers[\"$srv\"].args[]?" "$mcp_json")
+        local args_a=()
+        while IFS= read -r a; do [[ -n "$a" ]] && args_a+=("$a"); done <<< "$args_arr"
+        "$cmd" "${args_a[@]}" &>/dev/null &
+        echo "$srv $!" >> "$pid_file"
+        info "started MCP server: $srv (pid $!)"
+      done <<< "$servers"
+      ok "MCP servers started for $name"
+      ;;
+    stop-servers)
+      local name="${1:-}"
+      [[ -n "$name" ]] || die "usage: sage mcp stop-servers <agent>"
+      agent_exists "$name"
+      local pid_file="$AGENTS_DIR/$name/.mcp-pids"
+      [[ -f "$pid_file" ]] || { info "$name: no MCP servers running"; return 0; }
+      while IFS=' ' read -r srv pid; do
+        [[ -n "$pid" ]] || continue
+        kill "$pid" 2>/dev/null && info "stopped MCP server: $srv (pid $pid)" || true
+      done < "$pid_file"
+      rm -f "$pid_file"
+      ok "MCP servers stopped for $name"
+      ;;
+    status)
+      local name="${1:-}"
+      [[ -n "$name" ]] || die "usage: sage mcp status <agent>"
+      agent_exists "$name"
+      local mcp_json="$AGENTS_DIR/$name/mcp.json"
+      [[ -f "$mcp_json" ]] || die "$name has no MCP servers configured"
+      local pid_file="$AGENTS_DIR/$name/.mcp-pids"
+      if [[ -f "$pid_file" ]]; then
+        while IFS=' ' read -r srv pid; do
+          [[ -n "$srv" ]] || continue
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "$srv  pid=$pid  running"
+          else
+            echo "$srv  pid=$pid  dead"
+          fi
+        done < "$pid_file"
+      else
+        echo "$name: MCP servers not running"
+      fi
+      ;;
+    *) die "usage: sage mcp {add|rm|ls|start-servers|stop-servers|status}" ;;
   esac
 }
 
