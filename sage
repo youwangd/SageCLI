@@ -3614,7 +3614,11 @@ cmd_mcp() {
         args_arr=$(jq -r ".mcpServers[\"$srv\"].args[]?" "$mcp_json")
         local args_a=()
         while IFS= read -r a; do [[ -n "$a" ]] && args_a+=("$a"); done <<< "$args_arr"
-        "$cmd" "${args_a[@]}" &>/dev/null &
+        if [[ ${#args_a[@]} -gt 0 ]]; then
+          "$cmd" "${args_a[@]}" &>/dev/null &
+        else
+          "$cmd" &>/dev/null &
+        fi
         echo "$srv $!" >> "$pid_file"
         info "started MCP server: $srv (pid $!)"
       done <<< "$servers"
@@ -3653,7 +3657,47 @@ cmd_mcp() {
         echo "$name: MCP servers not running"
       fi
       ;;
-    *) die "usage: sage mcp {add|rm|ls|start-servers|stop-servers|status}" ;;
+    tools)
+      local name="${1:-}"
+      [[ -n "$name" ]] || die "usage: sage mcp tools <agent>"
+      agent_exists "$name"
+      local mcp_json="$AGENTS_DIR/$name/mcp.json"
+      [[ -f "$mcp_json" ]] || die "$name has no MCP servers configured"
+      local pid_file="$AGENTS_DIR/$name/.mcp-pids"
+      [[ -f "$pid_file" ]] || die "$name: MCP servers not running"
+      local servers
+      servers=$(jq -r '.mcpServers | keys[]' "$mcp_json" 2>/dev/null) || die "invalid mcp.json"
+      while IFS= read -r srv; do
+        [[ -n "$srv" ]] || continue
+        local cmd args_arr
+        cmd=$(jq -r ".mcpServers[\"$srv\"].command" "$mcp_json")
+        args_arr=$(jq -r ".mcpServers[\"$srv\"].args[]?" "$mcp_json")
+        local args_a=()
+        while IFS= read -r a; do [[ -n "$a" ]] && args_a+=("$a"); done <<< "$args_arr"
+        # Spawn server, send initialize + tools/list, read response
+        local init_req='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"sage","version":"1.0.0"}}}'
+        local tools_req='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+        local response
+        if [[ ${#args_a[@]} -gt 0 ]]; then
+          response=$(printf '%s\n%s\n' "$init_req" "$tools_req" | timeout 5 "$cmd" "${args_a[@]}" 2>/dev/null) || true
+        else
+          response=$(printf '%s\n%s\n' "$init_req" "$tools_req" | timeout 5 "$cmd" 2>/dev/null) || true
+        fi
+        if [[ -n "$response" ]]; then
+          local tools_out
+          tools_out=$(echo "$response" | jq -r 'select(.result.tools) | .result.tools[] | "  \(.name)  — \(.description // "no description")"' 2>/dev/null) || true
+          echo "[$srv]"
+          if [[ -n "$tools_out" ]]; then
+            echo "$tools_out"
+          else
+            echo "  (no tools found)"
+          fi
+        else
+          echo "[$srv]  (no response)"
+        fi
+      done <<< "$servers"
+      ;;
+    *) die "usage: sage mcp {add|rm|ls|start-servers|stop-servers|status|tools}" ;;
   esac
 }
 
