@@ -1545,7 +1545,7 @@ cmd_tasks() {
     done
   fi
 
-  for results_dir in "${search_dirs[@]}"; do
+  for results_dir in ${search_dirs[@]+"${search_dirs[@]}"}; do
     [[ -d "$results_dir" ]] || continue
     local agent_name=$(basename "$(dirname "$results_dir")")
     [[ "$agent_name" == .* ]] && continue
