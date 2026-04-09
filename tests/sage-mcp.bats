@@ -139,3 +139,46 @@ teardown() {
   [ "$status" -eq 0 ]
   ! kill -0 "$pid" 2>/dev/null  # dead
 }
+
+# ── MCP tool discovery tests ──
+
+@test "mcp tools fails for agent without MCP servers" {
+  sage create worker
+  run sage mcp tools worker
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no MCP"* ]]
+}
+
+@test "mcp tools fails when no servers running" {
+  sage mcp add srv --command "sleep" --args "999"
+  sage create worker --mcp srv
+  run sage mcp tools worker
+  [ "$status" -ne 0 ] || [[ "$output" == *"not running"* ]]
+}
+
+@test "mcp tools discovers tools from mock MCP server" {
+  # Create a mock MCP server that responds to tools/list
+  local mock="$SAGE_HOME/mock-mcp.sh"
+  cat > "$mock" << 'MOCK'
+#!/usr/bin/env bash
+read -r line
+echo '{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"read_file","description":"Read a file"},{"name":"write_file","description":"Write a file"}]}}'
+MOCK
+  chmod +x "$mock"
+  sage mcp add mocksrv --command "$mock"
+  sage create worker --mcp mocksrv
+  # Simulate running server by starting it
+  sage mcp start-servers worker
+  run sage mcp tools worker
+  # Cleanup
+  sage mcp stop-servers worker 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"read_file"* ]]
+  [[ "$output" == *"write_file"* ]]
+}
+
+@test "mcp tools requires agent name" {
+  run sage mcp tools
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"usage"* ]]
+}
