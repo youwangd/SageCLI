@@ -91,9 +91,9 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 **Use case**: "Run sage in GitHub Actions to auto-review PRs"
 
 - [x] `sage run --headless "Review this PR"` — no tmux required
-- [ ] JSON output mode for CI parsing
-- [ ] Exit codes for pass/fail
-- [ ] GitHub Action wrapper
+- [x] JSON output mode for CI parsing — `--headless --json` outputs structured JSON
+- [x] Exit codes for pass/fail — headless mode propagates handler exit code
+- [x] GitHub Action wrapper — `action.yml` composite action at repo root
 
 ### Phase 3: MCP Tool Integration
 **Use case**: "My agent can use any MCP server as a tool"
