@@ -1153,12 +1153,14 @@ cmd_status() {
 # sage send <to> <payload>
 # ═══════════════════════════════════════════════
 cmd_send() {
-  local to="" message="" force=false
+  local to="" message="" force=false headless=false json_output=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --force|-f) force=true; shift ;;
-      -*)         die "unknown flag: $1" ;;
+      --force|-f)    force=true; shift ;;
+      --headless)    headless=true; shift ;;
+      --json)        json_output=true; shift ;;
+      -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
           to="$1"
@@ -1172,13 +1174,13 @@ cmd_send() {
     esac
   done
 
-  [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file> [--force]"
+  [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file> [--force|--headless|--json]"
   ensure_init
 
   if [[ "$to" != ".cli" ]]; then
     agent_exists "$to"
-    # Auto-start if not running
-    if ! agent_pid "$to" >/dev/null 2>&1; then
+    # Auto-start if not running (skip for headless — no tmux needed)
+    if [[ "$headless" != true ]] && ! agent_pid "$to" >/dev/null 2>&1; then
       cmd_start "$to"
     fi
   fi
@@ -1189,6 +1191,39 @@ cmd_send() {
     filepath="${filepath/#\~/$HOME}"
     [[ -f "$filepath" ]] || die "file not found: $filepath"
     message=$(cat "$filepath")
+  fi
+
+  # --headless: run task directly without tmux
+  if [[ "$headless" == true ]]; then
+    local agent_dir="$AGENTS_DIR/$to"
+    local runtime
+    runtime=$(jq -r '.runtime // "bash"' "$agent_dir/runtime.json" 2>/dev/null || echo "bash")
+    export SAGE_AGENT_NAME="$to"
+    export SAGE_HOME
+
+    # Source tools and runtime
+    for tool in "$SAGE_HOME/tools"/*.sh; do [[ -f "$tool" ]] && source "$tool"; done
+    source "$SAGE_HOME/runtimes/${runtime}.sh"
+    runtime_start "$agent_dir" "$to"
+
+    local msg task_id start_ts rc=0
+    task_id="headless-$(date +%s)"
+    msg=$(jq -n --arg id "$task_id" --arg from "cli" --arg t "$message" '{id:$id,from:$from,payload:{text:$t}}')
+    start_ts=$(date +%s)
+
+    local task_output
+    task_output=$(runtime_inject "$to" "$msg" 2>&1) || rc=$?
+    local elapsed=$(( $(date +%s) - start_ts ))
+
+    if [[ "$json_output" == true ]]; then
+      local status="done"
+      [[ $rc -ne 0 ]] && status="failed"
+      jq -n --arg s "$status" --arg id "$task_id" --argjson rc "$rc" --argjson el "$elapsed" --arg out "$task_output" \
+        '{status:$s,task_id:$id,exit_code:$rc,elapsed:$el,output:$out}'
+    else
+      [[ -n "$task_output" ]] && printf '%s\n' "$task_output"
+    fi
+    return $rc
   fi
 
   # --force: signal the ACP runtime to cancel the current task
