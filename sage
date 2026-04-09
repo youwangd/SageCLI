@@ -3609,16 +3609,12 @@ cmd_mcp() {
       servers=$(jq -r '.mcpServers | keys[]' "$mcp_json" 2>/dev/null) || die "invalid mcp.json"
       while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue
-        local cmd args_arr
+        local cmd
         cmd=$(jq -r ".mcpServers[\"$srv\"].command" "$mcp_json")
-        args_arr=$(jq -r ".mcpServers[\"$srv\"].args[]?" "$mcp_json")
-        local args_a=()
-        while IFS= read -r a; do [[ -n "$a" ]] && args_a+=("$a"); done <<< "$args_arr"
-        if [[ ${#args_a[@]} -gt 0 ]]; then
-          "$cmd" "${args_a[@]}" &>/dev/null &
-        else
-          "$cmd" &>/dev/null &
-        fi
+        # Build args as shell-safe quoted string via jq (portable, no bash arrays)
+        local args_shell
+        args_shell=$(jq -r "[.mcpServers[\"$srv\"].args[]?] | map(@sh) | join(\" \")" "$mcp_json")
+        eval "\"$cmd\" $args_shell" &>/dev/null &
         echo "$srv $!" >> "$pid_file"
         info "started MCP server: $srv (pid $!)"
       done <<< "$servers"
@@ -3669,20 +3665,15 @@ cmd_mcp() {
       servers=$(jq -r '.mcpServers | keys[]' "$mcp_json" 2>/dev/null) || die "invalid mcp.json"
       while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue
-        local cmd args_arr
+        local cmd
         cmd=$(jq -r ".mcpServers[\"$srv\"].command" "$mcp_json")
-        args_arr=$(jq -r ".mcpServers[\"$srv\"].args[]?" "$mcp_json")
-        local args_a=()
-        while IFS= read -r a; do [[ -n "$a" ]] && args_a+=("$a"); done <<< "$args_arr"
+        local args_shell
+        args_shell=$(jq -r "[.mcpServers[\"$srv\"].args[]?] | map(@sh) | join(\" \")" "$mcp_json")
         # Spawn server, send initialize + tools/list, read response
         local init_req='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"sage","version":"1.0.0"}}}'
         local tools_req='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
         local response
-        if [[ ${#args_a[@]} -gt 0 ]]; then
-          response=$(printf '%s\n%s\n' "$init_req" "$tools_req" | timeout 5 "$cmd" "${args_a[@]}" 2>/dev/null) || true
-        else
-          response=$(printf '%s\n%s\n' "$init_req" "$tools_req" | timeout 5 "$cmd" 2>/dev/null) || true
-        fi
+        response=$(printf '%s\n%s\n' "$init_req" "$tools_req" | eval "\"$cmd\" $args_shell" 2>/dev/null) || true
         if [[ -n "$response" ]]; then
           local tools_out
           tools_out=$(echo "$response" | jq -r 'select(.result.tools) | .result.tools[] | "  \(.name)  — \(.description // "no description")"' 2>/dev/null) || true
