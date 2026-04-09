@@ -1331,18 +1331,36 @@ cmd_rm() {
 # sage merge <name>
 # ═══════════════════════════════════════════════
 cmd_merge() {
-  local name="${1:-}"
-  [[ -n "$name" ]] || die "usage: sage merge <name>"
+  local name="" dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) dry_run=true; shift ;;
+      *) name="$1"; shift ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "usage: sage merge <name> [--dry-run]"
   ensure_init; agent_exists "$name"
   local agent_dir="$AGENTS_DIR/$name"
   local is_wt branch
   is_wt=$(jq -r '.worktree // false' "$agent_dir/runtime.json" 2>/dev/null)
   [[ "$is_wt" == "true" ]] || die "agent '$name' is not a worktree agent"
   branch=$(jq -r '.worktree_branch' "$agent_dir/runtime.json")
-  local repo_root
-  repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "not in a git repository"
-  git merge "$branch" --no-edit || die "merge conflict — resolve manually then run: git merge --continue"
-  ok "merged branch '$branch' from agent '$name'"
+  git rev-parse --show-toplevel >/dev/null 2>&1 || die "not in a git repository"
+  if $dry_run; then
+    if git merge --no-commit --no-ff "$branch" >/dev/null 2>&1; then
+      git diff --cached --stat
+      git merge --abort
+      ok "merge would be clean for branch '$branch'"
+    else
+      local conflicts
+      conflicts=$(git diff --name-only --diff-filter=U 2>/dev/null)
+      git merge --abort 2>/dev/null
+      die "conflict detected in: $conflicts"
+    fi
+  else
+    git merge "$branch" --no-edit || die "merge conflict — resolve manually then run: git merge --continue"
+    ok "merged branch '$branch' from agent '$name'"
+  fi
 }
 
 # ═══════════════════════════════════════════════
@@ -3565,7 +3583,7 @@ case "${1:-}" in
   attach)  cmd_attach "${2:-}" ;;
   ls)      cmd_ls ;;
   rm)      cmd_rm "${2:-}" ;;
-  merge)   cmd_merge "${2:-}" ;;
+  merge)   shift; cmd_merge "$@" ;;
   clean)   cmd_clean ;;
   tool)    shift; cmd_tool "$@" ;;
   task)    shift; cmd_task "$@" ;;
