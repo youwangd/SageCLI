@@ -6,10 +6,10 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SAGE="$REPO_ROOT/sage"
 
 # Extract all cmd_* function names → command names
-mapfile -t commands < <(grep -oP '^cmd_\K[a-z_]+' "$SAGE" | sort -u)
+mapfile -t commands < <(grep -o '^cmd_[a-z_]*' "$SAGE" | sed 's/^cmd_//' | sort -u)
 
 # Extract all commands tested in bats files
-mapfile -t tested < <(grep -rohP '("\$SAGE"|sage)\s+\K[a-z_]+' "$REPO_ROOT"/tests/*.bats | sort -u)
+mapfile -t tested < <(grep -oE '(sage|"\$SAGE")\s+[a-z_]+' "$REPO_ROOT"/tests/*.bats | grep -oE '[a-z_]+$' | sort -u)
 
 total=${#commands[@]}
 covered=0
