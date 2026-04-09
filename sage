@@ -831,16 +831,17 @@ RUNNER
 # sage create <name> [--runtime <rt>] [--model <m>]
 # ═══════════════════════════════════════════════
 cmd_create() {
-  local name="" runtime="bash" model="" parent="" acp_agent=""
+  local name="" runtime="bash" model="" parent="" acp_agent="" worktree_branch=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --runtime|-r) runtime="$2"; shift 2 ;;
-      --model|-m)   model="$2"; shift 2 ;;
-      --agent|-a)   acp_agent="$2"; shift 2 ;;
-      --parent)     parent="$2"; shift 2 ;;
-      -*)           die "unknown flag: $1" ;;
-      *)            name="$1"; shift ;;
+      --runtime|-r)   runtime="$2"; shift 2 ;;
+      --model|-m)     model="$2"; shift 2 ;;
+      --agent|-a)     acp_agent="$2"; shift 2 ;;
+      --parent)       parent="$2"; shift 2 ;;
+      --worktree|-w)  worktree_branch="$2"; shift 2 ;;
+      -*)             die "unknown flag: $1" ;;
+      *)              name="$1"; shift ;;
     esac
   done
 
@@ -870,14 +871,35 @@ cmd_create() {
 
   mkdir -p "$agent_dir"/{inbox,state,replies,workspace}
 
+  # Git worktree isolation
+  if [[ -n "$worktree_branch" ]]; then
+    git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository — --worktree requires a git repo"
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel)
+    # Check branch doesn't already exist as a worktree
+    if git worktree list 2>/dev/null | grep -q "\[$worktree_branch\]"; then
+      rm -rf "$agent_dir"
+      die "branch '$worktree_branch' already has a worktree"
+    fi
+    rm -rf "$agent_dir/workspace"
+    git worktree add "$agent_dir/workspace" -b "$worktree_branch" >/dev/null 2>&1 || {
+      rm -rf "$agent_dir"
+      die "failed to create worktree for branch '$worktree_branch'"
+    }
+  fi
+
   # Write runtime config
+  local wt="false" wb=""
+  if [[ -n "$worktree_branch" ]]; then wt="true"; wb="$worktree_branch"; fi
   jq -n \
     --arg rt "$runtime" \
     --arg m "$model" \
     --arg p "$parent" \
     --arg wd "$agent_dir/workspace" \
     --arg aa "$acp_agent" \
-    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, acp_agent:$aa, created:(now|todate)}' \
+    --argjson wt "$wt" \
+    --arg wb "$wb" \
+    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, acp_agent:$aa, worktree:$wt, worktree_branch:$wb, created:(now|todate)}' \
     > "$agent_dir/runtime.json"
 
   # Generate instructions for CLI runtimes
@@ -1295,9 +1317,32 @@ cmd_rm() {
   [[ -n "$name" ]] || die "usage: sage rm <name>"
   ensure_init; agent_exists "$name"
   stop_agent "$name" 2>/dev/null || true
+  # Clean up git worktree if applicable
+  local agent_dir="$AGENTS_DIR/$name"
+  if [[ "$(jq -r '.worktree // false' "$agent_dir/runtime.json" 2>/dev/null)" == "true" ]]; then
+    git worktree remove "$agent_dir/workspace" --force 2>/dev/null || true
+  fi
   rm -rf "$AGENTS_DIR/$name"
   rm -f "$LOGS_DIR/$name.log"
   ok "removed '$name'"
+}
+
+# ═══════════════════════════════════════════════
+# sage merge <name>
+# ═══════════════════════════════════════════════
+cmd_merge() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "usage: sage merge <name>"
+  ensure_init; agent_exists "$name"
+  local agent_dir="$AGENTS_DIR/$name"
+  local is_wt branch
+  is_wt=$(jq -r '.worktree // false' "$agent_dir/runtime.json" 2>/dev/null)
+  [[ "$is_wt" == "true" ]] || die "agent '$name' is not a worktree agent"
+  branch=$(jq -r '.worktree_branch' "$agent_dir/runtime.json")
+  local repo_root
+  repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "not in a git repository"
+  git merge "$branch" --no-edit || die "merge conflict — resolve manually then run: git merge --continue"
+  ok "merged branch '$branch' from agent '$name'"
 }
 
 # ═══════════════════════════════════════════════
@@ -3520,6 +3565,7 @@ case "${1:-}" in
   attach)  cmd_attach "${2:-}" ;;
   ls)      cmd_ls ;;
   rm)      cmd_rm "${2:-}" ;;
+  merge)   cmd_merge "${2:-}" ;;
   clean)   cmd_clean ;;
   tool)    shift; cmd_tool "$@" ;;
   task)    shift; cmd_task "$@" ;;
