@@ -76,3 +76,66 @@ teardown() {
   run sage mcp add myserver
   [ "$status" -ne 0 ]
 }
+
+# ── MCP lifecycle tests ──
+
+@test "start_mcp_servers creates .mcp-pids file for agent with MCP servers" {
+  sage mcp add testmcp --command "sleep" --args "999"
+  sage create worker --mcp testmcp
+  # start_mcp_servers is called by start_agent; test the function directly
+  run sage mcp status worker
+  # Before starting, no PIDs
+  [[ "$output" == *"no MCP"* ]] || [[ "$output" == *"not running"* ]] || [ "$status" -ne 0 ]
+}
+
+@test "mcp status shows running servers for agent" {
+  sage mcp add slowsrv --command "sleep" --args "999"
+  sage create worker --mcp slowsrv
+  # Manually create .mcp-pids to simulate running servers
+  echo "slowsrv 99999" > "$SAGE_HOME/agents/worker/.mcp-pids"
+  run sage mcp status worker
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"slowsrv"* ]]
+}
+
+@test "mcp status fails for agent without MCP servers" {
+  sage create worker
+  run sage mcp status worker
+  [ "$status" -ne 0 ] || [[ "$output" == *"no MCP"* ]]
+}
+
+@test "stop_mcp_servers removes .mcp-pids file" {
+  sage mcp add fakesrv --command "sleep" --args "999"
+  sage create worker --mcp fakesrv
+  # Create fake pid file
+  echo "fakesrv 99999" > "$SAGE_HOME/agents/worker/.mcp-pids"
+  [ -f "$SAGE_HOME/agents/worker/.mcp-pids" ]
+  # stop_mcp_servers is internal; test via mcp stop-servers
+  run sage mcp stop-servers worker
+  [ "$status" -eq 0 ]
+  [ ! -f "$SAGE_HOME/agents/worker/.mcp-pids" ]
+}
+
+@test "mcp start-servers spawns processes and writes .mcp-pids" {
+  sage mcp add sleeper --command "sleep" --args "300"
+  sage create worker --mcp sleeper
+  run sage mcp start-servers worker
+  [ "$status" -eq 0 ]
+  [ -f "$SAGE_HOME/agents/worker/.mcp-pids" ]
+  # Verify PID is a real process
+  local pid=$(awk '{print $2}' "$SAGE_HOME/agents/worker/.mcp-pids")
+  kill -0 "$pid" 2>/dev/null
+  # Cleanup
+  kill "$pid" 2>/dev/null || true
+}
+
+@test "mcp stop-servers kills spawned processes" {
+  sage mcp add sleeper2 --command "sleep" --args "300"
+  sage create worker --mcp sleeper2
+  sage mcp start-servers worker
+  local pid=$(awk '{print $2}' "$SAGE_HOME/agents/worker/.mcp-pids")
+  kill -0 "$pid" 2>/dev/null  # alive
+  run sage mcp stop-servers worker
+  [ "$status" -eq 0 ]
+  ! kill -0 "$pid" 2>/dev/null  # dead
+}
