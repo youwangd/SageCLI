@@ -99,7 +99,7 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 **Use case**: "My agent can use any MCP server as a tool"
 
 - [x] `sage create worker --mcp github,filesystem,browser`
-- [ ] MCP server lifecycle management (start/stop with agent)
+- [x] MCP server lifecycle management (start/stop with agent)
 - [ ] Tool discovery and injection into agent prompts
 
 ### Phase 4: Skills System
