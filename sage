@@ -10,6 +10,7 @@ AGENTS_DIR="$SAGE_HOME/agents"
 TOOLS_DIR="$SAGE_HOME/tools"
 RUNTIMES_DIR="$SAGE_HOME/runtimes"
 LOGS_DIR="$SAGE_HOME/logs"
+SKILLS_DIR="$SAGE_HOME/skills"
 TMUX_SESSION="sage"
 
 # ═══ Colors ═══
@@ -64,7 +65,7 @@ cmd_init() {
     return
   fi
 
-  mkdir -p "$AGENTS_DIR" "$TOOLS_DIR" "$RUNTIMES_DIR" "$LOGS_DIR" "$AGENTS_DIR/.cli/replies" "$SAGE_HOME/tasks" "$SAGE_HOME/plans"
+  mkdir -p "$AGENTS_DIR" "$TOOLS_DIR" "$RUNTIMES_DIR" "$LOGS_DIR" "$AGENTS_DIR/.cli/replies" "$SAGE_HOME/tasks" "$SAGE_HOME/plans" "$SKILLS_DIR"
 
   # ── Install task templates ──
   local script_dir
@@ -835,7 +836,7 @@ RUNNER
 # sage create <name> [--runtime <rt>] [--model <m>]
 # ═══════════════════════════════════════════════
 cmd_create() {
-  local name="" runtime="bash" model="" parent="" acp_agent="" worktree_branch="" mcp_servers=""
+  local name="" runtime="bash" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -845,6 +846,7 @@ cmd_create() {
       --parent)       parent="$2"; shift 2 ;;
       --worktree|-w)  worktree_branch="$2"; shift 2 ;;
       --mcp)          mcp_servers="$2"; shift 2 ;;
+      --skill)        skill_name="$2"; shift 2 ;;
       -*)             die "unknown flag: $1" ;;
       *)              name="$1"; shift ;;
     esac
@@ -928,6 +930,12 @@ cmd_create() {
       mcp_cfg=$(echo "$mcp_cfg" | jq --arg s "$srv" --slurpfile c "$SAGE_HOME/mcp/${srv}.json" '.mcpServers[$s] = $c[0]')
     done
     echo "$mcp_cfg" > "$agent_dir/mcp.json"
+  fi
+
+  # Validate and attach skill
+  if [[ -n "$skill_name" ]]; then
+    [[ -d "$SKILLS_DIR/$skill_name" ]] || die "skill '$skill_name' not found (install with: sage skill install <source>)"
+    jq -n --arg s "$skill_name" '[$s]' > "$agent_dir/skills.json"
   fi
 
   # Generate instructions for CLI runtimes
@@ -3693,6 +3701,66 @@ cmd_mcp() {
 }
 
 # ═══════════════════════════════════════════════
+# sage skill {install|ls|rm}
+# ═══════════════════════════════════════════════
+cmd_skill() {
+  local subcmd="${1:-}"
+  shift 2>/dev/null || true
+  ensure_init
+  mkdir -p "$SKILLS_DIR"
+
+  case "$subcmd" in
+    ls)
+      local found=0
+      for d in "$SKILLS_DIR"/*/skill.json; do
+        [[ -f "$d" ]] || continue
+        found=1
+        local sname sdesc
+        sname=$(jq -r '.name // "unknown"' "$d")
+        sdesc=$(jq -r '.description // ""' "$d")
+        printf "  %-20s %s\n" "$sname" "$sdesc"
+      done
+      [[ $found -eq 1 ]] || echo "no skills installed"
+      ;;
+    install)
+      local src="${1:-}"
+      [[ -n "$src" ]] || die "usage: sage skill install <path-or-repo>"
+      # Local directory install
+      if [[ -d "$src" ]]; then
+        [[ -f "$src/skill.json" ]] || die "no skill.json found in $src"
+        local sname
+        sname=$(jq -r '.name' "$src/skill.json")
+        [[ -n "$sname" && "$sname" != "null" ]] || die "skill.json missing 'name' field"
+        cp -r "$src" "$SKILLS_DIR/$sname"
+        echo "installed skill: $sname"
+      # GitHub repo install (user/repo format)
+      elif [[ "$src" == */* ]]; then
+        local repo_url="https://github.com/$src.git"
+        local tmp_dir
+        tmp_dir=$(mktemp -d)
+        git clone --depth 1 "$repo_url" "$tmp_dir" 2>/dev/null || die "failed to clone $repo_url"
+        [[ -f "$tmp_dir/skill.json" ]] || { rm -rf "$tmp_dir"; die "no skill.json in $repo_url"; }
+        local sname
+        sname=$(jq -r '.name' "$tmp_dir/skill.json")
+        cp -r "$tmp_dir" "$SKILLS_DIR/$sname"
+        rm -rf "$tmp_dir"
+        echo "installed skill: $sname (from $src)"
+      else
+        die "usage: sage skill install <local-path> or <user/repo>"
+      fi
+      ;;
+    rm)
+      local name="${1:-}"
+      [[ -n "$name" ]] || die "usage: sage skill rm <name>"
+      [[ -d "$SKILLS_DIR/$name" ]] || die "skill '$name' not found"
+      rm -rf "$SKILLS_DIR/$name"
+      echo "removed skill: $name"
+      ;;
+    *) die "usage: sage skill {install|ls|rm}" ;;
+  esac
+}
+
+# ═══════════════════════════════════════════════
 # sage help
 # ═══════════════════════════════════════════════
 cmd_help() {
@@ -3794,6 +3862,7 @@ case "${1:-}" in
   clean)   cmd_clean ;;
   tool)    shift; cmd_tool "$@" ;;
   mcp)     shift; cmd_mcp "$@" ;;
+  skill)   shift; cmd_skill "$@" ;;
   task)    shift; cmd_task "$@" ;;
   runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;
