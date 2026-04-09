@@ -1,0 +1,69 @@
+name: 'SageCLI Agent Task'
+description: 'Run an AI agent task headlessly via SageCLI'
+branding:
+  icon: 'terminal'
+  color: 'green'
+
+inputs:
+  task:
+    description: 'Task message to send to the agent'
+    required: true
+  runtime:
+    description: 'Agent runtime (bash, claude, cline, acp)'
+    required: false
+    default: 'bash'
+  timeout:
+    description: 'Timeout in seconds'
+    required: false
+    default: '300'
+
+outputs:
+  status:
+    description: 'Task status (done or failed)'
+    value: ${{ steps.run.outputs.status }}
+  output:
+    description: 'Task output text'
+    value: ${{ steps.run.outputs.output }}
+  exit_code:
+    description: 'Handler exit code'
+    value: ${{ steps.run.outputs.exit_code }}
+  elapsed:
+    description: 'Elapsed seconds'
+    value: ${{ steps.run.outputs.elapsed }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install SageCLI
+      shell: bash
+      run: |
+        if ! command -v jq &>/dev/null; then
+          if [[ "$RUNNER_OS" == "Linux" ]]; then sudo apt-get install -y -qq jq
+          else brew install jq; fi
+        fi
+        export PATH="${{ github.action_path }}:$PATH"
+        sage init >/dev/null 2>&1
+
+    - name: Run task
+      id: run
+      shell: bash
+      run: |
+        export PATH="${{ github.action_path }}:$PATH"
+        sage create ci-agent --runtime "${{ inputs.runtime }}" 2>/dev/null || true
+        result=$(timeout "${{ inputs.timeout }}" sage send --headless --json ci-agent "${{ inputs.task }}" 2>&1) || true
+        echo "$result"
+        status=$(echo "$result" | jq -r '.status // "failed"')
+        output=$(echo "$result" | jq -r '.output // ""')
+        exit_code=$(echo "$result" | jq -r '.exit_code // 1')
+        elapsed=$(echo "$result" | jq -r '.elapsed // 0')
+        {
+          echo "status=$status"
+          echo "exit_code=$exit_code"
+          echo "elapsed=$elapsed"
+        } >> "$GITHUB_OUTPUT"
+        {
+          echo "output<<SAGE_EOF"
+          echo "$output"
+          echo "SAGE_EOF"
+        } >> "$GITHUB_OUTPUT"
+        exit "$exit_code"
