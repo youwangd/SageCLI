@@ -11,6 +11,7 @@ TOOLS_DIR="$SAGE_HOME/tools"
 RUNTIMES_DIR="$SAGE_HOME/runtimes"
 LOGS_DIR="$SAGE_HOME/logs"
 SKILLS_DIR="$SAGE_HOME/skills"
+REGISTRIES_DIR="$SAGE_HOME/registries"
 TMUX_SESSION="sage"
 
 # ═══ Colors ═══
@@ -65,7 +66,7 @@ cmd_init() {
     return
   fi
 
-  mkdir -p "$AGENTS_DIR" "$TOOLS_DIR" "$RUNTIMES_DIR" "$LOGS_DIR" "$AGENTS_DIR/.cli/replies" "$SAGE_HOME/tasks" "$SAGE_HOME/plans" "$SKILLS_DIR"
+  mkdir -p "$AGENTS_DIR" "$TOOLS_DIR" "$RUNTIMES_DIR" "$LOGS_DIR" "$AGENTS_DIR/.cli/replies" "$SAGE_HOME/tasks" "$SAGE_HOME/plans" "$SKILLS_DIR" "$REGISTRIES_DIR"
 
   # ── Install task templates ──
   local script_dir
@@ -3764,7 +3765,27 @@ cmd_skill() {
         rm -rf "$tmp_dir"
         echo "installed skill: $sname (from $src)"
       else
-        die "usage: sage skill install <local-path> or <user/repo>"
+        # Bare name — look up in registries
+        local _found_repo=""
+        for idx in "$REGISTRIES_DIR"/*/index.json; do
+          [[ -f "$idx" ]] || continue
+          _found_repo=$(jq -r --arg n "$src" '.[] | select(.name==$n) | .repo' "$idx" 2>/dev/null | head -1)
+          [[ -n "$_found_repo" ]] && break
+        done
+        if [[ -n "$_found_repo" ]]; then
+          local repo_url="https://github.com/$_found_repo.git"
+          local tmp_dir
+          tmp_dir=$(mktemp -d)
+          git clone --depth 1 "$repo_url" "$tmp_dir" 2>/dev/null || { rm -rf "$tmp_dir"; die "failed to clone $repo_url"; }
+          [[ -f "$tmp_dir/skill.json" ]] || { rm -rf "$tmp_dir"; die "no skill.json in $repo_url"; }
+          local sname
+          sname=$(jq -r '.name' "$tmp_dir/skill.json")
+          cp -r "$tmp_dir" "$SKILLS_DIR/$sname"
+          rm -rf "$tmp_dir"
+          echo "installed skill: $sname (from $_found_repo)"
+        else
+          die "skill '$src' not found in any registry (try: sage skill search $src)"
+        fi
       fi
       ;;
     rm)
@@ -3815,7 +3836,61 @@ cmd_skill() {
 $tmsg"
       cmd_send "$agent" "$full_msg" --headless
       ;;
-    *) die "usage: sage skill {install|ls|rm|show|run}" ;;
+    search)
+      local query="${1:-}"
+      [[ -n "$query" ]] || die "usage: sage skill search <query>"
+      local found=0
+      for idx in "$REGISTRIES_DIR"/*/index.json; do
+        [[ -f "$idx" ]] || continue
+        local matches
+        matches=$(jq -r --arg q "$query" '[.[] | select((.name | test($q;"i")) or (.description | test($q;"i")) or (.tags[]? | test($q;"i")))] | .[] | "\(.name)\t\(.repo)\t\(.description)"' "$idx" 2>/dev/null) || true
+        while IFS=$'\t' read -r sn sr sd; do
+          [[ -n "$sn" ]] || continue
+          found=1
+          printf "  %-25s %-30s %s\n" "$sn" "$sr" "$sd"
+        done <<< "$matches"
+      done
+      [[ $found -eq 1 ]] || echo "no matching skills found"
+      ;;
+    registry)
+      local rsub="${1:-}"
+      shift 2>/dev/null || true
+      local _default_reg="youwangd/sage-skills"
+      case "$rsub" in
+        ls)
+          echo "  $_default_reg (default)"
+          local rfile="$SAGE_HOME/registries.json"
+          if [[ -f "$rfile" ]]; then
+            jq -r '.[]' "$rfile" 2>/dev/null | while IFS= read -r r; do
+              echo "  $r"
+            done
+          fi
+          ;;
+        add)
+          local reg="${1:-}"
+          [[ -n "$reg" ]] || die "usage: sage skill registry add <user/repo>"
+          local rfile="$SAGE_HOME/registries.json"
+          [[ -f "$rfile" ]] || echo '[]' > "$rfile"
+          if [[ "$reg" == "$_default_reg" ]] || jq -e --arg r "$reg" 'index($r) != null' "$rfile" >/dev/null 2>&1; then
+            die "registry '$reg' already added"
+          fi
+          jq --arg r "$reg" '. + [$r]' "$rfile" > "$rfile.tmp" && mv "$rfile.tmp" "$rfile"
+          echo "added registry: $reg"
+          ;;
+        rm)
+          local reg="${1:-}"
+          [[ -n "$reg" ]] || die "usage: sage skill registry rm <user/repo>"
+          local rfile="$SAGE_HOME/registries.json"
+          if [[ ! -f "$rfile" ]] || ! jq -e --arg r "$reg" 'index($r) != null' "$rfile" >/dev/null 2>&1; then
+            die "registry '$reg' not found"
+          fi
+          jq --arg r "$reg" 'map(select(. != $r))' "$rfile" > "$rfile.tmp" && mv "$rfile.tmp" "$rfile"
+          echo "removed registry: $reg"
+          ;;
+        *) die "usage: sage skill registry {ls|add|rm}" ;;
+      esac
+      ;;
+    *) die "usage: sage skill {install|ls|rm|show|run|search|registry}" ;;
   esac
 }
 
