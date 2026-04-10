@@ -111,3 +111,103 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"not found"* ]]
 }
+
+# ── skill show ──
+
+@test "skill show displays skill details" {
+  mkdir -p "$SAGE_HOME/skills/reviewer"
+  cat > "$SAGE_HOME/skills/reviewer/skill.json" << 'EOF'
+{"name":"reviewer","version":"2.0.0","description":"Code review skill","system_prompt":"Review all code carefully"}
+EOF
+  run sage skill show reviewer
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"reviewer"* ]]
+  [[ "$output" == *"2.0.0"* ]]
+  [[ "$output" == *"Code review skill"* ]]
+  [[ "$output" == *"Review all code carefully"* ]]
+}
+
+@test "skill show fails for nonexistent skill" {
+  run sage skill show ghost
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not found"* ]]
+}
+
+@test "skill show requires argument" {
+  run sage skill show
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"usage"* ]]
+}
+
+# ── skill prompt injection ──
+
+@test "send --headless prepends skill system_prompt to message" {
+  # Create a skill with system_prompt
+  mkdir -p "$SAGE_HOME/skills/reviewer"
+  cat > "$SAGE_HOME/skills/reviewer/skill.json" << 'EOF'
+{"name":"reviewer","version":"1.0.0","description":"Review","system_prompt":"You are a code reviewer. Be thorough."}
+EOF
+
+  # Create agent with skill attached and a runtime that echoes the message
+  sage create worker --skill reviewer
+  cat > "$SAGE_HOME/runtimes/bash.sh" << 'RTEOF'
+runtime_start() { :; }
+runtime_inject() {
+  local msg="$2"
+  echo "$msg" | jq -r '.payload.text'
+}
+RTEOF
+
+  run sage send worker "check main.py" --headless
+  [ "$status" -eq 0 ]
+  # The output should contain both the system prompt and the user message
+  [[ "$output" == *"You are a code reviewer"* ]]
+  [[ "$output" == *"check main.py"* ]]
+}
+
+# ── skill run (template execution) ──
+
+@test "skill run executes a named template" {
+  mkdir -p "$SAGE_HOME/skills/reviewer/templates"
+  cat > "$SAGE_HOME/skills/reviewer/skill.json" << 'EOF'
+{"name":"reviewer","version":"1.0.0","description":"Review","system_prompt":"You review code.","templates":{"quick":"Do a quick review of the changes","security":"Focus on security vulnerabilities"}}
+EOF
+
+  sage create worker --skill reviewer
+  cat > "$SAGE_HOME/runtimes/bash.sh" << 'RTEOF'
+runtime_start() { :; }
+runtime_inject() {
+  local msg="$2"
+  echo "$msg" | jq -r '.payload.text'
+}
+RTEOF
+
+  run sage skill run worker quick
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"You review code"* ]]
+  [[ "$output" == *"Do a quick review"* ]]
+}
+
+@test "skill run fails without agent argument" {
+  run sage skill run
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"usage"* ]]
+}
+
+@test "skill run fails for agent without skill" {
+  sage create worker
+  run sage skill run worker quick
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no skill"* ]]
+}
+
+@test "skill run fails for unknown template" {
+  mkdir -p "$SAGE_HOME/skills/reviewer"
+  cat > "$SAGE_HOME/skills/reviewer/skill.json" << 'EOF'
+{"name":"reviewer","version":"1.0.0","description":"Review","system_prompt":"Review.","templates":{"quick":"Quick review"}}
+EOF
+  sage create worker --skill reviewer
+  run sage skill run worker nonexistent
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not found"* ]]
+}
