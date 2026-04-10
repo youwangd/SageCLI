@@ -106,7 +106,7 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 **Use case**: "Community-contributed task templates and workflows"
 
 - [x] `sage skill install code-review-pro`
-- [ ] Skills = task templates + tool configs + prompt engineering
+- [x] Skills = task templates + tool configs + prompt injection
 - [ ] Skills registry (GitHub-based, like Homebrew taps)
 
 ### Phase 5: Memory & Context Sharing
