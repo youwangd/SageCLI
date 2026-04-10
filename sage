@@ -4156,6 +4156,7 @@ cmd_help() {
     rm <name>                   Remove agent
     clean                       Clean up stale files
     doctor                      Check dependencies and environment health
+    history [--agent a] [-n N]  Show agent activity timeline (--json for JSON)
     upgrade [--check]           Self-update from GitHub (--check: compare only)
     config {set|get|ls|rm}      Persistent user defaults (e.g. default.runtime)
 
@@ -4212,6 +4213,62 @@ cmd_help() {
     sage result <task-id>                # get result when done
 
 EOF
+}
+
+# ═══ History ═══
+cmd_history() {
+  ensure_init
+  local agent_filter="" limit=20 json_mode=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent_filter="$2"; shift 2 ;;
+      -n)      limit="$2"; shift 2 ;;
+      --json)  json_mode=true; shift ;;
+      *)       die "usage: sage history [--agent <name>] [-n <count>] [--json]" ;;
+    esac
+  done
+  local entries=""
+  for agent_dir in "$AGENTS_DIR"/*/; do
+    [[ -d "$agent_dir" ]] || continue
+    local aname=$(basename "$agent_dir")
+    [[ "$aname" == ".cli" ]] && continue
+    [[ -n "$agent_filter" && "$aname" != "$agent_filter" ]] && continue
+    for sf in "$agent_dir"results/*.status.json; do
+      [[ -f "$sf" ]] || continue
+      local line
+      line=$(jq -r --arg a "$aname" '. + {agent:$a} | "\(.queued_at // 0)|\(.agent)|\(.id)|\(.status)|\(.started_at // "")|\(.finished_at // "")"' "$sf" 2>/dev/null) || continue
+      entries="$entries$line
+"
+    done
+  done
+  entries=$(echo "$entries" | grep -v '^$' | sort -t'|' -k1 -rn | head -n "$limit") || true
+  if [[ -z "$entries" ]]; then
+    info "no task history found"
+    return 0
+  fi
+  if $json_mode; then
+    local jarr="["
+    local first=true
+    while IFS='|' read -r ts agent tid st started finished; do
+      local dur="null"
+      if [[ "$st" == "done" && -n "$finished" && "$finished" != "null" && -n "$started" && "$started" != "null" ]]; then
+        dur=$((finished - started))
+      fi
+      $first || jarr="$jarr,"
+      first=false
+      jarr="$jarr{\"agent\":\"$agent\",\"id\":\"$tid\",\"status\":\"$st\",\"queued_at\":$ts,\"duration\":$dur}"
+    done <<< "$entries"
+    echo "${jarr}]"
+    return 0
+  fi
+  printf "  %-12s %-10s %-8s %s\n" "AGENT" "TASK" "STATUS" "DURATION"
+  while IFS='|' read -r ts agent tid st started finished; do
+    local dur="-"
+    if [[ "$st" == "done" && -n "$finished" && "$finished" != "null" && -n "$started" && "$started" != "null" ]]; then
+      dur="$((finished - started))s"
+    fi
+    printf "  %-12s %-10s %-8s %s\n" "$agent" "$tid" "$st" "$dur"
+  done <<< "$entries"
 }
 
 # ═══ Config ═══
@@ -4330,6 +4387,7 @@ case "${1:-}" in
   plan)    shift; cmd_plan "$@" ;;
   help|-h|--help|"") cmd_help ;;
   doctor) cmd_doctor ;;
+  history) shift; cmd_history "$@" ;;
   upgrade) shift; cmd_upgrade "$@" ;;
   version|--version|-v) echo "sage $SAGE_VERSION" ;;
   *)       die "unknown command: $1. Run: sage help" ;;
