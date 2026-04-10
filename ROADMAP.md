@@ -128,6 +128,13 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 
 ---
 
+## Phase 7: Observability & Analytics
+**Use case**: "What did my agents do today?"
+
+- [x] `sage history` — agent activity timeline across all agents (--agent, -n, --json)
+
+---
+
 ## Killer Use Cases to Build Toward
 
 1. **PR Review Pipeline**: `sage plan "Review PR #123"` → spawns reviewer + security auditor + test writer in parallel → merges findings
