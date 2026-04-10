@@ -211,3 +211,90 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"not found"* ]]
 }
+
+# ── skill registry ──
+
+@test "skill registry ls shows default registry" {
+  run sage skill registry ls
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"youwangd/sage-skills"* ]]
+}
+
+@test "skill registry add adds a custom registry" {
+  run sage skill registry add someuser/my-skills
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"added"* ]]
+  run sage skill registry ls
+  [[ "$output" == *"someuser/my-skills"* ]]
+}
+
+@test "skill registry add rejects duplicates" {
+  sage skill registry add someuser/my-skills
+  run sage skill registry add someuser/my-skills
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"already"* ]]
+}
+
+@test "skill registry rm removes a registry" {
+  sage skill registry add someuser/my-skills
+  run sage skill registry rm someuser/my-skills
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"removed"* ]]
+  run sage skill registry ls
+  [[ "$output" != *"someuser/my-skills"* ]]
+}
+
+@test "skill registry rm fails for unknown registry" {
+  run sage skill registry rm nonexistent/repo
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not found"* ]]
+}
+
+@test "skill registry requires subcommand" {
+  run sage skill registry
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"registry"* ]]
+  [[ "$output" == *"usage"* ]]
+}
+
+# ── skill search ──
+
+@test "skill search finds matching skills from local index" {
+  mkdir -p "$SAGE_HOME/registries/youwangd-sage-skills"
+  cat > "$SAGE_HOME/registries/youwangd-sage-skills/index.json" << 'EOF'
+[{"name":"code-review-pro","repo":"youwangd/skill-code-review","description":"AI code review","tags":["review","quality"]},{"name":"test-writer","repo":"youwangd/skill-test-writer","description":"Generate tests","tags":["testing"]}]
+EOF
+  run sage skill search review
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"code-review-pro"* ]]
+  [[ "$output" != *"test-writer"* ]]
+}
+
+@test "skill search shows no results message" {
+  mkdir -p "$SAGE_HOME/registries/youwangd-sage-skills"
+  echo '[]' > "$SAGE_HOME/registries/youwangd-sage-skills/index.json"
+  run sage skill search nonexistent
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no matching"* ]]
+}
+
+@test "skill search requires query" {
+  run sage skill search
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"search"* ]]
+  [[ "$output" == *"usage"* ]]
+}
+
+# ── skill install from registry ──
+
+@test "skill install bare name looks up registry" {
+  mkdir -p "$SAGE_HOME/registries/youwangd-sage-skills"
+  cat > "$SAGE_HOME/registries/youwangd-sage-skills/index.json" << 'EOF'
+[{"name":"my-test-skill","repo":"youwangd/skill-test","description":"Test skill","tags":[]}]
+EOF
+  # This will fail because the repo doesn't exist, but it should TRY the registry lookup
+  run sage skill install my-test-skill
+  [ "$status" -ne 0 ]
+  # Should attempt to clone from the registry repo, not complain about path
+  [[ "$output" == *"clone"* ]] || [[ "$output" == *"youwangd/skill-test"* ]]
+}
