@@ -5,6 +5,7 @@
 
 set -euo pipefail
 
+SAGE_VERSION="1.3.0"
 SAGE_HOME="${SAGE_HOME:-$HOME/.sage}"
 AGENTS_DIR="$SAGE_HOME/agents"
 TOOLS_DIR="$SAGE_HOME/tools"
@@ -520,7 +521,7 @@ _acp_start_agent() {
   exec 8<"$_acp_fifo_out"
 
   # Initialize
-  _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$_acp_rpc_id,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":true},\"clientInfo\":{\"name\":\"sage\",\"version\":\"1.0.0\"}}}"
+  _acp_send "{\"jsonrpc\":\"2.0\",\"id\":$_acp_rpc_id,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":true},\"clientInfo\":{\"name\":\"sage\",\"version\":\"$SAGE_VERSION\"}}}"
   ((_acp_rpc_id++))
   local r=$(_acp_read 15)
   local aname=$(echo "$r" | jq -r '.result.agentInfo.name // "unknown"' 2>/dev/null)
@@ -3728,7 +3729,7 @@ cmd_mcp() {
         local args_shell
         args_shell=$(jq -r "[.mcpServers[\"$srv\"].args[]?] | map(@sh) | join(\" \")" "$mcp_json")
         # Spawn server, send initialize + tools/list, read response
-        local init_req='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"sage","version":"1.0.0"}}}'
+        local init_req="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"sage\",\"version\":\"$SAGE_VERSION\"}}}"
         local tools_req='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
         local response
         response=$(printf '%s\n%s\n' "$init_req" "$tools_req" | eval "\"$cmd\" $args_shell" 2>/dev/null) || true
@@ -4012,6 +4013,32 @@ cmd_doctor() {
   return "$fails"
 }
 
+cmd_upgrade() {
+  local check_only=false
+  [[ "${1:-}" == "--check" ]] && check_only=true
+  local repo="youwangd/SageCLI" script_path
+  script_path="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  local remote_ver
+  remote_ver=$(curl -fsSL "https://raw.githubusercontent.com/$repo/main/sage" 2>/dev/null | grep -m1 '^SAGE_VERSION=' | cut -d'"' -f2) || die "failed to fetch remote version"
+  info "local:  $SAGE_VERSION"
+  info "remote: $remote_ver"
+  if [[ "$SAGE_VERSION" == "$remote_ver" ]]; then
+    info "already up to date"
+    return 0
+  fi
+  if [[ "$check_only" == true ]]; then
+    info "update available: $SAGE_VERSION → $remote_ver"
+    return 0
+  fi
+  info "upgrading $SAGE_VERSION → $remote_ver ..."
+  local tmp
+  tmp=$(mktemp)
+  curl -fsSL "https://raw.githubusercontent.com/$repo/main/sage" -o "$tmp" || { rm -f "$tmp"; die "download failed"; }
+  chmod +x "$tmp"
+  mv "$tmp" "$script_path" || die "failed to replace $script_path (try with sudo)"
+  info "upgraded to $remote_ver ✓"
+}
+
 cmd_help() {
   cat << 'EOF'
 
@@ -4019,6 +4046,7 @@ cmd_help() {
 
   USAGE
     sage <command> [args]
+    sage --version              Show version
 
   AGENTS
     init [--force]              Initialize sage (~/.sage/)
@@ -4031,6 +4059,7 @@ cmd_help() {
     rm <name>                   Remove agent
     clean                       Clean up stale files
     doctor                      Check dependencies and environment health
+    upgrade [--check]           Self-update from GitHub (--check: compare only)
 
   MESSAGING
     send <to> <message|@file> [--force] Fire-and-forget (--force cancels running task)
@@ -4162,5 +4191,7 @@ case "${1:-}" in
   plan)    shift; cmd_plan "$@" ;;
   help|-h|--help|"") cmd_help ;;
   doctor) cmd_doctor ;;
+  upgrade) shift; cmd_upgrade "$@" ;;
+  version|--version|-v) echo "sage $SAGE_VERSION" ;;
   *)       die "unknown command: $1. Run: sage help" ;;
 esac
