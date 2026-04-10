@@ -112,8 +112,8 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 ### Phase 5: Memory & Context Sharing
 **Use case**: "Agent B picks up where Agent A left off"
 
-- [ ] Shared context store between agents (file-based, stays Unix-native)
-- [ ] `sage context set key value` / `sage context get key`
+- [x] Shared context store between agents (file-based, stays Unix-native)
+- [x] `sage context set key value` / `sage context get key`
 - [ ] Auto-inject relevant context into agent prompts
 
 ---
