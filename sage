@@ -841,7 +841,7 @@ RUNNER
 # sage create <name> [--runtime <rt>] [--model <m>]
 # ═══════════════════════════════════════════════
 cmd_create() {
-  local name="" runtime="" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name=""
+  local name="" runtime="" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name="" from_archive=""
   # Read config defaults (flags override)
   local _cfg_rt; _cfg_rt=$(_config_get default.runtime)
   local _cfg_model; _cfg_model=$(_config_get default.model)
@@ -860,6 +860,7 @@ cmd_create() {
       --worktree|-w)  worktree_branch="$2"; shift 2 ;;
       --mcp)          mcp_servers="$2"; shift 2 ;;
       --skill)        skill_name="$2"; shift 2 ;;
+      --from)         from_archive="$2"; shift 2 ;;
       -*)             die "unknown flag: $1" ;;
       *)              name="$1"; shift ;;
     esac
@@ -885,6 +886,16 @@ cmd_create() {
 
   local agent_dir="$AGENTS_DIR/$name"
   [[ ! -d "$agent_dir" ]] || die "agent '$name' already exists"
+
+  # Import from archive if --from specified
+  if [[ -n "$from_archive" ]]; then
+    [[ -f "$from_archive" ]] || die "archive not found: $from_archive"
+    mkdir -p "$agent_dir"/{inbox,state,replies,workspace}
+    tar xzf "$from_archive" -C "$agent_dir"
+    local tmp; tmp=$(jq --arg n "$name" '.name=$n | del(.worktree,.worktree_branch,.repo_root)' "$agent_dir/runtime.json") && echo "$tmp" > "$agent_dir/runtime.json"
+    ok "imported '$name' from $from_archive"
+    return 0
+  fi
 
   # Validate runtime
   [[ -f "$RUNTIMES_DIR/${runtime}.sh" ]] || die "unknown runtime: $runtime (available: $(ls "$RUNTIMES_DIR" | sed 's/.sh//' | tr '\n' ' '))"
@@ -4067,6 +4078,24 @@ cmd_clone() {
   ok "cloned '$src' → '$dest'"
 }
 
+cmd_export() {
+  local name="" output=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --output|-o) output="$2"; shift 2 ;;
+      -*) die "unknown flag: $1" ;;
+      *)  name="$1"; shift ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "usage: sage export <name> [--output file.tar.gz]"
+  ensure_init
+  local agent_dir="$AGENTS_DIR/$name"
+  [[ -d "$agent_dir" ]] || die "agent '$name' not found"
+  : "${output:=${name}.tar.gz}"
+  tar czf "$output" -C "$agent_dir" --exclude='state' --exclude='workspace' --exclude='inbox' --exclude='replies' .
+  ok "exported '$name' → $output"
+}
+
 cmd_help() {
   cat << 'EOF'
 
@@ -4085,6 +4114,7 @@ cmd_help() {
     status                      Show all agents
     ls                          List agent names
     clone <src> <dest>          Duplicate agent config (no state)
+    export <name> [--output f]  Export agent config as tar.gz archive
     rm <name>                   Remove agent
     clean                       Clean up stale files
     doctor                      Check dependencies and environment health
@@ -4248,6 +4278,7 @@ case "${1:-}" in
   ls)      cmd_ls ;;
   rm)      cmd_rm "${2:-}" ;;
   clone)   shift; cmd_clone "$@" ;;
+  export)  shift; cmd_export "$@" ;;
   merge)   shift; cmd_merge "$@" ;;
   clean)   cmd_clean ;;
   tool)    shift; cmd_tool "$@" ;;
