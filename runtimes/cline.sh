@@ -43,7 +43,7 @@ PROMPT
   local output
   cd "$workdir"
 
-  local cline_args=(--act -c "$workdir")
+  local cline_args=(--act --yolo -c "$workdir")
   [[ -n "$model" ]] && cline_args+=(-m "$model")
 
   output=$(cline "${cline_args[@]}" "$(cat "$prompt_file")" 2>&1) || true
