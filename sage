@@ -3928,6 +3928,90 @@ $tmsg"
 # ═══════════════════════════════════════════════
 # sage help
 # ═══════════════════════════════════════════════
+# ═══ Doctor ═══
+cmd_doctor() {
+  local fails=0
+  _doc_check() {
+    local label="$1" ok="$2" msg="$3"
+    if [[ "$ok" == "1" ]]; then
+      echo -e "${GREEN}✓${NC} $label — $msg"
+    elif [[ "$ok" == "w" ]]; then
+      echo -e "${YELLOW}⚠${NC} $label — $msg"
+    else
+      echo -e "${RED}✗${NC} $label — $msg"
+      fails=$((fails + 1))
+    fi
+  }
+
+  echo -e "${BOLD}sage doctor${NC}"
+  echo ""
+
+  # bash version
+  local bv="${BASH_VERSINFO[0]}"
+  if [[ "$bv" -ge 4 ]]; then
+    _doc_check "bash" 1 "v${BASH_VERSION}"
+  else
+    _doc_check "bash" 0 "v${BASH_VERSION} (need 4+)"
+  fi
+
+  # jq
+  if command -v jq >/dev/null 2>&1; then
+    _doc_check "jq" 1 "$(jq --version 2>&1)"
+  else
+    _doc_check "jq" 0 "not found"
+  fi
+
+  # tmux
+  if command -v tmux >/dev/null 2>&1; then
+    _doc_check "tmux" 1 "$(tmux -V 2>&1)"
+  else
+    _doc_check "tmux" 0 "not found"
+  fi
+
+  # curl (optional)
+  if command -v curl >/dev/null 2>&1; then
+    _doc_check "curl" 1 "available"
+  else
+    _doc_check "curl" "w" "not found (needed for API calls)"
+  fi
+
+  # sage init
+  if [[ -d "$SAGE_HOME/agents" ]]; then
+    _doc_check "sage init" 1 "$SAGE_HOME"
+  else
+    _doc_check "sage init" "w" "not initialized — run: sage init"
+  fi
+
+  # stale agent pids
+  local stale=0
+  if [[ -d "$AGENTS_DIR" ]]; then
+    for pidfile in "$AGENTS_DIR"/*/.pid; do
+      [[ -f "$pidfile" ]] || continue
+      local pid
+      pid=$(cat "$pidfile")
+      if ! kill -0 "$pid" 2>/dev/null; then
+        local aname
+        aname=$(basename "$(dirname "$pidfile")")
+        echo -e "  ${YELLOW}⚠${NC} stale pid for agent '$aname' (pid $pid)"
+        stale=$((stale + 1))
+      fi
+    done
+  fi
+  if [[ "$stale" -gt 0 ]]; then
+    _doc_check "agents" "w" "$stale stale pid(s) — run: sage clean"
+  elif [[ -d "$AGENTS_DIR" ]]; then
+    _doc_check "agents" 1 "no stale pids"
+  fi
+
+  echo ""
+  if [[ "$fails" -eq 0 ]]; then
+    echo -e "${GREEN}All checks passed.${NC}"
+  else
+    echo -e "${RED}$fails issue(s) found.${NC}"
+  fi
+  return "$fails"
+}
+
 cmd_help() {
   cat << 'EOF'
 
@@ -3946,6 +4030,7 @@ cmd_help() {
     ls                          List agent names
     rm <name>                   Remove agent
     clean                       Clean up stale files
+    doctor                      Check dependencies and environment health
 
   MESSAGING
     send <to> <message|@file> [--force] Fire-and-forget (--force cancels running task)
@@ -4076,5 +4161,6 @@ case "${1:-}" in
   runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;
   help|-h|--help|"") cmd_help ;;
+  doctor) cmd_doctor ;;
   *)       die "unknown command: $1. Run: sage help" ;;
 esac
