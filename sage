@@ -4099,18 +4099,34 @@ cmd_clone() {
 }
 
 cmd_export() {
-  local name="" output=""
+  local name="" output="" format="tar"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --output|-o) output="$2"; shift 2 ;;
+      --format)    format="$2"; shift 2 ;;
       -*) die "unknown flag: $1" ;;
       *)  name="$1"; shift ;;
     esac
   done
-  [[ -n "$name" ]] || die "usage: sage export <name> [--output file.tar.gz]"
+  [[ -n "$name" ]] || die "usage: sage export <name> [--output file.tar.gz] [--format json]"
   ensure_init
   local agent_dir="$AGENTS_DIR/$name"
   [[ -d "$agent_dir" ]] || die "agent '$name' not found"
+  if [[ "$format" == "json" ]]; then
+    local json skills_json="[]" sp=""
+    json=$(cat "$agent_dir/runtime.json")
+    if [[ -f "$agent_dir/system_prompt" ]]; then
+      sp=$(cat "$agent_dir/system_prompt")
+      json=$(jq --arg sp "$sp" '{runtime: ., system_prompt: $sp}' <<< "$json")
+    else
+      json=$(jq '{runtime: ., system_prompt: null}' <<< "$json")
+    fi
+    if [[ -d "$agent_dir/skills" ]]; then
+      skills_json=$(ls "$agent_dir/skills" 2>/dev/null | jq -R -s 'split("\n") | map(select(. != ""))')
+    fi
+    jq --argjson skills "$skills_json" '. + {skills: $skills}' <<< "$json"
+    return
+  fi
   : "${output:=${name}.tar.gz}"
   tar czf "$output" -C "$agent_dir" --exclude='state' --exclude='workspace' --exclude='inbox' --exclude='replies' .
   ok "exported '$name' → $output"
@@ -4136,6 +4152,7 @@ cmd_help() {
     clone <src> <dest>          Duplicate agent config (no state)
     diff <name> [--stat|--cached] Show git changes in agent worktree
     export <name> [--output f]  Export agent config as tar.gz archive
+                  [--format json]  JSON export for programmatic use
     rm <name>                   Remove agent
     clean                       Clean up stale files
     doctor                      Check dependencies and environment health
