@@ -27,6 +27,7 @@ ok()   { echo -e "${GREEN}✓${NC} $*"; }
 warn() { echo -e "${YELLOW}⚠${NC} $*"; }
 
 ensure_init() { [[ -d "$SAGE_HOME" ]] || die "not initialized. Run: sage init"; }
+_config_get() { [[ -f "$SAGE_HOME/config.json" ]] && jq -r --arg k "$1" '.[$k] // empty' "$SAGE_HOME/config.json" 2>/dev/null || true; }
 agent_exists() {
   [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "invalid agent name '$1'"
   [[ -d "$AGENTS_DIR/$1" ]] || die "agent '$1' not found"
@@ -69,6 +70,7 @@ cmd_init() {
   fi
 
   mkdir -p "$AGENTS_DIR" "$TOOLS_DIR" "$RUNTIMES_DIR" "$LOGS_DIR" "$AGENTS_DIR/.cli/replies" "$SAGE_HOME/tasks" "$SAGE_HOME/plans" "$SKILLS_DIR" "$REGISTRIES_DIR" "$CONTEXT_DIR"
+  [[ -f "$SAGE_HOME/config.json" ]] || echo '{}' > "$SAGE_HOME/config.json"
 
   # ── Install task templates ──
   local script_dir
@@ -839,7 +841,15 @@ RUNNER
 # sage create <name> [--runtime <rt>] [--model <m>]
 # ═══════════════════════════════════════════════
 cmd_create() {
-  local name="" runtime="bash" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name=""
+  local name="" runtime="" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name=""
+  # Read config defaults (flags override)
+  local _cfg_rt; _cfg_rt=$(_config_get default.runtime)
+  local _cfg_model; _cfg_model=$(_config_get default.model)
+  local _cfg_agent; _cfg_agent=$(_config_get default.agent)
+  [[ -n "$_cfg_rt" ]] && runtime="$_cfg_rt"
+  [[ -n "$_cfg_model" ]] && model="$_cfg_model"
+  [[ -n "$_cfg_agent" ]] && acp_agent="$_cfg_agent"
+  : "${runtime:=bash}"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -4060,6 +4070,7 @@ cmd_help() {
     clean                       Clean up stale files
     doctor                      Check dependencies and environment health
     upgrade [--check]           Self-update from GitHub (--check: compare only)
+    config {set|get|ls|rm}      Persistent user defaults (e.g. default.runtime)
 
   MESSAGING
     send <to> <message|@file> [--force] Fire-and-forget (--force cancels running task)
@@ -4114,6 +4125,43 @@ cmd_help() {
     sage result <task-id>                # get result when done
 
 EOF
+}
+
+# ═══ Config ═══
+cmd_config() {
+  ensure_init
+  local cf="$SAGE_HOME/config.json"
+  [[ -f "$cf" ]] || echo '{}' > "$cf"
+  local sub="${1:-}"
+  case "$sub" in
+    set)
+      [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: sage config set <key> <value>"
+      local key="$2"; shift 2; local val="$*"
+      [[ "$key" =~ ^[a-zA-Z0-9._-]+$ ]] || die "invalid key '$key' — use alphanumeric, dash, underscore, dot"
+      local tmp; tmp=$(jq --arg k "$key" --arg v "$val" '.[$k]=$v' "$cf") && echo "$tmp" > "$cf"
+      ok "set $key = $val"
+      ;;
+    get)
+      [[ -n "${2:-}" ]] || die "usage: sage config get <key>"
+      local v; v=$(jq -r --arg k "$2" '.[$k] // empty' "$cf")
+      [[ -n "$v" ]] || die "key '$2' not found"
+      echo "$v"
+      ;;
+    ls)
+      local keys; keys=$(jq -r 'keys[]' "$cf" 2>/dev/null)
+      if [[ -z "$keys" ]]; then info "no config keys set"; else
+        while IFS= read -r k; do printf "  %s = %s\n" "$k" "$(jq -r --arg k "$k" '.[$k]' "$cf")"; done <<< "$keys"
+      fi
+      ;;
+    rm)
+      [[ -n "${2:-}" ]] || die "usage: sage config rm <key>"
+      local v; v=$(jq -r --arg k "$2" '.[$k] // empty' "$cf")
+      [[ -n "$v" ]] || die "key '$2' not found"
+      local tmp; tmp=$(jq --arg k "$2" 'del(.[$k])' "$cf") && echo "$tmp" > "$cf"
+      ok "removed $2"
+      ;;
+    *) die "usage: sage config {set|get|ls|rm}" ;;
+  esac
 }
 
 # ═══ Context Store ═══
@@ -4186,6 +4234,7 @@ case "${1:-}" in
   mcp)     shift; cmd_mcp "$@" ;;
   skill)   shift; cmd_skill "$@" ;;
   context) shift; cmd_context "$@" ;;
+  config)  shift; cmd_config "$@" ;;
   task)    shift; cmd_task "$@" ;;
   runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;
