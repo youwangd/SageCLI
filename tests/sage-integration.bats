@@ -125,5 +125,5 @@ EOF
   [ -n "$tid" ]
   run "$SAGE" result "$tid"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"done"* ]]
+  [[ "$output" == *"ping"* ]]
 }

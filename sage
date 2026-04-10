@@ -1296,10 +1296,15 @@ $message"
     task_output=$(runtime_inject "$to" "$msg" 2>&1) || rc=$?
     local elapsed=$(( $(date +%s) - start_ts ))
 
+    # Write result files so `sage result <task_id>` works
+    local _rstatus="done"; [[ $rc -ne 0 ]] && _rstatus="failed"
+    local results_dir="$agent_dir/results"; mkdir -p "$results_dir"
+    jq -n --arg s "$_rstatus" --arg id "$task_id" --argjson rc "$rc" \
+      '{id:$id,status:$s,exit_code:$rc}' > "$results_dir/${task_id}.status.json"
+    jq -n --arg out "$task_output" '{output:$out}' > "$results_dir/${task_id}.result.json"
+
     if [[ "$json_output" == true ]]; then
-      local status="done"
-      [[ $rc -ne 0 ]] && status="failed"
-      jq -n --arg s "$status" --arg id "$task_id" --argjson rc "$rc" --argjson el "$elapsed" --arg out "$task_output" \
+      jq -n --arg s "$_rstatus" --arg id "$task_id" --argjson rc "$rc" --argjson el "$elapsed" --arg out "$task_output" \
         '{status:$s,task_id:$id,exit_code:$rc,elapsed:$el,output:$out}'
     else
       [[ -n "$task_output" ]] && printf '%s\n' "$task_output"
