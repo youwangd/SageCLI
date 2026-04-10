@@ -81,3 +81,40 @@ teardown() {
   name=$(jq -r '.name' "$SAGE_HOME/agents/imported/runtime.json")
   [ "$name" = "imported" ]
 }
+
+@test "sage export --format json outputs valid JSON" {
+  run "$SAGE" export myagent --format json
+  [ "$status" -eq 0 ]
+  echo "$output" | jq . >/dev/null 2>&1
+}
+
+@test "sage export --format json contains runtime config" {
+  run "$SAGE" export myagent --format json
+  [ "$status" -eq 0 ]
+  local rt
+  rt=$(echo "$output" | jq -r '.runtime.runtime')
+  [ "$rt" = "bash" ]
+}
+
+@test "sage export --format json contains system_prompt" {
+  run "$SAGE" export myagent --format json
+  [ "$status" -eq 0 ]
+  local sp
+  sp=$(echo "$output" | jq -r '.system_prompt')
+  [ "$sp" = "You are a helpful assistant" ]
+}
+
+@test "sage export --format json lists skills" {
+  run "$SAGE" export myagent --format json
+  [ "$status" -eq 0 ]
+  local skill
+  skill=$(echo "$output" | jq -r '.skills[0]')
+  [ "$skill" = "test-skill" ]
+}
+
+@test "sage export --format json does not create tar.gz" {
+  cd "$BATS_TMPDIR"
+  run "$SAGE" export myagent --format json
+  [ "$status" -eq 0 ]
+  [ ! -f "$BATS_TMPDIR/myagent.tar.gz" ]
+}
