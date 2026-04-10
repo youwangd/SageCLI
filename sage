@@ -4060,6 +4060,26 @@ cmd_upgrade() {
   info "upgraded to $remote_ver ✓"
 }
 
+cmd_diff() {
+  local name="" git_args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --stat)   git_args+=("--stat"); shift ;;
+      --cached) git_args+=("--cached"); shift ;;
+      -*) die "unknown flag: $1" ;;
+      *)  name="$1"; shift ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "usage: sage diff <name> [--stat] [--cached]"
+  ensure_init
+  local agent_dir="$AGENTS_DIR/$name"
+  [[ -d "$agent_dir" ]] || die "agent '$name' not found"
+  local is_wt
+  is_wt=$(jq -r '.worktree // false' "$agent_dir/runtime.json" 2>/dev/null)
+  [[ "$is_wt" == "true" ]] || die "agent '$name' is not a worktree agent"
+  git -C "$agent_dir/workspace" diff ${git_args[@]+"${git_args[@]}"}
+}
+
 cmd_clone() {
   local src="${1:-}" dest="${2:-}"
   [[ -n "$src" && -n "$dest" ]] || die "usage: sage clone <source> <dest>"
@@ -4114,6 +4134,7 @@ cmd_help() {
     status                      Show all agents
     ls                          List agent names
     clone <src> <dest>          Duplicate agent config (no state)
+    diff <name> [--stat|--cached] Show git changes in agent worktree
     export <name> [--output f]  Export agent config as tar.gz archive
     rm <name>                   Remove agent
     clean                       Clean up stale files
@@ -4278,6 +4299,7 @@ case "${1:-}" in
   ls)      cmd_ls ;;
   rm)      cmd_rm "${2:-}" ;;
   clone)   shift; cmd_clone "$@" ;;
+  diff)    shift; cmd_diff "$@" ;;
   export)  shift; cmd_export "$@" ;;
   merge)   shift; cmd_merge "$@" ;;
   clean)   cmd_clean ;;
