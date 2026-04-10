@@ -907,8 +907,8 @@ cmd_create() {
   fi
 
   # Write runtime config
-  local wt="false" wb=""
-  if [[ -n "$worktree_branch" ]]; then wt="true"; wb="$worktree_branch"; fi
+  local wt="false" wb="" wr=""
+  if [[ -n "$worktree_branch" ]]; then wt="true"; wb="$worktree_branch"; wr="$repo_root"; fi
   local mcp_json_arr="[]"
   if [[ ${#mcp_list[@]} -gt 0 ]]; then
     mcp_json_arr=$(printf '%s\n' "${mcp_list[@]}" | jq -R . | jq -s .)
@@ -921,8 +921,9 @@ cmd_create() {
     --arg aa "$acp_agent" \
     --argjson wt "$wt" \
     --arg wb "$wb" \
+    --arg wr "$wr" \
     --argjson mcp "$mcp_json_arr" \
-    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, acp_agent:$aa, worktree:$wt, worktree_branch:$wb, mcp_servers:$mcp, created:(now|todate)}' \
+    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, acp_agent:$aa, worktree:$wt, worktree_branch:$wb, repo_root:$wr, mcp_servers:$mcp, created:(now|todate)}' \
     > "$agent_dir/runtime.json"
 
   # Assemble mcp.json from registry
@@ -1445,6 +1446,11 @@ cmd_merge() {
   is_wt=$(jq -r '.worktree // false' "$agent_dir/runtime.json" 2>/dev/null)
   [[ "$is_wt" == "true" ]] || die "agent '$name' is not a worktree agent"
   branch=$(jq -r '.worktree_branch' "$agent_dir/runtime.json")
+  local repo_root
+  repo_root=$(jq -r '.repo_root // empty' "$agent_dir/runtime.json")
+  if [[ -n "$repo_root" ]]; then
+    cd "$repo_root" || die "cannot cd to repo root: $repo_root"
+  fi
   git rev-parse --show-toplevel >/dev/null 2>&1 || die "not in a git repository"
   if $dry_run; then
     if git merge --no-commit --no-ff "$branch" >/dev/null 2>&1; then
