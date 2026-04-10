@@ -107,7 +107,7 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 
 - [x] `sage skill install code-review-pro`
 - [x] Skills = task templates + tool configs + prompt injection
-- [ ] Skills registry (GitHub-based, like Homebrew taps)
+- [x] Skills registry (GitHub-based, like Homebrew taps)
 
 ### Phase 5: Memory & Context Sharing
 **Use case**: "Agent B picks up where Agent A left off"
