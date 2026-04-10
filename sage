@@ -4157,6 +4157,7 @@ cmd_help() {
     clean                       Clean up stale files
     doctor                      Check dependencies and environment health
     history [--agent a] [-n N]  Show agent activity timeline (--json for JSON)
+    info <name>                 Show full agent configuration and status (--json)
     upgrade [--check]           Self-update from GitHub (--check: compare only)
     config {set|get|ls|rm}      Persistent user defaults (e.g. default.runtime)
 
@@ -4215,6 +4216,79 @@ cmd_help() {
 EOF
 }
 
+
+# ═══ Info ═══
+cmd_info() {
+  local name="" json_mode=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json_mode=true; shift ;;
+      -*)     die "usage: sage info <name> [--json]" ;;
+      *)      name="$1"; shift ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "usage: sage info <name> [--json]"
+  ensure_init; agent_exists "$name"
+
+  local agent_dir="$AGENTS_DIR/$name"
+  local runtime model pid_text status_text mcp_servers skills worktree disk
+
+  runtime=$(jq -r '.runtime // "bash"' "$agent_dir/runtime.json" 2>/dev/null || echo "bash")
+  model=$(jq -r '.model // "default"' "$agent_dir/runtime.json" 2>/dev/null || echo "default")
+
+  if agent_pid "$name" >/dev/null 2>&1; then
+    status_text="running (pid $(agent_pid "$name"))"
+  else
+    status_text="stopped"
+  fi
+
+  # MCP servers
+  mcp_servers="none"
+  [[ -f "$agent_dir/mcp.json" ]] && mcp_servers=$(jq -r '.[]' "$agent_dir/mcp.json" 2>/dev/null | paste -sd', ' -) && [[ -z "$mcp_servers" ]] && mcp_servers="none"
+
+  # Skills
+  skills="none"
+  [[ -f "$agent_dir/skills.json" ]] && skills=$(jq -r '.[]' "$agent_dir/skills.json" 2>/dev/null | paste -sd', ' -) && [[ -z "$skills" ]] && skills="none"
+
+  # Worktree
+  worktree="none"
+  [[ -f "$agent_dir/.worktree_branch" ]] && worktree=$(cat "$agent_dir/.worktree_branch")
+
+  # Disk usage
+  disk=$(du -sh "$agent_dir" 2>/dev/null | cut -f1 || echo "?")
+
+  # Recent tasks (last 5)
+  local tasks_json="[]"
+  if ls "$agent_dir"/results/*.status.json >/dev/null 2>&1; then
+    tasks_json=$(cat "$agent_dir"/results/*.status.json 2>/dev/null | jq -s 'sort_by(.queued_at // .finished_at // "") | reverse | .[:5]' 2>/dev/null || echo "[]")
+  fi
+
+  if $json_mode; then
+    jq -n \
+      --arg name "$name" --arg runtime "$runtime" --arg model "$model" \
+      --arg status "$status_text" --arg mcp "$mcp_servers" --arg skills "$skills" \
+      --arg worktree "$worktree" --arg disk "$disk" --argjson tasks "$tasks_json" \
+      '{name:$name, runtime:$runtime, model:$model, status:$status, mcp_servers:($mcp|split(", ")), skills:($skills|split(", ")), worktree:$worktree, disk:$disk, recent_tasks:$tasks}'
+    return
+  fi
+
+  printf "\n${BOLD}  ⚡ %s${NC}\n\n" "$name"
+  printf "  %-14s %s\n" "Runtime:" "$runtime"
+  printf "  %-14s %s\n" "Model:" "$model"
+  printf "  %-14s %s\n" "Status:" "$status_text"
+  printf "  %-14s %s\n" "MCP Servers:" "$mcp_servers"
+  printf "  %-14s %s\n" "Skills:" "$skills"
+  printf "  %-14s %s\n" "Worktree:" "$worktree"
+  printf "  %-14s %s\n" "Disk:" "$disk"
+
+  local task_count
+  task_count=$(echo "$tasks_json" | jq 'length' 2>/dev/null || echo 0)
+  if [[ "$task_count" -gt 0 ]]; then
+    printf "\n  ${BOLD}Recent Tasks:${NC}\n"
+    echo "$tasks_json" | jq -r '.[] | "  \(.status // "?")  \(.id // "?")  \(.queued_at // "?")"' 2>/dev/null
+  fi
+  echo
+}
 # ═══ History ═══
 cmd_history() {
   ensure_init
@@ -4388,6 +4462,7 @@ case "${1:-}" in
   help|-h|--help|"") cmd_help ;;
   doctor) cmd_doctor ;;
   history) shift; cmd_history "$@" ;;
+  info)    shift; cmd_info "$@" ;;
   upgrade) shift; cmd_upgrade "$@" ;;
   version|--version|-v) echo "sage $SAGE_VERSION" ;;
   *)       die "unknown command: $1. Run: sage help" ;;
