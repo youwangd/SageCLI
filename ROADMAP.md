@@ -72,9 +72,9 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 ### Phase 0: Testing Foundation (MUST DO FIRST)
 **Use case**: "I want to refactor sage without breaking anything"
 
-- [ ] Create `tests/` directory with bats-core test framework
+- [x] Create `tests/` directory with bats-core test framework
 - [x] Unit tests for every command — 63 tests across 6 files (create/rm, ls/clean/status/inbox/send, tool/tasks/result/call/logs/trace, steer/peek/wait/attach/plan, CI)
-- [ ] Integration tests: full lifecycle (create → send → wait → result)
+- [x] Integration tests: full lifecycle (create → send → result → rm) — 8 tests in sage-integration.bats
 - [x] CI via GitHub Actions (test on ubuntu + macos) — `.github/workflows/ci.yml`
 - [x] Shellcheck linting on every PR — `--severity=error` in CI
 - [x] Coverage tracking — `tests/coverage.sh` reports 80% command coverage (20/25), CI integrated
