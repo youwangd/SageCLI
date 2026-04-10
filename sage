@@ -1197,13 +1197,14 @@ cmd_status() {
 # sage send <to> <payload>
 # ═══════════════════════════════════════════════
 cmd_send() {
-  local to="" message="" force=false headless=false json_output=false
+  local to="" message="" force=false headless=false json_output=false no_context=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --force|-f)    force=true; shift ;;
       --headless)    headless=true; shift ;;
       --json)        json_output=true; shift ;;
+      --no-context)  no_context=true; shift ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1252,6 +1253,20 @@ cmd_send() {
 $message"
         fi
       fi
+    fi
+  fi
+
+  # Auto-inject shared context keys into message
+  if [[ "$no_context" != true && -d "$CONTEXT_DIR" ]]; then
+    local _ctx_keys _ctx_block=""
+    _ctx_keys=$(ls "$CONTEXT_DIR/" 2>/dev/null) || true
+    if [[ -n "$_ctx_keys" ]]; then
+      while IFS= read -r _ck; do
+        _ctx_block="${_ctx_block}${_ck}=$(cat "$CONTEXT_DIR/$_ck")"$'\n'
+      done <<< "$_ctx_keys"
+      message="[Context]
+${_ctx_block}
+$message"
     fi
   fi
 
