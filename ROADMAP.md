@@ -114,7 +114,7 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 
 - [x] Shared context store between agents (file-based, stays Unix-native)
 - [x] `sage context set key value` / `sage context get key`
-- [ ] Auto-inject relevant context into agent prompts
+- [x] Auto-inject relevant context into agent prompts
 
 ---
 
