@@ -1,11 +1,12 @@
 #!/usr/bin/env bats
 # tests/sage-context.bats — Shared context store tests
 
+SAGE="$BATS_TEST_DIRNAME/../sage"
+
 setup() {
-  export SAGE_HOME=$(mktemp -d)
-  mkdir -p "$SAGE_HOME"/{agents,runtimes,skills,context}
-  export PATH="$BATS_TEST_DIRNAME/..:$PATH"
-  sage init >/dev/null 2>&1 || true
+  export SAGE_HOME="$BATS_TMPDIR/sage-context-test-$$"
+  rm -rf "$SAGE_HOME"
+  "$SAGE" init >/dev/null 2>&1
 }
 
 teardown() {
@@ -15,7 +16,7 @@ teardown() {
 # ── context set/get ──
 
 @test "context set stores a value" {
-  run sage context set mykey "hello world"
+  run "$SAGE" context set mykey "hello world"
   [ "$status" -eq 0 ]
   [ -f "$SAGE_HOME/context/mykey" ]
   [ "$(cat "$SAGE_HOME/context/mykey")" = "hello world" ]
@@ -23,25 +24,25 @@ teardown() {
 
 @test "context get retrieves a value" {
   echo -n "test-value" > "$SAGE_HOME/context/mykey"
-  run sage context get mykey
+  run "$SAGE" context get mykey
   [ "$status" -eq 0 ]
   [[ "$output" == "test-value" ]]
 }
 
 @test "context get fails for missing key" {
-  run sage context get nonexistent
+  run "$SAGE" context get nonexistent
   [ "$status" -ne 0 ]
   [[ "$output" == *"not found"* ]]
 }
 
 @test "context set rejects invalid key" {
-  run sage context set "bad key!" "value"
+  run "$SAGE" context set "bad key!" "value"
   [ "$status" -ne 0 ]
   [[ "$output" == *"invalid"* ]]
 }
 
 @test "context set requires key and value" {
-  run sage context set
+  run "$SAGE" context set
   [ "$status" -ne 0 ]
   [[ "$output" == *"usage"* ]]
 }
@@ -49,7 +50,7 @@ teardown() {
 # ── context ls ──
 
 @test "context ls shows no context when empty" {
-  run sage context ls
+  run "$SAGE" context ls
   [ "$status" -eq 0 ]
   [[ "$output" == *"no context"* ]]
 }
@@ -57,7 +58,7 @@ teardown() {
 @test "context ls lists stored keys" {
   echo "v1" > "$SAGE_HOME/context/key1"
   echo "v2" > "$SAGE_HOME/context/key2"
-  run sage context ls
+  run "$SAGE" context ls
   [ "$status" -eq 0 ]
   [[ "$output" == *"key1"* ]]
   [[ "$output" == *"key2"* ]]
@@ -67,13 +68,13 @@ teardown() {
 
 @test "context rm removes a key" {
   echo "val" > "$SAGE_HOME/context/mykey"
-  run sage context rm mykey
+  run "$SAGE" context rm mykey
   [ "$status" -eq 0 ]
   [ ! -f "$SAGE_HOME/context/mykey" ]
 }
 
 @test "context rm fails for missing key" {
-  run sage context rm nonexistent
+  run "$SAGE" context rm nonexistent
   [ "$status" -ne 0 ]
   [[ "$output" == *"not found"* ]]
 }
@@ -83,7 +84,7 @@ teardown() {
 @test "context clear removes all keys" {
   echo "v1" > "$SAGE_HOME/context/key1"
   echo "v2" > "$SAGE_HOME/context/key2"
-  run sage context clear
+  run "$SAGE" context clear
   [ "$status" -eq 0 ]
   [ -z "$(ls -A "$SAGE_HOME/context/")" ]
 }
@@ -91,7 +92,66 @@ teardown() {
 # ── context requires subcommand ──
 
 @test "context requires subcommand" {
-  run sage context
+  run "$SAGE" context
   [ "$status" -ne 0 ]
   [[ "$output" == *"usage"* ]]
+}
+
+# ── context auto-inject on send ──
+
+@test "send --headless injects context into message" {
+  # Create agent with bash runtime
+  "$SAGE" create worker
+  cat > "$SAGE_HOME/runtimes/bash.sh" << 'RTEOF'
+runtime_start() { :; }
+runtime_inject() {
+  local msg="$2"
+  echo "$msg" | jq -r '.payload.text'
+}
+RTEOF
+
+  # Set context keys
+  "$SAGE" context set project "acme"
+  "$SAGE" context set env "staging"
+
+  run "$SAGE" send worker "deploy now" --headless
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[Context]"* ]]
+  [[ "$output" == *"project=acme"* ]]
+  [[ "$output" == *"env=staging"* ]]
+  [[ "$output" == *"deploy now"* ]]
+}
+
+@test "send --headless skips context injection when no keys" {
+  "$SAGE" create worker
+  cat > "$SAGE_HOME/runtimes/bash.sh" << 'RTEOF'
+runtime_start() { :; }
+runtime_inject() {
+  local msg="$2"
+  echo "$msg" | jq -r '.payload.text'
+}
+RTEOF
+
+  run "$SAGE" send worker "deploy now" --headless
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"[Context]"* ]]
+  [[ "$output" == *"deploy now"* ]]
+}
+
+@test "send --headless --no-context skips injection even with keys" {
+  "$SAGE" create worker
+  cat > "$SAGE_HOME/runtimes/bash.sh" << 'RTEOF'
+runtime_start() { :; }
+runtime_inject() {
+  local msg="$2"
+  echo "$msg" | jq -r '.payload.text'
+}
+RTEOF
+
+  "$SAGE" context set project "acme"
+
+  run "$SAGE" send worker "deploy now" --headless --no-context
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"[Context]"* ]]
+  [[ "$output" == *"deploy now"* ]]
 }
