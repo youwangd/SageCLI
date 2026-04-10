@@ -118,6 +118,15 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 
 ---
 
+## Phase 6: Sharing & Portability
+**Use case**: "Share my agent setup with teammates or across machines"
+
+- [x] `sage export <name>` — package agent config as shareable tar.gz
+- [x] `sage create <name> --from <archive>` — import exported agent
+- [ ] `sage export --format json` — JSON export for programmatic use
+
+---
+
 ## Killer Use Cases to Build Toward
 
 1. **PR Review Pipeline**: `sage plan "Review PR #123"` → spawns reviewer + security auditor + test writer in parallel → merges findings
