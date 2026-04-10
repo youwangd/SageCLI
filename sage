@@ -4049,6 +4049,24 @@ cmd_upgrade() {
   info "upgraded to $remote_ver ✓"
 }
 
+cmd_clone() {
+  local src="${1:-}" dest="${2:-}"
+  [[ -n "$src" && -n "$dest" ]] || die "usage: sage clone <source> <dest>"
+  ensure_init
+  local src_dir="$AGENTS_DIR/$src" dest_dir="$AGENTS_DIR/$dest"
+  [[ -d "$src_dir" ]] || die "agent '$src' not found"
+  [[ ! -d "$dest_dir" ]] || die "agent '$dest' already exists"
+  [[ "$dest" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "invalid agent name '$dest'"
+  mkdir -p "$dest_dir"/{inbox,state,replies,workspace}
+  cp "$src_dir/runtime.json" "$dest_dir/runtime.json"
+  local tmp; tmp=$(jq --arg n "$dest" '.name=$n | del(.worktree,.worktree_branch,.repo_root)' "$dest_dir/runtime.json") && echo "$tmp" > "$dest_dir/runtime.json"
+  for f in system_prompt mcp.json handler.sh; do
+    [[ -f "$src_dir/$f" ]] && cp "$src_dir/$f" "$dest_dir/$f"
+  done
+  [[ -d "$src_dir/skills" ]] && cp -r "$src_dir/skills" "$dest_dir/skills"
+  ok "cloned '$src' → '$dest'"
+}
+
 cmd_help() {
   cat << 'EOF'
 
@@ -4066,6 +4084,7 @@ cmd_help() {
     restart [name|--all]        Restart agent(s)
     status                      Show all agents
     ls                          List agent names
+    clone <src> <dest>          Duplicate agent config (no state)
     rm <name>                   Remove agent
     clean                       Clean up stale files
     doctor                      Check dependencies and environment health
@@ -4228,6 +4247,7 @@ case "${1:-}" in
   attach)  cmd_attach "${2:-}" ;;
   ls)      cmd_ls ;;
   rm)      cmd_rm "${2:-}" ;;
+  clone)   shift; cmd_clone "$@" ;;
   merge)   shift; cmd_merge "$@" ;;
   clean)   cmd_clean ;;
   tool)    shift; cmd_tool "$@" ;;
