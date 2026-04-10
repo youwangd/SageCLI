@@ -12,6 +12,7 @@ RUNTIMES_DIR="$SAGE_HOME/runtimes"
 LOGS_DIR="$SAGE_HOME/logs"
 SKILLS_DIR="$SAGE_HOME/skills"
 REGISTRIES_DIR="$SAGE_HOME/registries"
+CONTEXT_DIR="$SAGE_HOME/context"
 TMUX_SESSION="sage"
 
 # ═══ Colors ═══
@@ -66,7 +67,7 @@ cmd_init() {
     return
   fi
 
-  mkdir -p "$AGENTS_DIR" "$TOOLS_DIR" "$RUNTIMES_DIR" "$LOGS_DIR" "$AGENTS_DIR/.cli/replies" "$SAGE_HOME/tasks" "$SAGE_HOME/plans" "$SKILLS_DIR" "$REGISTRIES_DIR"
+  mkdir -p "$AGENTS_DIR" "$TOOLS_DIR" "$RUNTIMES_DIR" "$LOGS_DIR" "$AGENTS_DIR/.cli/replies" "$SAGE_HOME/tasks" "$SAGE_HOME/plans" "$SKILLS_DIR" "$REGISTRIES_DIR" "$CONTEXT_DIR"
 
   # ── Install task templates ──
   local script_dir
@@ -1260,6 +1261,10 @@ $message"
     runtime=$(jq -r '.runtime // "bash"' "$agent_dir/runtime.json" 2>/dev/null || echo "bash")
     export SAGE_AGENT_NAME="$to"
     export SAGE_HOME
+    export AGENTS_DIR
+    LOGS="${SAGE_HOME}/logs"; mkdir -p "$LOGS"
+    log() { echo "[$(date '+%H:%M:%S')] $SAGE_AGENT_NAME: $*" >> "$LOGS/$SAGE_AGENT_NAME.log"; }
+    mkdir -p "$agent_dir/results"
 
     # Source tools and runtime
     for tool in "$SAGE_HOME/tools"/*.sh; do [[ -f "$tool" ]] && source "$tool"; done
@@ -3971,6 +3976,49 @@ cmd_help() {
 EOF
 }
 
+# ═══ Context Store ═══
+cmd_context() {
+  ensure_init
+  mkdir -p "$CONTEXT_DIR"
+  local sub="${1:-}"
+  case "$sub" in
+    set)
+      [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: sage context set <key> <value>"
+      local key="$2"; shift 2; local val="$*"
+      [[ "$key" =~ ^[a-zA-Z0-9._-]+$ ]] || die "invalid key '$key' — use alphanumeric, dash, underscore, dot"
+      printf '%s' "$val" > "$CONTEXT_DIR/$key"
+      info "set $key"
+      ;;
+    get)
+      [[ -n "${2:-}" ]] || die "usage: sage context get <key>"
+      [[ -f "$CONTEXT_DIR/$2" ]] || die "key '$2' not found"
+      cat "$CONTEXT_DIR/$2"
+      ;;
+    ls)
+      local keys
+      keys=$(ls "$CONTEXT_DIR/" 2>/dev/null)
+      if [[ -z "$keys" ]]; then
+        info "no context keys stored"
+      else
+        for k in $keys; do
+          printf "  %s = %s\n" "$k" "$(cat "$CONTEXT_DIR/$k")"
+        done
+      fi
+      ;;
+    rm)
+      [[ -n "${2:-}" ]] || die "usage: sage context rm <key>"
+      [[ -f "$CONTEXT_DIR/$2" ]] || die "key '$2' not found"
+      rm "$CONTEXT_DIR/$2"
+      info "removed $2"
+      ;;
+    clear)
+      rm -f "$CONTEXT_DIR"/* 2>/dev/null
+      info "cleared all context"
+      ;;
+    *) die "usage: sage context {set|get|ls|rm|clear}" ;;
+  esac
+}
+
 # ═══ Main ═══
 case "${1:-}" in
   init)    shift; cmd_init "$@" ;;
@@ -3997,6 +4045,7 @@ case "${1:-}" in
   tool)    shift; cmd_tool "$@" ;;
   mcp)     shift; cmd_mcp "$@" ;;
   skill)   shift; cmd_skill "$@" ;;
+  context) shift; cmd_context "$@" ;;
   task)    shift; cmd_task "$@" ;;
   runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;
