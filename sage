@@ -3951,7 +3951,7 @@ cmd_doctor() {
   if [[ "$bv" -ge 4 ]]; then
     _doc_check "bash" 1 "v${BASH_VERSION}"
   else
-    _doc_check "bash" 0 "v${BASH_VERSION} (need 4+)"
+    _doc_check "bash" "w" "v${BASH_VERSION} (4+ recommended)"
   fi
 
   # jq
