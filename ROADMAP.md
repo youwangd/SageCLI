@@ -124,7 +124,7 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 - [x] `sage export <name>` — package agent config as shareable tar.gz
 - [x] `sage create <name> --from <archive>` — import exported agent
 - [x] `sage diff <name>` — show git changes in agent worktree
-- [ ] `sage export --format json` — JSON export for programmatic use
+- [x] `sage export --format json` — JSON export for programmatic use
 
 ---
 
