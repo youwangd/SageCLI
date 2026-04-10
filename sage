@@ -3965,7 +3965,7 @@ cmd_doctor() {
   if command -v tmux >/dev/null 2>&1; then
     _doc_check "tmux" 1 "$(tmux -V 2>&1)"
   else
-    _doc_check "tmux" 0 "not found"
+    _doc_check "tmux" "w" "not found (needed for interactive sessions)"
   fi
 
   # curl (optional)
