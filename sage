@@ -1234,6 +1234,24 @@ cmd_send() {
     message=$(cat "$filepath")
   fi
 
+  # Inject skill system_prompt if agent has a skill attached
+  if [[ "$to" != ".cli" ]]; then
+    local _skill_file="$AGENTS_DIR/$to/skills.json"
+    if [[ -f "$_skill_file" ]]; then
+      local _sname _sj _sp
+      _sname=$(jq -r '.[0] // empty' "$_skill_file" 2>/dev/null) || true
+      if [[ -n "$_sname" ]]; then
+        _sj="$SKILLS_DIR/$_sname/skill.json"
+        if [[ -f "$_sj" ]]; then
+          _sp=$(jq -r '.system_prompt // empty' "$_sj")
+          [[ -z "$_sp" ]] || message="[System] $_sp
+
+$message"
+        fi
+      fi
+    fi
+  fi
+
   # --headless: run task directly without tmux
   if [[ "$headless" == true ]]; then
     local agent_dir="$AGENTS_DIR/$to"
@@ -3756,7 +3774,48 @@ cmd_skill() {
       rm -rf "$SKILLS_DIR/$name"
       echo "removed skill: $name"
       ;;
-    *) die "usage: sage skill {install|ls|rm}" ;;
+    show)
+      local name="${1:-}"
+      [[ -n "$name" ]] || die "usage: sage skill show <name>"
+      [[ -d "$SKILLS_DIR/$name" ]] || die "skill '$name' not found"
+      local sj="$SKILLS_DIR/$name/skill.json"
+      printf "Name:        %s\n" "$(jq -r '.name' "$sj")"
+      printf "Version:     %s\n" "$(jq -r '.version // "-"' "$sj")"
+      printf "Description: %s\n" "$(jq -r '.description // "-"' "$sj")"
+      local sp
+      sp=$(jq -r '.system_prompt // empty' "$sj")
+      [[ -n "$sp" ]] && printf "Prompt:      %s\n" "$sp"
+      local tkeys
+      tkeys=$(jq -r '.templates // {} | keys[]' "$sj" 2>/dev/null) || true
+      if [[ -n "$tkeys" ]]; then
+        echo "Templates:"
+        while IFS= read -r tk; do
+          printf "  %-15s %s\n" "$tk" "$(jq -r ".templates[\"$tk\"]" "$sj")"
+        done <<< "$tkeys"
+      fi
+      ;;
+    run)
+      local agent="${1:-}" template="${2:-}"
+      [[ -n "$agent" && -n "$template" ]] || die "usage: sage skill run <agent> <template>"
+      agent_exists "$agent"
+      local agent_dir="$AGENTS_DIR/$agent"
+      [[ -f "$agent_dir/skills.json" ]] || die "no skill attached to agent '$agent'"
+      local sname
+      sname=$(jq -r '.[0]' "$agent_dir/skills.json")
+      [[ -d "$SKILLS_DIR/$sname" ]] || die "skill '$sname' not found"
+      local sj="$SKILLS_DIR/$sname/skill.json"
+      local tmsg
+      tmsg=$(jq -r ".templates[\"$template\"] // empty" "$sj")
+      [[ -n "$tmsg" ]] || die "template '$template' not found in skill '$sname'"
+      local sp
+      sp=$(jq -r '.system_prompt // empty' "$sj")
+      local full_msg="$tmsg"
+      [[ -n "$sp" ]] && full_msg="[System] $sp
+
+$tmsg"
+      cmd_send "$agent" "$full_msg" --headless
+      ;;
+    *) die "usage: sage skill {install|ls|rm|show|run}" ;;
   esac
 }
 
