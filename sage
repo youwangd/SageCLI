@@ -761,6 +761,8 @@ mkdir -p "$INBOX" "$STATE" "$AGENT_DIR/replies"
 
 # Read runtime config
 RUNTIME=$(jq -r '.runtime // "bash"' "$AGENT_DIR/runtime.json" 2>/dev/null || echo "bash")
+TIMEOUT_SECONDS=$(jq -r '.timeout_seconds // 0' "$AGENT_DIR/runtime.json" 2>/dev/null || echo 0)
+AGENT_START_TS=$(date +%s)
 
 # Validate runtime name (prevent path traversal)
 if [[ ! "$RUNTIME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
@@ -830,6 +832,14 @@ while true; do
     echo "{\"ts\":$(date +%s),\"type\":\"done\",\"agent\":\"$AGENT_NAME\",\"task_id\":\"$local_task_id\",\"elapsed\":$task_elapsed,\"status\":\"$final_status\"}" >> "$SAGE_HOME/trace.jsonl" 2>/dev/null
   done
   sleep 0.3
+  # Timeout enforcement
+  if [[ "$TIMEOUT_SECONDS" -gt 0 ]]; then
+    local elapsed=$(( $(date +%s) - AGENT_START_TS ))
+    if [[ $elapsed -ge $TIMEOUT_SECONDS ]]; then
+      log "timeout reached (${TIMEOUT_SECONDS}s) — stopping"
+      exit 0
+    fi
+  fi
 done
 RUNNER
   chmod +x "$SAGE_HOME/runner.sh"
@@ -841,7 +851,7 @@ RUNNER
 # sage create <name> [--runtime <rt>] [--model <m>]
 # ═══════════════════════════════════════════════
 cmd_create() {
-  local name="" runtime="" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name="" from_archive=""
+  local name="" runtime="" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name="" from_archive="" timeout_val=""
   # Read config defaults (flags override)
   local _cfg_rt; _cfg_rt=$(_config_get default.runtime)
   local _cfg_model; _cfg_model=$(_config_get default.model)
@@ -861,6 +871,7 @@ cmd_create() {
       --mcp)          mcp_servers="$2"; shift 2 ;;
       --skill)        skill_name="$2"; shift 2 ;;
       --from)         from_archive="$2"; shift 2 ;;
+      --timeout)      timeout_val="$2"; shift 2 ;;
       -*)             die "unknown flag: $1" ;;
       *)              name="$1"; shift ;;
     esac
@@ -886,6 +897,19 @@ cmd_create() {
 
   local agent_dir="$AGENTS_DIR/$name"
   [[ ! -d "$agent_dir" ]] || die "agent '$name' already exists"
+
+  # Parse --timeout value (Nm=minutes, Nh=hours, Ns/N=seconds)
+  local timeout_seconds=""
+  if [[ -n "$timeout_val" ]]; then
+    case "$timeout_val" in
+      *m) timeout_seconds=$(( ${timeout_val%m} * 60 )) ;;
+      *h) timeout_seconds=$(( ${timeout_val%h} * 3600 )) ;;
+      *s) timeout_seconds="${timeout_val%s}" ;;
+      *[0-9]) timeout_seconds="$timeout_val" ;;
+      *)  die "invalid timeout '$timeout_val' — use Nm, Nh, Ns, or bare seconds" ;;
+    esac
+    [[ "$timeout_seconds" =~ ^[0-9]+$ ]] || die "invalid timeout '$timeout_val' — use Nm, Nh, Ns, or bare seconds"
+  fi
 
   # Import from archive if --from specified
   if [[ -n "$from_archive" ]]; then
@@ -945,7 +969,8 @@ cmd_create() {
     --arg wb "$wb" \
     --arg wr "$wr" \
     --argjson mcp "$mcp_json_arr" \
-    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, acp_agent:$aa, worktree:$wt, worktree_branch:$wb, repo_root:$wr, mcp_servers:$mcp, created:(now|todate)}' \
+    --arg to "$timeout_seconds" \
+    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, acp_agent:$aa, worktree:$wt, worktree_branch:$wb, repo_root:$wr, mcp_servers:$mcp, created:(now|todate)} | if $to != "" then .timeout_seconds=($to|tonumber) else . end' \
     > "$agent_dir/runtime.json"
 
   # Assemble mcp.json from registry
@@ -4257,6 +4282,17 @@ cmd_info() {
   # Disk usage
   disk=$(du -sh "$agent_dir" 2>/dev/null | cut -f1 || echo "?")
 
+  # Timeout
+  local timeout_display="none"
+  local timeout_sec
+  timeout_sec=$(jq -r '.timeout_seconds // 0' "$agent_dir/runtime.json" 2>/dev/null || echo 0)
+  if [[ "$timeout_sec" -gt 0 ]]; then
+    if [[ $((timeout_sec % 3600)) -eq 0 ]]; then timeout_display="$((timeout_sec / 3600))h"
+    elif [[ $((timeout_sec % 60)) -eq 0 ]]; then timeout_display="$((timeout_sec / 60))m"
+    else timeout_display="${timeout_sec}s"
+    fi
+  fi
+
   # Recent tasks (last 5)
   local tasks_json="[]"
   if ls "$agent_dir"/results/*.status.json >/dev/null 2>&1; then
@@ -4268,7 +4304,8 @@ cmd_info() {
       --arg name "$name" --arg runtime "$runtime" --arg model "$model" \
       --arg status "$status_text" --arg mcp "$mcp_servers" --arg skills "$skills" \
       --arg worktree "$worktree" --arg disk "$disk" --argjson tasks "$tasks_json" \
-      '{name:$name, runtime:$runtime, model:$model, status:$status, mcp_servers:($mcp|split(", ")), skills:($skills|split(", ")), worktree:$worktree, disk:$disk, recent_tasks:$tasks}'
+      --arg timeout "$timeout_display" --argjson timeout_sec "$timeout_sec" \
+      '{name:$name, runtime:$runtime, model:$model, status:$status, mcp_servers:($mcp|split(", ")), skills:($skills|split(", ")), worktree:$worktree, disk:$disk, timeout:$timeout, timeout_seconds:$timeout_sec, recent_tasks:$tasks}'
     return
   fi
 
@@ -4279,6 +4316,7 @@ cmd_info() {
   printf "  %-14s %s\n" "MCP Servers:" "$mcp_servers"
   printf "  %-14s %s\n" "Skills:" "$skills"
   printf "  %-14s %s\n" "Worktree:" "$worktree"
+  printf "  %-14s %s\n" "Timeout:" "$timeout_display"
   printf "  %-14s %s\n" "Disk:" "$disk"
 
   local task_count
