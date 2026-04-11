@@ -1436,7 +1436,7 @@ cmd_status() {
 # ═══════════════════════════════════════════════
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
-  local then_chain=""
+  local then_chain="" retry_max=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1445,6 +1445,7 @@ cmd_send() {
       --json)        json_output=true; shift ;;
       --no-context)  no_context=true; shift ;;
       --then)        then_chain="${then_chain:+$then_chain }$2"; shift 2 ;;
+      --retry)       retry_max="$2"; shift 2 ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1464,6 +1465,9 @@ cmd_send() {
   # --then requires --headless
   if [[ -n "$then_chain" && "$headless" != true ]]; then
     die "--then requires --headless (chaining needs synchronous execution)"
+  fi
+  if [[ "$retry_max" -gt 0 && "$headless" != true ]]; then
+    die "--retry requires --headless"
   fi
   if [[ -n "$then_chain" ]]; then
     local _ta
@@ -1573,6 +1577,16 @@ $message"
 
     local task_output
     task_output=$(runtime_inject "$to" "$msg" 2>&1) || rc=$?
+
+    # Retry on failure
+    local _retry_i=0
+    while [[ $rc -ne 0 && $_retry_i -lt $retry_max ]]; do
+      _retry_i=$((_retry_i + 1))
+      log "retry $_retry_i/$retry_max after failure (rc=$rc)"
+      sleep 2
+      rc=0
+      task_output=$(runtime_inject "$to" "$msg" 2>&1) || rc=$?
+    done
     local elapsed=$(( $(date +%s) - start_ts ))
 
     # Write result files so `sage result <task_id>` works
