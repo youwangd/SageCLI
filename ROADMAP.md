@@ -145,6 +145,17 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 
 ---
 
+## Phase 9: Agent Environment
+**Use case**: "I need different API keys and configs for each agent"
+
+- [x] `sage env set <agent> KEY=VALUE` — per-agent environment variables
+- [x] `sage env ls <agent>` — list env vars (values masked)
+- [x] `sage env rm <agent> KEY` — remove env var
+- [x] `sage create worker --env KEY=VALUE` — set env vars at creation (repeatable)
+- [x] Runner auto-loads env file before executing
+
+---
+
 ## Killer Use Cases to Build Toward
 
 1. **PR Review Pipeline**: `sage plan "Review PR #123"` → spawns reviewer + security auditor + test writer in parallel → merges findings
