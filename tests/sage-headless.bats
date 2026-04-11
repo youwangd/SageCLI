@@ -74,3 +74,30 @@ EOF
   run "$SAGE" send worker "echo test" --headless --then ghost
   [ "$status" -eq 1 ]
 }
+
+# --- multi-step --then chaining ---
+
+@test "send --headless --then a --then b chains through 3 agents" {
+  "$SAGE" create mid --runtime bash >/dev/null 2>&1
+  "$SAGE" create final --runtime bash >/dev/null 2>&1
+  run "$SAGE" send worker "echo PIPELINE_START" --headless --then mid --then final
+  [ "$status" -eq 0 ]
+  # mid agent must have been invoked (not skipped)
+  local mid_results="$SAGE_HOME/agents/mid/results"
+  [ -d "$mid_results" ]
+  ls "$mid_results"/*.result.json >/dev/null 2>&1
+  # final agent should have received the result through mid
+  local final_results="$SAGE_HOME/agents/final/results"
+  [ -d "$final_results" ]
+  ls "$final_results"/*.result.json >/dev/null 2>&1
+  local result_content
+  result_content=$(jq -r '.output' "$final_results"/*.result.json | head -1)
+  [[ "$result_content" == *"PIPELINE_START"* ]]
+}
+
+@test "send --then validates all downstream agents before starting" {
+  "$SAGE" create valid_agent --runtime bash >/dev/null 2>&1
+  run "$SAGE" send worker "echo test" --headless --then valid_agent --then nonexistent
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not found"* ]]
+}
