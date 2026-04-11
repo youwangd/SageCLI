@@ -1095,6 +1095,21 @@ cmd_create() {
 
   # Import from archive if --from specified
   if [[ -n "$from_archive" ]]; then
+    # Download from URL if needed
+    if [[ "$from_archive" =~ ^https?:// ]]; then
+      local url="$from_archive"
+      # GitHub repo URL → archive URL
+      if [[ "$url" =~ ^https://github\.com/[^/]+/[^/]+/?$ ]]; then
+        url="${url%/}/archive/refs/heads/main.tar.gz"
+      fi
+      local tmp_dl; tmp_dl=$(mktemp "${TMPDIR:-/tmp}/sage-import-XXXXXX.tar.gz")
+      if ! curl -fsSL -o "$tmp_dl" "$url" 2>/dev/null; then
+        rm -f "$tmp_dl"
+        die "download failed: $from_archive"
+      fi
+      from_archive="$tmp_dl"
+      trap "rm -f '$tmp_dl'" RETURN
+    fi
     [[ -f "$from_archive" ]] || die "archive not found: $from_archive"
     mkdir -p "$agent_dir"/{inbox,state,replies,workspace}
     tar xzf "$from_archive" -C "$agent_dir"
