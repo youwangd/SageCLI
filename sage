@@ -4424,6 +4424,21 @@ cmd_diff() {
   git -C "$agent_dir/workspace" diff ${git_args[@]+"${git_args[@]}"}
 }
 
+cmd_rename() {
+  local old="${1:-}" new="${2:-}"
+  [[ -n "$old" && -n "$new" ]] || die "usage: sage rename <old> <new>"
+  ensure_init
+  [[ "$new" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "invalid agent name '$new'"
+  agent_exists "$old"
+  [[ ! -d "$AGENTS_DIR/$new" ]] || die "agent '$new' already exists"
+  if agent_pid "$old" >/dev/null 2>&1; then
+    die "agent '$old' is running — stop it first"
+  fi
+  mv "$AGENTS_DIR/$old" "$AGENTS_DIR/$new"
+  local tmp; tmp=$(jq --arg n "$new" '.name=$n' "$AGENTS_DIR/$new/runtime.json") && echo "$tmp" > "$AGENTS_DIR/$new/runtime.json"
+  ok "renamed '$old' → '$new'"
+}
+
 cmd_clone() {
   local src="${1:-}" dest="${2:-}"
   [[ -n "$src" && -n "$dest" ]] || die "usage: sage clone <source> <dest>"
@@ -5019,6 +5034,7 @@ case "${1:-}" in
   ls)      shift; cmd_ls "$@" ;;
   rm)      cmd_rm "${2:-}" ;;
   clone)   shift; cmd_clone "$@" ;;
+  rename)  shift; cmd_rename "$@" ;;
   diff)    shift; cmd_diff "$@" ;;
   export)  shift; cmd_export "$@" ;;
   merge)   shift; cmd_merge "$@" ;;
