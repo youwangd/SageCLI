@@ -772,6 +772,14 @@ if [[ ! "$RUNTIME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
   exit 1
 fi
 
+# Load per-agent environment variables
+if [[ -f "$AGENT_DIR/env" ]]; then
+  while IFS= read -r _envline || [[ -n "$_envline" ]]; do
+    [[ -z "$_envline" || "$_envline" == \#* ]] && continue
+    export "$_envline"
+  done < "$AGENT_DIR/env"
+fi
+
 # Source tools
 for tool in "$SAGE_HOME/tools"/*.sh; do
   [[ -f "$tool" ]] && source "$tool"
@@ -861,6 +869,7 @@ RUNNER
 # ═══════════════════════════════════════════════
 cmd_create() {
   local name="" runtime="" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name="" from_archive="" timeout_val="" max_turns_val=""
+  local -a env_pairs=()
   # Read config defaults (flags override)
   local _cfg_rt; _cfg_rt=$(_config_get default.runtime)
   local _cfg_model; _cfg_model=$(_config_get default.model)
@@ -882,6 +891,7 @@ cmd_create() {
       --from)         from_archive="$2"; shift 2 ;;
       --timeout)      timeout_val="$2"; shift 2 ;;
       --max-turns)    max_turns_val="$2"; shift 2 ;;
+      --env)          env_pairs+=("$2"); shift 2 ;;
       -*)             die "unknown flag: $1" ;;
       *)              name="$1"; shift ;;
     esac
@@ -999,6 +1009,14 @@ cmd_create() {
       mcp_cfg=$(echo "$mcp_cfg" | jq --arg s "$srv" --slurpfile c "$SAGE_HOME/mcp/${srv}.json" '.mcpServers[$s] = $c[0]')
     done
     echo "$mcp_cfg" > "$agent_dir/mcp.json"
+  fi
+
+  # Write env vars from --env flags
+  if [[ ${#env_pairs[@]} -gt 0 ]]; then
+    for pair in "${env_pairs[@]}"; do
+      [[ "$pair" == *=* ]] || die "invalid env format '$pair' — use KEY=VALUE"
+      echo "$pair"
+    done > "$agent_dir/env"
   fi
 
   # Validate and attach skill
@@ -4318,6 +4336,10 @@ cmd_info() {
   max_turns_val=$(jq -r '.max_turns // 0' "$agent_dir/runtime.json" 2>/dev/null || echo 0)
   [[ "$max_turns_val" -gt 0 ]] && max_turns_display="$max_turns_val"
 
+  # Env vars
+  local env_count=0
+  [[ -f "$agent_dir/env" ]] && env_count=$(grep -c '.' "$agent_dir/env" 2>/dev/null || echo 0)
+
   # Recent tasks (last 5)
   local tasks_json="[]"
   if ls "$agent_dir"/results/*.status.json >/dev/null 2>&1; then
@@ -4331,7 +4353,8 @@ cmd_info() {
       --arg worktree "$worktree" --arg disk "$disk" --argjson tasks "$tasks_json" \
       --arg timeout "$timeout_display" --argjson timeout_sec "$timeout_sec" \
       --argjson max_turns "$max_turns_val" \
-      '{name:$name, runtime:$runtime, model:$model, status:$status, mcp_servers:($mcp|split(", ")), skills:($skills|split(", ")), worktree:$worktree, disk:$disk, timeout:$timeout, timeout_seconds:$timeout_sec, max_turns:$max_turns, recent_tasks:$tasks}'
+      --argjson env_vars "$env_count" \
+      '{name:$name, runtime:$runtime, model:$model, status:$status, mcp_servers:($mcp|split(", ")), skills:($skills|split(", ")), worktree:$worktree, disk:$disk, timeout:$timeout, timeout_seconds:$timeout_sec, max_turns:$max_turns, env_vars:$env_vars, recent_tasks:$tasks}'
     return
   fi
 
@@ -4344,6 +4367,7 @@ cmd_info() {
   printf "  %-14s %s\n" "Worktree:" "$worktree"
   printf "  %-14s %s\n" "Timeout:" "$timeout_display"
   printf "  %-14s %s\n" "Max Turns:" "$max_turns_display"
+  printf "  %-14s %s\n" "Env Vars:" "$env_count"
   printf "  %-14s %s\n" "Disk:" "$disk"
 
   local task_count
@@ -4447,6 +4471,68 @@ cmd_config() {
   esac
 }
 
+# ═══ Env ═══
+cmd_env() {
+  local sub="${1:-}"; shift 2>/dev/null || true
+  case "$sub" in
+    set)
+      local name="${1:-}"; shift 2>/dev/null || true
+      [[ -n "$name" ]] || die "usage: sage env set <agent> KEY=VALUE"
+      ensure_init; agent_exists "$name"
+      local agent_dir="$AGENTS_DIR/$name"
+      local env_file="$agent_dir/env"
+      [[ $# -gt 0 ]] || die "usage: sage env set <agent> KEY=VALUE"
+      for pair in "$@"; do
+        [[ "$pair" == *=* ]] || die "invalid format '$pair' — use KEY=VALUE"
+        local key="${pair%%=*}"
+        # Remove existing key if present, then append
+        if [[ -f "$env_file" ]]; then
+          local tmp; tmp=$(grep -v "^${key}=" "$env_file" 2>/dev/null || true)
+          echo "$tmp" > "$env_file"
+        fi
+        echo "$pair" >> "$env_file"
+        # Clean empty lines
+        local cleaned; cleaned=$(grep -v '^$' "$env_file" 2>/dev/null || true)
+        echo "$cleaned" > "$env_file"
+      done
+      ok "set env for $name"
+      ;;
+    ls)
+      local name="${1:-}"
+      [[ -n "$name" ]] || die "usage: sage env ls <agent>"
+      ensure_init; agent_exists "$name"
+      local env_file="$AGENTS_DIR/$name/env"
+      if [[ ! -f "$env_file" ]] || [[ ! -s "$env_file" ]]; then
+        echo "  (no env vars)"; return
+      fi
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" ]] && continue
+        local k="${line%%=*}" v="${line#*=}"
+        local masked
+        if [[ ${#v} -le 4 ]]; then masked="****"
+        else masked="${v:0:2}***${v: -1}"
+        fi
+        echo "  $k=$masked"
+      done < "$env_file"
+      ;;
+    rm)
+      local name="${1:-}"; shift 2>/dev/null || true
+      local key="${1:-}"
+      [[ -n "$name" && -n "$key" ]] || die "usage: sage env rm <agent> KEY"
+      ensure_init; agent_exists "$name"
+      local env_file="$AGENTS_DIR/$name/env"
+      [[ -f "$env_file" ]] || { warn "no env vars for $name"; return; }
+      local tmp; tmp=$(grep -v "^${key}=" "$env_file" 2>/dev/null || true)
+      echo "$tmp" > "$env_file"
+      # Clean empty lines
+      local cleaned; cleaned=$(grep -v '^$' "$env_file" 2>/dev/null || true)
+      echo "$cleaned" > "$env_file"
+      ok "removed $key from $name"
+      ;;
+    *) die "usage: sage env <set|ls|rm> <agent> [KEY=VALUE|KEY]" ;;
+  esac
+}
+
 # ═══ Context Store ═══
 cmd_context() {
   ensure_init
@@ -4520,6 +4606,7 @@ case "${1:-}" in
   mcp)     shift; cmd_mcp "$@" ;;
   skill)   shift; cmd_skill "$@" ;;
   context) shift; cmd_context "$@" ;;
+  env)     shift; cmd_env "$@" ;;
   config)  shift; cmd_config "$@" ;;
   task)    shift; cmd_task "$@" ;;
   runs)    shift; cmd_runs "$@" ;;
