@@ -60,6 +60,12 @@ sage send --headless --json auditor "Security audit src/main.py"
 | Tests | 332 (bats-core, CI on ubuntu + macOS) |
 | Install time | < 10 seconds |
 
+### Architecture at a Glance
+
+<p align="center">
+  <img src="docs/architecture.png" alt="sage architecture" width="800">
+</p>
+
 ### What Makes sage Different
 
 Every competitor requires Node.js, Python, Rust, or Go. sage requires bash.
