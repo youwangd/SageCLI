@@ -1449,6 +1449,14 @@ $message"
     log() { echo "[$(date '+%H:%M:%S')] $SAGE_AGENT_NAME: $*" >> "$LOGS/$SAGE_AGENT_NAME.log"; }
     mkdir -p "$agent_dir/results"
 
+    # Load per-agent environment variables
+    if [[ -f "$agent_dir/env" ]]; then
+      while IFS= read -r _envline || [[ -n "$_envline" ]]; do
+        [[ -z "$_envline" || "$_envline" == \#* ]] && continue
+        export "$_envline"
+      done < "$agent_dir/env"
+    fi
+
     # Source tools and runtime
     for tool in "$SAGE_HOME/tools"/*.sh; do [[ -f "$tool" ]] && source "$tool"; done
     source "$SAGE_HOME/runtimes/${runtime}.sh"
