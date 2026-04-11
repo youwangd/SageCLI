@@ -156,6 +156,14 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 
 ---
 
+## Phase 10: Aggregate Statistics
+**Use case**: "What did my agents do today? How much compute time did I use?"
+
+- [x] `sage stats` — aggregate metrics: agent counts, task counts, total runtime, most active agent
+- [x] `sage stats --json` — JSON output for programmatic use
+
+---
+
 ## Killer Use Cases to Build Toward
 
 1. **PR Review Pipeline**: `sage plan "Review PR #123"` → spawns reviewer + security auditor + test writer in parallel → merges findings
