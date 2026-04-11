@@ -46,6 +46,7 @@
 - claude-code
 - cline
 - gemini-cli
+- codex
 - kiro
 
 ## Features
