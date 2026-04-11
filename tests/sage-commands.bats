@@ -38,6 +38,56 @@ teardown() {
   [[ "$output" != *".hidden"* ]]
 }
 
+# --- ls -l (long format) ---
+
+@test "ls -l shows table header" {
+  run "$SAGE" ls -l
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NAME"* ]]
+  [[ "$output" == *"RUNTIME"* ]]
+  [[ "$output" == *"STATUS"* ]]
+}
+
+@test "ls -l shows agent with runtime and status" {
+  "$SAGE" create worker --runtime bash
+  run "$SAGE" ls -l
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"worker"* ]]
+  [[ "$output" == *"bash"* ]]
+  [[ "$output" == *"stopped"* ]]
+}
+
+@test "ls --long is alias for -l" {
+  "$SAGE" create worker
+  run "$SAGE" ls --long
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NAME"* ]]
+  [[ "$output" == *"worker"* ]]
+}
+
+@test "ls --json outputs valid JSON array" {
+  "$SAGE" create alpha
+  "$SAGE" create beta
+  run "$SAGE" ls --json
+  [ "$status" -eq 0 ]
+  echo "$output" | jq . >/dev/null 2>&1
+  local count
+  count=$(echo "$output" | jq 'length')
+  [ "$count" -eq 2 ]
+}
+
+@test "ls --json includes runtime and status fields" {
+  "$SAGE" create worker --runtime bash
+  run "$SAGE" ls --json
+  [ "$status" -eq 0 ]
+  local rt
+  rt=$(echo "$output" | jq -r '.[0].runtime')
+  [ "$rt" = "bash" ]
+  local st
+  st=$(echo "$output" | jq -r '.[0].status')
+  [ "$st" = "stopped" ]
+}
+
 # --- clean ---
 
 @test "clean succeeds with no stale files" {
