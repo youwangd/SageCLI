@@ -4767,6 +4767,73 @@ cmd_env() {
   esac
 }
 
+# ═══ Inter-Agent Messaging ═══
+cmd_msg() {
+  ensure_init
+  local sub="${1:-}"
+  case "$sub" in
+    send)
+      [[ -n "${2:-}" && -n "${3:-}" && -n "${4:-}" ]] || die "usage: sage msg send <from> <to> <text>"
+      local from="$2" to="$3"; shift 3; local text="$*"
+      local to_dir="$AGENTS_DIR/$to"
+      [[ -d "$to_dir" ]] || die "agent '$to' not found"
+      local msg_dir="$to_dir/messages"
+      mkdir -p "$msg_dir"
+      local ts=$(date +%s)
+      local id="${ts}_${from}"
+      cat > "$msg_dir/${id}.json" <<EOF
+{"from":"$from","text":$(printf '%s' "$text" | jq -Rs .),"ts":$ts}
+EOF
+      info "sent message from $from → $to"
+      ;;
+    ls)
+      [[ -n "${2:-}" ]] || die "usage: sage msg ls <agent>"
+      local agent="$2" format="pretty"
+      [[ "${3:-}" == "--json" ]] && format="json"
+      local msg_dir="$AGENTS_DIR/$agent/messages"
+      local files=""
+      if [[ -d "$msg_dir" ]]; then
+        files=$(ls -t "$msg_dir"/*.json 2>/dev/null || true)
+      fi
+      if [[ -z "$files" ]]; then
+        if [[ "$format" == "json" ]]; then echo "[]"; else info "no messages for $agent"; fi
+        return
+      fi
+      if [[ "$format" == "json" ]]; then
+        printf '['
+        local first=true
+        for f in $files; do
+          [[ -f "$f" ]] || continue
+          $first || printf ','
+          cat "$f"
+          first=false
+        done
+        printf ']\n'
+      else
+        for f in $files; do
+          [[ -f "$f" ]] || continue
+          local mfrom=$(jq -r '.from' "$f")
+          local mtext=$(jq -r '.text' "$f")
+          local mts=$(jq -r '.ts' "$f")
+          local time_str=$(date -d "@$mts" '+%H:%M:%S' 2>/dev/null || echo "—")
+          printf "\n  ${BOLD}[%s]${NC} from ${CYAN}%s${NC}\n  %s\n" "$time_str" "$mfrom" "$mtext"
+        done
+      fi
+      ;;
+    clear)
+      [[ -n "${2:-}" ]] || die "usage: sage msg clear <agent>"
+      local msg_dir="$AGENTS_DIR/$2/messages"
+      local count=0
+      if [[ -d "$msg_dir" ]]; then
+        count=$(find "$msg_dir" -name "*.json" 2>/dev/null | wc -l)
+        rm -f "$msg_dir"/*.json
+      fi
+      info "cleared $count message(s) for $2"
+      ;;
+    *) die "usage: sage msg {send|ls|clear}" ;;
+  esac
+}
+
 # ═══ Context Store ═══
 cmd_context() {
   ensure_init
@@ -4840,6 +4907,7 @@ case "${1:-}" in
   mcp)     shift; cmd_mcp "$@" ;;
   skill)   shift; cmd_skill "$@" ;;
   context) shift; cmd_context "$@" ;;
+  msg)     shift; cmd_msg "$@" ;;
   env)     shift; cmd_env "$@" ;;
   config)  shift; cmd_config "$@" ;;
   task)    shift; cmd_task "$@" ;;
