@@ -9,7 +9,10 @@
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License">
   <br>
   <img src="https://img.shields.io/badge/Claude_Code-supported-7C3AED?logo=anthropic&logoColor=white" alt="Claude Code">
+  <img src="https://img.shields.io/badge/Gemini_CLI-supported-4285F4?logo=google&logoColor=white" alt="Gemini CLI">
+  <img src="https://img.shields.io/badge/Codex-supported-412991?logo=openai&logoColor=white" alt="Codex">
   <img src="https://img.shields.io/badge/Cline-supported-F97316?logo=data:image/svg%2bxml;base64,PHN2ZyBmaWxsPSJ3aGl0ZSIgcm9sZT0iaW1nIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0ibTIzLjM2NSAxMy41NTYtMS40NDItMi44OTVWOC45OTRjMC0yLjc2NC0yLjIxOC01LjAwMi00Ljk1NC01LjAwMmgtMi40NjRjLjE3OC0uMzY3LjI3Ni0uNzc5LjI3Ni0xLjIxM0EyLjc3IDIuNzcgMCAwIDAgMTIuMDE4IDBhMi43NyAyLjc3IDAgMCAwLTIuNzYzIDIuNzc5YzAgLjQzNC4wOTguODQ2LjI3NiAxLjIxM0g3LjA2N2MtMi43MzYgMC00Ljk1NCAyLjIzOC00Ljk1NCA1LjAwMnYxLjY2N0wuNjQgMTMuNTQ5Yy0uMTQ5LjI5LS4xNDkuNjM2IDAgLjkyN2wxLjQ3MiAyLjg1NXYxLjY2N0MyLjExMyAyMS43NjIgNC4zMyAyNCA3LjA2NyAyNGg5LjkwMmMyLjczNiAwIDQuOTU0LTIuMjM4IDQuOTU0LTUuMDAyVjE3LjMzbDEuNDQtMi44NjVjLjE0My0uMjg2LjE0My0uNjIyLjAwMi0uOTFtLTEyLjg1NCAyLjM2YTIuMjcgMi4yNyAwIDAgMS0yLjI2MSAyLjI3MyAyLjI3IDIuMjcgMCAwIDEtMi4yNjEtMi4yNzN2LTQuMDQyQTIuMjcgMi4yNyAwIDAgMSA4LjI0OSA5LjZhMi4yNjcgMi4yNjcgMCAwIDEgMi4yNjIgMi4yNzR6bTcuMjg1IDBhMi4yNyAyLjI3IDAgMCAxLTIuMjYgMi4yNzMgMi4yNyAyLjI3IDAgMCAxLTIuMjYyLTIuMjczdi00LjA0MkEyLjI2NyAyLjI2NyAwIDAgMSAxNS41MzUgOS42YTIuMjY3IDIuMjY3IDAgMCAxIDIuMjYxIDIuMjc0eiIvPjwvc3ZnPg==" alt="Cline">
+  <img src="https://img.shields.io/badge/Kiro-supported-FF6B35" alt="Kiro">
   <img src="https://img.shields.io/badge/Bash-supported-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
 </p>
 
@@ -49,7 +52,7 @@ That's it. Three commands. Your agent is running in a tmux pane, writing files, 
 ### Design Principles
 
 - **Unix-native** — Agents are tmux windows. Messages are JSON files in directories. No daemons, no databases, no Docker.
-- **Runtime-agnostic** — Plug in Claude Code, Cline, or any ACP agent. Adding a new runtime is one file with two functions.
+- **Runtime-agnostic** — Plug in Claude Code, Gemini CLI, Codex, Cline, Kiro, or any ACP agent. Adding a new runtime is one file with two functions.
 - **Mechanical, not behavioral** — Task tracking, parent-child relationships, and tracing are handled by the engine, not by asking LLMs to remember protocols.
 - **Observable** — Real-time streaming, `peek` into any agent, `trace` the full call tree. You always know what's happening.
 - **Secure by default** — Agent name validation, workspace sandboxing for file I/O, atomic writes to prevent partial reads, and path traversal prevention at every layer.
@@ -85,7 +88,7 @@ sage init
 
 **Requirements:** `bash` 4.0+, `jq` 1.6+, `tmux` 3.0+
 
-**Optional runtimes:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Cline CLI](https://github.com/cline/cline), or any [ACP-compatible agent](https://agentclientprotocol.com/get-started/agents)
+**Optional runtimes:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), [Cline CLI](https://github.com/cline/cline), or any [ACP-compatible agent](https://agentclientprotocol.com/get-started/agents)
 
 ---
 
@@ -184,7 +187,9 @@ Use the right tool for each job:
 
 ```bash
 sage create planner --runtime claude-code    # strong reasoning
-sage create coder --runtime cline            # fast execution
+sage create coder --runtime gemini-cli       # fast + free tier
+sage create reviewer --runtime codex         # OpenAI models
+sage create frontend --runtime cline         # IDE-native
 sage create scripts --runtime bash           # custom handlers
 ```
 
@@ -377,6 +382,8 @@ sage trace --tree -n 50      # last 50 events as tree
 | Runtime | Backend | Streaming | How it works |
 |---|---|---|---|
 | `claude-code` | [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) | ✅ stream-json | Real-time tool calls + text via `--output-format stream-json` |
+| `gemini-cli` | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | ✅ json | Headless mode via `-p`, supports `--yolo` for auto-approve |
+| `codex` | [Codex CLI](https://github.com/openai/codex) | — | Exec mode with auto-approve |
 | `cline` | [Cline CLI](https://github.com/cline/cline) | ✅ json | Real-time events via `--json` |
 | `acp` | [Agent Client Protocol](https://agentclientprotocol.com) | ✅ JSON-RPC | Universal bridge — any ACP agent via stdio. Persistent sessions with live steering. |
 | `bash` | Shell script | — | Custom `handler.sh` processes messages |
@@ -423,7 +430,7 @@ sage CLI
 │   ├── results/        # task status + output
 │   ├── steer.md        # steering context
 │   └── .live_output    # current task's live output
-├── runtimes/           # bash, cline, claude-code, acp
+├── runtimes/           # claude-code, gemini-cli, codex, cline, acp, bash
 ├── tools/              # shared utilities
 ├── tasks/              # task templates (review, test, spec, ...)
 ├── plans/              # saved execution plans
@@ -438,7 +445,7 @@ sage CLI
 ```
 AGENTS
   init [--force]                     Initialize ~/.sage/
-  create <name> [--runtime R]        Create agent (bash|cline|claude-code|acp)
+  create <name> [--runtime R]        Create agent (claude-code|gemini-cli|codex|cline|acp|bash)
   start [name|--all]                 Start in tmux
   stop [name|--all]                  Stop (kills process group)
   restart [name|--all]               Restart
