@@ -217,5 +217,5 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 2. **[P0]** ~~Add Codex runtime handler~~ ✅ Done (Phase 11)
 3. **[P0]** ~~Submit PR to awesome-cli-coding-agents to get listed~~ ✅ Done ([PR #47](https://github.com/bradAGI/awesome-cli-coding-agents/pull/47))
 4. **[P1]** ~~Update README positioning: "orchestrate ANY agent" vs Claude-native teams~~ ✅ Done (c43433c)
-5. **[P1]** Explore inter-agent messaging (beyond context sharing)
+5. **[P1]** ~~Explore inter-agent messaging (beyond context sharing)~~ ✅ Done — `sage msg send/ls/clear` (e99e9c2)
 6. **[P2]** Consider lightweight web UI for plan visualization

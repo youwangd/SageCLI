@@ -21,6 +21,7 @@
 - `sage ls`
 - `sage mcp`
 - `sage merge`
+- `sage msg`
 - `sage peek`
 - `sage plan`
 - `sage restart`
@@ -55,6 +56,7 @@
 - MCP server registry (mcp add/ls/rm, create --mcp, mcp tools)
 - Skills system (skill install/ls/rm/show/run, create --skill, registries)
 - Shared context store (context set/get/ls/rm, auto-inject)
+- Inter-agent messaging (msg send/ls/clear)
 - Agent export/import (export, create --from, diff)
 - Agent guardrails (--timeout, --max-turns)
 - Per-agent environment (env set/ls/rm, create --env)
