@@ -50,6 +50,7 @@
 - gemini-cli
 - codex
 - kiro
+- codex
 
 ## Features
 - Git worktree isolation (create --worktree, merge, merge --dry-run)
