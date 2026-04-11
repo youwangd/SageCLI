@@ -4434,6 +4434,78 @@ cmd_history() {
   done <<< "$entries"
 }
 
+# ═══ Stats ═══
+cmd_stats() {
+  ensure_init
+  local json_mode=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json_mode=true; shift ;;
+      *) die "usage: sage stats [--json]" ;;
+    esac
+  done
+
+  local total_agents=0 running=0 stopped=0
+  local tasks_done=0 tasks_failed=0 tasks_pending=0 total_secs=0
+  local most_active_agent="" most_active_count=0
+
+  for agent_dir in "$AGENTS_DIR"/*/; do
+    [[ -d "$agent_dir" ]] || continue
+    local aname; aname=$(basename "$agent_dir")
+    [[ "$aname" == ".cli" ]] && continue
+    total_agents=$((total_agents + 1))
+    if agent_pid "$aname" >/dev/null 2>&1; then
+      running=$((running + 1))
+    else
+      stopped=$((stopped + 1))
+    fi
+    local agent_tasks=0
+    for sf in "$agent_dir"results/*.status.json; do
+      [[ -f "$sf" ]] || continue
+      local st; st=$(jq -r '.status // ""' "$sf" 2>/dev/null) || continue
+      case "$st" in
+        done)    tasks_done=$((tasks_done + 1)); agent_tasks=$((agent_tasks + 1))
+                 local sa fa
+                 sa=$(jq -r '.started_at // 0' "$sf" 2>/dev/null)
+                 fa=$(jq -r '.finished_at // 0' "$sf" 2>/dev/null)
+                 [[ "$fa" -gt 0 && "$sa" -gt 0 ]] && total_secs=$((total_secs + fa - sa))
+                 ;;
+        failed)  tasks_failed=$((tasks_failed + 1)); agent_tasks=$((agent_tasks + 1)) ;;
+        *)       tasks_pending=$((tasks_pending + 1)) ;;
+      esac
+    done
+    if [[ "$agent_tasks" -gt "$most_active_count" ]]; then
+      most_active_count=$agent_tasks
+      most_active_agent=$aname
+    fi
+  done
+
+  # Format runtime
+  local rt_display
+  if [[ "$total_secs" -ge 3600 ]]; then
+    rt_display="$((total_secs / 3600))h $((total_secs % 3600 / 60))m"
+  elif [[ "$total_secs" -ge 60 ]]; then
+    rt_display="$((total_secs / 60))m $((total_secs % 60))s"
+  else
+    rt_display="${total_secs}s"
+  fi
+
+  if $json_mode; then
+    jq -n --argjson ta "$total_agents" --argjson r "$running" --argjson s "$stopped" \
+      --argjson td "$tasks_done" --argjson tf "$tasks_failed" --argjson tp "$tasks_pending" \
+      --argjson ts "$total_secs" --arg ma "$most_active_agent" --argjson mc "$most_active_count" \
+      '{total_agents:$ta,running:$r,stopped:$s,tasks_done:$td,tasks_failed:$tf,tasks_pending:$tp,total_runtime_secs:$ts,most_active:{agent:$ma,tasks:$mc}}'
+    return 0
+  fi
+
+  printf "  %-14s %s (%s running, %s stopped)\n" "Agents:" "$total_agents" "$running" "$stopped"
+  printf "  %-14s %s done, %s failed, %s pending\n" "Tasks:" "$tasks_done" "$tasks_failed" "$tasks_pending"
+  printf "  %-14s %s\n" "Runtime:" "$rt_display"
+  if [[ -n "$most_active_agent" ]]; then
+    printf "  %-14s %s (%s tasks)\n" "Most Active:" "$most_active_agent" "$most_active_count"
+  fi
+}
+
 # ═══ Config ═══
 cmd_config() {
   ensure_init
@@ -4614,6 +4686,7 @@ case "${1:-}" in
   help|-h|--help|"") cmd_help ;;
   doctor) cmd_doctor ;;
   history) shift; cmd_history "$@" ;;
+  stats)   shift; cmd_stats "$@" ;;
   info)    shift; cmd_info "$@" ;;
   upgrade) shift; cmd_upgrade "$@" ;;
   version|--version|-v) echo "sage $SAGE_VERSION" ;;
