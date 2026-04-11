@@ -1508,6 +1508,26 @@ $message"
     fi
   fi
 
+  # Auto-inject unread messages and clear them
+  local _msg_dir="$AGENTS_DIR/$to/messages"
+  if [[ -d "$_msg_dir" ]]; then
+    local _msg_files _msg_block=""
+    _msg_files=$(ls -t "$_msg_dir"/*.json 2>/dev/null) || true
+    if [[ -n "$_msg_files" ]]; then
+      while IFS= read -r _mf; do
+        [[ -f "$_mf" ]] || continue
+        local _mfrom _mtext
+        _mfrom=$(jq -r '.from' "$_mf")
+        _mtext=$(jq -r '.text' "$_mf")
+        _msg_block="${_msg_block}${_mfrom}: ${_mtext}"$'\n'
+      done <<< "$_msg_files"
+      message="[Messages]
+${_msg_block}
+$message"
+      rm -f "$_msg_dir"/*.json
+    fi
+  fi
+
   # --headless: run task directly without tmux
   if [[ "$headless" == true ]]; then
     local agent_dir="$AGENTS_DIR/$to"
