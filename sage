@@ -1747,6 +1747,47 @@ cmd_attach() {
 # ═══════════════════════════════════════════════
 cmd_ls() {
   ensure_init
+  local long=false json=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -l|--long) long=true; shift ;;
+      --json) json=true; shift ;;
+      *) die "unknown flag: $1" ;;
+    esac
+  done
+
+  if $json; then
+    local first=true
+    printf '['
+    for d in "$AGENTS_DIR"/*/; do
+      [[ -d "$d" ]] || continue
+      local n=$(basename "$d")
+      [[ "$n" == .* ]] && continue
+      local rt=$(jq -r '.runtime // "bash"' "$d/runtime.json" 2>/dev/null || echo "bash")
+      local st="stopped"
+      agent_pid "$n" >/dev/null 2>&1 && st="running"
+      $first || printf ','
+      first=false
+      printf '{"name":"%s","runtime":"%s","status":"%s"}' "$n" "$rt" "$st"
+    done
+    printf ']\n'
+    return 0
+  fi
+
+  if $long; then
+    printf "%-16s %-12s %s\n" "NAME" "RUNTIME" "STATUS"
+    for d in "$AGENTS_DIR"/*/; do
+      [[ -d "$d" ]] || continue
+      local n=$(basename "$d")
+      [[ "$n" == .* ]] && continue
+      local rt=$(jq -r '.runtime // "bash"' "$d/runtime.json" 2>/dev/null || echo "bash")
+      local st="stopped"
+      agent_pid "$n" >/dev/null 2>&1 && st="running"
+      printf "%-16s %-12s %s\n" "$n" "$rt" "$st"
+    done
+    return 0
+  fi
+
   for d in "$AGENTS_DIR"/*/; do
     [[ -d "$d" ]] || continue
     local n=$(basename "$d")
@@ -4975,7 +5016,7 @@ case "${1:-}" in
   logs)    cmd_logs "${2:-}" "${3:-}" ;;
   trace)   shift; cmd_trace "$@" ;;
   attach)  cmd_attach "${2:-}" ;;
-  ls)      cmd_ls ;;
+  ls)      shift; cmd_ls "$@" ;;
   rm)      cmd_rm "${2:-}" ;;
   clone)   shift; cmd_clone "$@" ;;
   diff)    shift; cmd_diff "$@" ;;
