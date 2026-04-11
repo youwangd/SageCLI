@@ -4421,7 +4421,7 @@ cmd_help() {
     config {set|get|ls|rm}      Persistent user defaults (e.g. default.runtime)
 
   MESSAGING
-    send <to> <message|@file> [--force] Fire-and-forget (--force cancels running task)
+    send <to> <message|@file> [--force] Fire-and-forget (--force cancels, --then <agent> chains)
     call <to> <message|@file> [s]  Send and wait for response (default: 60s)
     tasks [name]                List tasks with status
     result <task-id>            Get task result
