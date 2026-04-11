@@ -137,6 +137,13 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 
 ---
 
+## Phase 8: Agent Guardrails
+**Use case**: "My agent ran for 3 hours and burned $50 — I need a kill switch"
+
+- [x] `sage create worker --timeout 30m` — auto-kill agents after configurable duration (Nm/Nh/Ns)
+
+---
+
 ## Killer Use Cases to Build Toward
 
 1. **PR Review Pipeline**: `sage plan "Review PR #123"` → spawns reviewer + security auditor + test writer in parallel → merges findings
