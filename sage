@@ -822,6 +822,77 @@ PROMPT
 }
 RTEOF
 
+  # ── Runtime: codex ──
+  cat > "$RUNTIMES_DIR/codex.sh" << 'RTEOF'
+#!/bin/bash
+# Runtime: codex CLI bridge
+# Each message invokes codex exec (non-interactive mode)
+
+runtime_start() {
+  local agent_dir="$1" name="$2"
+  mkdir -p "$agent_dir/workspace"
+}
+
+runtime_inject() {
+  local name="$1" msg="$2"
+  local agent_dir="$AGENTS_DIR/$name"
+  local task=$(echo "$msg" | jq -r '.payload.task // .payload.text // (.payload | tostring)' 2>/dev/null)
+  local from=$(echo "$msg" | jq -r '.from' 2>/dev/null)
+  local msg_id=$(echo "$msg" | jq -r '.id' 2>/dev/null)
+  local reply_dir=$(echo "$msg" | jq -r '.reply_dir // empty' 2>/dev/null)
+  local workdir=$(jq -r '.workdir // "."' "$agent_dir/runtime.json" 2>/dev/null)
+  local model=$(jq -r '.model // empty' "$agent_dir/runtime.json" 2>/dev/null)
+  local instructions="$agent_dir/instructions.md"
+
+  local completion_instruction
+  if [[ -n "$reply_dir" ]]; then
+    completion_instruction="Your output will be automatically returned to the caller. Do NOT run sage send — just do the work and let your output speak for itself."
+  else
+    completion_instruction="When you complete this task, report your result by running:
+sage send $from '{\"status\":\"done\",\"agent\":\"$name\",\"result\":\"<brief summary>\"}'"
+  fi
+
+  local prompt
+  prompt="$(cat "$instructions" 2>/dev/null)
+
+---
+## Current Task (from: $from)
+$task
+---
+$completion_instruction"
+
+  log "invoking codex exec..."
+  local output
+  cd "$workdir"
+
+  local codex_args=(exec "$prompt")
+  [[ -n "$model" ]] && codex_args+=(-m "$model")
+
+  output=$(codex "${codex_args[@]}" 2>&1) || true
+
+  # Strip ANSI escapes
+  output=$(printf '%s' "$output" | perl -pe 's/\e\[[0-9;?]*[a-zA-Z]//g; s/\r//g' 2>/dev/null | grep -v '^\s*$')
+
+  log "codex finished: $(echo "$output" | tail -1 | head -c 120)"
+
+  [[ -n "$output" ]] && printf '%s\n' "$output"
+
+  local results_dir="$AGENTS_DIR/$name/results"
+  if [[ -d "$results_dir" && -n "$msg_id" ]]; then
+    local json_out
+    json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
+    local _rtmp="$results_dir/${msg_id}.result.json.tmp"
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$_rtmp" && mv "$_rtmp" "$results_dir/${msg_id}.result.json" || rm -f "$_rtmp"
+  fi
+
+  if [[ -n "$reply_dir" ]]; then
+    mkdir -p "$reply_dir"
+    local _rptmp="$reply_dir/${msg_id}.json.tmp"
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$_rptmp" && mv "$_rptmp" "$reply_dir/${msg_id}.json" || rm -f "$_rptmp"
+  fi
+}
+RTEOF
+
   # ── Runner ──
   cat > "$SAGE_HOME/runner.sh" << 'RUNNER'
 #!/bin/bash
@@ -980,7 +1051,7 @@ cmd_create() {
     esac
   done
 
-  [[ -n "$name" ]] || die "usage: sage create <name> [--runtime bash|cline|claude-code|gemini-cli|acp] [--agent <agent>] [--model <model>]"
+  [[ -n "$name" ]] || die "usage: sage create <name> [--runtime bash|cline|claude-code|gemini-cli|codex|acp] [--agent <agent>] [--model <model>]"
 
   # Validate agent name: alphanumeric, hyphens, underscores only
   if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
@@ -4296,7 +4367,7 @@ cmd_help() {
 
   AGENTS
     init [--force]              Initialize sage (~/.sage/)
-    create <name> [flags]       Create agent (--runtime bash|cline|claude-code|gemini-cli|acp, --agent <a>, --model <m>)
+    create <name> [flags]       Create agent (--runtime bash|cline|claude-code|gemini-cli|codex|acp, --agent <a>, --model <m>)
     start [name|--all]          Start agent(s) in tmux
     stop [name|--all]           Stop agent(s)
     restart [name|--all]        Restart agent(s)
