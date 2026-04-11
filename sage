@@ -739,6 +739,89 @@ $full_prompt"
 }
 RTEOF
 
+  # ── Runtime: gemini-cli ──
+  cat > "$RUNTIMES_DIR/gemini-cli.sh" << 'RTEOF'
+#!/bin/bash
+# Runtime: gemini-cli bridge
+# Each message invokes gemini -p (headless mode) with --yolo auto-approve
+
+runtime_start() {
+  local agent_dir="$1" name="$2"
+  mkdir -p "$agent_dir/workspace"
+}
+
+runtime_inject() {
+  local name="$1" msg="$2"
+  local agent_dir="$AGENTS_DIR/$name"
+  local task=$(echo "$msg" | jq -r '.payload.text // (.payload | tostring)' 2>/dev/null)
+  local from=$(echo "$msg" | jq -r '.from' 2>/dev/null)
+  local msg_id=$(echo "$msg" | jq -r '.id' 2>/dev/null)
+  local reply_dir=$(echo "$msg" | jq -r '.reply_dir // empty' 2>/dev/null)
+  local workdir=$(jq -r '.workdir // "."' "$agent_dir/runtime.json" 2>/dev/null)
+  local model=$(jq -r '.model // empty' "$agent_dir/runtime.json" 2>/dev/null)
+  local instructions="$agent_dir/instructions.md"
+
+  local completion_instruction
+  if [[ -n "$reply_dir" ]]; then
+    completion_instruction="Your output will be automatically returned to the caller. Do NOT run sage send — just do the work and let your output speak for itself."
+  else
+    completion_instruction="When you complete this task, report your result by running:
+sage send $from \"Done: <brief summary of what you did>\""
+  fi
+
+  local prompt_file=$(mktemp /tmp/sage-gemini-XXXXX.txt)
+  local steer_file="$agent_dir/steer.md"
+  cat > "$prompt_file" << PROMPT
+$(cat "$instructions" 2>/dev/null)
+$(if [[ -f "$steer_file" ]]; then echo ""; cat "$steer_file"; fi)
+
+---
+## Current Task (from: $from)
+$task
+---
+$completion_instruction
+PROMPT
+
+  [[ -f "$steer_file" ]] && rm -f "$steer_file"
+
+  # Set system prompt via env var
+  export GEMINI_SYSTEM_MD="$prompt_file"
+
+  log "invoking gemini-cli..."
+  cd "$workdir"
+
+  local gemini_args=(-p --yolo)
+  [[ -n "$model" ]] && gemini_args+=(--model "$model")
+
+  local live_output="$agent_dir/.live_output"
+  > "$live_output"
+
+  gemini "${gemini_args[@]}" "$(cat "$prompt_file")" 2>&1 | tee -a "$live_output"
+
+  local output
+  output=$(cat "$live_output")
+  rm -f "$prompt_file"
+
+  log "gemini-cli finished: $(echo "$output" | tail -1 | head -c 120)"
+
+  # Write result for task tracking
+  local results_dir="$AGENTS_DIR/$name/results"
+  if [[ -d "$results_dir" && -n "$msg_id" ]]; then
+    local json_out
+    json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
+    local _rtmp=$(mktemp "$results_dir/.tmp.XXXXXX")
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$_rtmp" && mv "$_rtmp" "$results_dir/${msg_id}.result.json" || rm -f "$_rtmp"
+  fi
+
+  # Write reply for sync calls
+  if [[ -n "$reply_dir" ]]; then
+    mkdir -p "$reply_dir"
+    local _rptmp=$(mktemp "$reply_dir/.tmp.XXXXXX")
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$_rptmp" && mv "$_rptmp" "$reply_dir/${msg_id}.json" || rm -f "$_rptmp"
+  fi
+}
+RTEOF
+
   # ── Runner ──
   cat > "$SAGE_HOME/runner.sh" << 'RUNNER'
 #!/bin/bash
@@ -897,7 +980,7 @@ cmd_create() {
     esac
   done
 
-  [[ -n "$name" ]] || die "usage: sage create <name> [--runtime bash|cline|claude-code|acp] [--agent <agent>] [--model <model>]"
+  [[ -n "$name" ]] || die "usage: sage create <name> [--runtime bash|cline|claude-code|gemini-cli|acp] [--agent <agent>] [--model <model>]"
 
   # Validate agent name: alphanumeric, hyphens, underscores only
   if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
@@ -4205,7 +4288,7 @@ cmd_help() {
 
   AGENTS
     init [--force]              Initialize sage (~/.sage/)
-    create <name> [flags]       Create agent (--runtime bash|cline|claude-code|acp, --agent <a>, --model <m>)
+    create <name> [flags]       Create agent (--runtime bash|cline|claude-code|gemini-cli|acp, --agent <a>, --model <m>)
     start [name|--all]          Start agent(s) in tmux
     stop [name|--all]           Stop agent(s)
     restart [name|--all]        Restart agent(s)

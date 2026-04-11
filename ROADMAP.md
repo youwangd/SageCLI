@@ -185,3 +185,29 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 - Every project with >1K stars — read their README, understand their hook
 - Every HN front-page agent post — what resonated, what got criticized
 - Claude Code docs updates — they're the platform, we're the orchestrator
+
+## Competitor Signals (2026-04-11)
+
+| Signal | Impact | Sage Status |
+|--------|--------|-------------|
+| claude-flow → ruflo rebrand, 31K stars (+9.5K/wk), added Codex integration | HIGH — fastest growing orchestrator | sage already has runtime-agnostic orchestration but lacks Codex runtime |
+| emdash (YC W26) — 3.8K stars, open-source parallel agent dev env | MEDIUM — new funded competitor | sage already does parallel agents via plan + worktrees |
+| Claude Code Agent Teams — official multi-agent orchestration | HIGH — platform-native reduces need for external tools | sage's edge: works with ANY runtime, not just Claude Code |
+| Claude Code Custom Subagents — official subagent creation | MEDIUM — within-session only | sage orchestrates across sessions (broader scope) |
+| Cline CLI 2.0 — terminal as "agent control plane" | MEDIUM — Cline has 60K star funnel | sage already has CLI orchestration |
+| Cline Kanban — visual multi-agent task board | MEDIUM — demand for visual orchestration | sage is terminal-only (gap) |
+| AgentPipe (98⭐) — inter-agent chat rooms | LOW — early stage | sage has context sharing but no real-time messaging (gap) |
+| ACP in JetBrains + Zed — protocol adoption growing | POSITIVE — validates sage's ACP investment | sage already supports ACP ✅ |
+| MCP Gateway pattern emerging — enterprise MCP infra | LOW (for now) — premature for sage | sage has mcp add/ls/rm ✅ |
+| Gemini CLI (Google) — open-source terminal agent | MEDIUM — new runtime to support | sage doesn't have gemini-cli runtime (gap) |
+| Codex $100 plan + 2X limits — rapid growth | HIGH — users will want to orchestrate Codex | sage doesn't have codex runtime (gap) |
+| HN: "I still prefer MCP over skills" (262pts) — MCP vs skills debate | INFO — sage supports both | sage has mcp + skill commands ✅ |
+| mitchellh: "need hardware kill switch for agents" (3.2K ❤️) | POSITIVE — validates sage's guardrails | sage has --timeout + --max-turns ✅ |
+
+### Action Items
+1. **[P0]** Add Gemini CLI runtime handler
+2. **[P0]** Add Codex runtime handler
+3. **[P0]** Submit PR to awesome-cli-coding-agents to get listed
+4. **[P1]** Update README positioning: "orchestrate ANY agent" vs Claude-native teams
+5. **[P1]** Explore inter-agent messaging (beyond context sharing)
+6. **[P2]** Consider lightweight web UI for plan visualization
