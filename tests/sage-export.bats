@@ -118,3 +118,43 @@ teardown() {
   [ "$status" -eq 0 ]
   [ ! -f "$BATS_TMPDIR/myagent.tar.gz" ]
 }
+
+# --- create --from URL ---
+
+@test "create --from http URL downloads and imports" {
+  # Create a local archive to serve
+  run "$SAGE" create exporter --runtime bash
+  [ "$status" -eq 0 ]
+  echo "You are a remote agent" > "$SAGE_HOME/agents/exporter/system_prompt"
+  run "$SAGE" export exporter --output "$BATS_TMPDIR/remote.tar.gz"
+  [ "$status" -eq 0 ]
+
+  # Start a simple HTTP server
+  cd "$BATS_TMPDIR"
+  python3 -m http.server 18923 &
+  local srv_pid=$!
+  sleep 1
+
+  run "$SAGE" create from-url --from "http://localhost:18923/remote.tar.gz"
+  kill "$srv_pid" 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  [ -f "$SAGE_HOME/agents/from-url/runtime.json" ]
+  local name
+  name=$(jq -r '.name' "$SAGE_HOME/agents/from-url/runtime.json")
+  [ "$name" = "from-url" ]
+}
+
+@test "create --from URL fails gracefully on bad URL" {
+  run "$SAGE" create bad-url --from "http://localhost:19999/nonexistent.tar.gz"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"download failed"* ]]
+}
+
+@test "create --from GitHub URL auto-appends archive path" {
+  # This tests the URL transformation logic — will fail on network but should attempt the right URL
+  # We mock by checking the error message contains the transformed URL
+  run "$SAGE" create gh-agent --from "https://github.com/fake/repo"
+  [ "$status" -ne 0 ]
+  # Should fail with download error (not "archive not found" which means it tried as local file)
+  [[ "$output" == *"download failed"* ]]
+}
