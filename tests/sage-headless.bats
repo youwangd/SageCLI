@@ -47,3 +47,30 @@ EOF
   run "$SAGE" send ghost "test" --headless
   [ "$status" -eq 1 ]
 }
+
+# --- send --then (agent chaining) ---
+
+@test "send --headless --then chains result to next agent" {
+  "$SAGE" create downstream --runtime bash >/dev/null 2>&1
+  run "$SAGE" send worker "echo UPSTREAM_DATA" --headless --then downstream
+  [ "$status" -eq 0 ]
+  # downstream should have received the result — check its results dir
+  local downstream_results="$SAGE_HOME/agents/downstream/results"
+  [ -d "$downstream_results" ]
+  ls "$downstream_results"/*.result.json >/dev/null 2>&1
+  local result_content
+  result_content=$(cat "$downstream_results"/*.result.json | head -1)
+  [[ "$result_content" == *"UPSTREAM_DATA"* ]]
+}
+
+@test "send --then requires --headless" {
+  "$SAGE" create downstream --runtime bash >/dev/null 2>&1
+  run "$SAGE" send worker "echo test" --then downstream
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"--headless"* ]]
+}
+
+@test "send --then rejects nonexistent downstream agent" {
+  run "$SAGE" send worker "echo test" --headless --then ghost
+  [ "$status" -eq 1 ]
+}
