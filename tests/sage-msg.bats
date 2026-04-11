@@ -105,3 +105,47 @@ teardown() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"usage"* ]]
 }
+
+# ═══ Auto-injection tests ═══
+
+@test "msg: send auto-injects unread messages into prompt on headless send" {
+  # Set up receiver as bash agent with proper handler
+  mkdir -p "$SAGE_HOME/agents/injrcv"
+  echo '{"runtime":"bash"}' > "$SAGE_HOME/agents/injrcv/runtime.json"
+  cat > "$SAGE_HOME/agents/injrcv/handler.sh" <<'SH'
+#!/bin/bash
+handle_message() { local msg="$1"; echo "got: $(echo "$msg" | jq -r '.payload.text')"; }
+SH
+  chmod +x "$SAGE_HOME/agents/injrcv/handler.sh"
+  "$SAGE" msg send sender injrcv "check the auth module"
+  run "$SAGE" send injrcv "do work" --headless
+  [[ "$output" == *"[Messages]"* ]]
+  [[ "$output" == *"check the auth module"* ]]
+}
+
+@test "msg: messages are cleared after injection" {
+  mkdir -p "$SAGE_HOME/agents/clrrcv"
+  echo '{"runtime":"bash"}' > "$SAGE_HOME/agents/clrrcv/runtime.json"
+  cat > "$SAGE_HOME/agents/clrrcv/handler.sh" <<'SH'
+#!/bin/bash
+handle_message() { echo "ok"; }
+SH
+  chmod +x "$SAGE_HOME/agents/clrrcv/handler.sh"
+  "$SAGE" msg send sender clrrcv "first message"
+  "$SAGE" send clrrcv "do work" --headless
+  # messages should be cleared after injection
+  run "$SAGE" msg ls clrrcv --json
+  [ "$output" = "[]" ]
+}
+
+@test "msg: no injection when no messages exist" {
+  mkdir -p "$SAGE_HOME/agents/norcv"
+  echo '{"runtime":"bash"}' > "$SAGE_HOME/agents/norcv/runtime.json"
+  cat > "$SAGE_HOME/agents/norcv/handler.sh" <<'SH'
+#!/bin/bash
+handle_message() { echo "hi"; }
+SH
+  chmod +x "$SAGE_HOME/agents/norcv/handler.sh"
+  run "$SAGE" send norcv "do work" --headless
+  [[ "$output" != *"[Messages]"* ]]
+}
