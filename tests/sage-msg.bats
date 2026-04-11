@@ -149,3 +149,59 @@ SH
   run "$SAGE" send norcv "do work" --headless
   [[ "$output" != *"[Messages]"* ]]
 }
+
+# --- send --retry ---
+
+@test "send --retry requires --headless" {
+  run "$SAGE" send worker "echo hi" --retry 3
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"--headless"* ]]
+}
+
+@test "send --retry retries on failure then succeeds" {
+  # Create agent that fails twice then succeeds (uses a counter file)
+  local counter_file="$SAGE_HOME/retry_counter"
+  echo "0" > "$counter_file"
+  mkdir -p "$SAGE_HOME/agents/flaky"
+  echo '{"runtime":"bash"}' > "$SAGE_HOME/agents/flaky/runtime.json"
+  cat > "$SAGE_HOME/agents/flaky/handler.sh" <<SH
+#!/bin/bash
+handle_message() {
+  local c=\$(cat "$counter_file")
+  c=\$((c + 1))
+  echo "\$c" > "$counter_file"
+  if [ "\$c" -lt 3 ]; then
+    echo "attempt \$c failed"
+    return 1
+  fi
+  echo "attempt \$c succeeded"
+}
+SH
+  chmod +x "$SAGE_HOME/agents/flaky/handler.sh"
+  run "$SAGE" send flaky "do it" --headless --retry 3
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"succeeded"* ]]
+}
+
+@test "send --retry exhausts retries and fails" {
+  local counter_file="$SAGE_HOME/fail_counter"
+  echo "0" > "$counter_file"
+  mkdir -p "$SAGE_HOME/agents/alwaysfail"
+  echo '{"runtime":"bash"}' > "$SAGE_HOME/agents/alwaysfail/runtime.json"
+  cat > "$SAGE_HOME/agents/alwaysfail/handler.sh" <<SH
+#!/bin/bash
+handle_message() {
+  local c=\$(cat "$counter_file")
+  c=\$((c + 1))
+  echo "\$c" > "$counter_file"
+  echo "fail \$c"; return 1
+}
+SH
+  chmod +x "$SAGE_HOME/agents/alwaysfail/handler.sh"
+  run "$SAGE" send alwaysfail "do it" --headless --retry 2
+  [ "$status" -ne 0 ]
+  # Should have attempted 3 times (1 initial + 2 retries)
+  local attempts
+  attempts=$(cat "$counter_file")
+  [ "$attempts" -eq 3 ]
+}
