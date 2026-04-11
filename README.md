@@ -42,12 +42,37 @@ Every AI coding agent framework wants you to learn a new language, install a run
 **Agents are processes. Messages are files. The terminal is your IDE.**
 
 ```bash
-sage create worker --runtime claude-code
-sage send worker "Build a REST API with auth, tests, and docs"
-sage peek worker   # watch it work in real-time
+sage create reviewer --runtime claude-code
+sage create auditor --runtime kiro
+sage send --headless --json reviewer "Review src/main.py for bugs"
+sage send --headless --json auditor "Security audit src/main.py"
+# Both run in parallel. Structured JSON output. Any runtime.
 ```
 
-That's it. Three commands. Your agent is running in a tmux pane, writing files, calling tools, and you can watch every step.
+### The Numbers
+
+| Metric | Value |
+|--------|-------|
+| Lines of code | ~5,000 (single bash script) |
+| Dependencies | 3 (`bash`, `jq`, `tmux`) |
+| Runtimes | 6 (Claude Code, Gemini CLI, Codex, Cline, Kiro, bash) |
+| Commands | 41 |
+| Tests | 332 (bats-core, CI on ubuntu + macOS) |
+| Install time | < 10 seconds |
+
+### What Makes sage Different
+
+Every competitor requires Node.js, Python, Rust, or Go. sage requires bash.
+
+| | sage | claude-flow | gastown | Claude Squad |
+|---|---|---|---|---|
+| Language | bash | TypeScript | TypeScript | Go |
+| Dependencies | jq + tmux | Node.js + npm | Node.js + npm | Go runtime |
+| Runtimes | 6 (any agent) | Claude only | Claude only | Claude only |
+| Headless/CI | ✅ `--headless --json` | ❌ | ❌ | ❌ |
+| Git worktrees | ✅ built-in | ❌ | ✅ | ❌ |
+| MCP support | ✅ registry + lifecycle | ✅ | ❌ | ❌ |
+| Skills system | ✅ install + registries | ❌ | ❌ | ❌ |
 
 ### Design Principles
 
@@ -122,88 +147,108 @@ sage send worker @~/tasks/big-project.md    # ~ expansion supported
 
 ## Use Cases
 
-### 🔨 Single Agent — Code Generation
+### 🔥 Parallel Multi-Runtime Security Audit (Verified)
 
-Point an agent at a task and let it build:
+Run different AI agents on the same code simultaneously, each in an isolated git branch:
 
 ```bash
-sage create dev --runtime claude-code
-sage send dev "Create a Node.js Express API with JWT auth, rate limiting, and Swagger docs"
-sage peek dev    # watch files appear in real-time
+# Create two agents with different runtimes, each in their own worktree
+sage create reviewer --worktree review-branch --runtime claude-code
+sage create auditor --worktree audit-branch --runtime kiro
+
+# Fire both in parallel
+sage send --headless --json reviewer "Review cmd_send() for bugs" &
+sage send --headless --json auditor "Security audit cmd_send()" &
+wait
+
+# Results:
+# reviewer (Claude Code, 12s): Found 3 bugs — unsafe ls parsing, missing error handling
+# auditor  (Kiro, 41s):        Found 6 issues — path traversal, command injection, unsafe glob
+# Wall time: 41s (parallel), not 53s (sequential)
 ```
 
-### 🏗️ Multi-Agent Orchestration
+### ⚡ Headless CI Mode (Verified)
 
-One agent delegates to specialists:
+Run sage in GitHub Actions — no tmux, no terminal, structured JSON output:
 
 ```bash
-sage create orch --runtime claude-code
-sage send orch "Build a full-stack todo app. Create sub-agents for frontend and backend."
-
-sage status
-#  orch              claude-code  running   45s
-#    └─ frontend     claude-code  running   30s
-#    └─ backend      claude-code  running   28s
-
-sage trace --tree
-#  t-001 cli → orch "Build a full-stack todo app" (120s) ✓
-#    ├─ t-002 orch → frontend "Build React UI with..." (45s) ✓
-#    └─ t-003 orch → backend "Build Express API with..." (52s) ✓
+sage send --headless --json reviewer "Is this safe? eval(\$user_input)"
+```
+```json
+{
+  "status": "done",
+  "task_id": "headless-1775793946",
+  "exit_code": 0,
+  "elapsed": 34,
+  "output": "UNSAFE. eval \"$user_input\" is a critical command injection vulnerability..."
+}
 ```
 
-### ⚡ Parallel Workstreams
-
-Run independent orchestrators simultaneously:
-
-```bash
-sage create orch-api --runtime claude-code
-sage create orch-ui --runtime claude-code
-sage create orch-infra --runtime claude-code
-
-sage send orch-api "Build REST API with FastAPI"
-sage send orch-ui "Build React dashboard"
-sage send orch-infra "Write Terraform for AWS ECS"
-
-sage tasks    # track everything
-sage status   # full tree view
+Use the included GitHub Action:
+```yaml
+- uses: youwangd/SageCLI@main
+  with:
+    runtime: claude-code
+    task: "Review this PR for security issues"
 ```
 
-### 🎯 Course Correction
+### 🌐 6 Runtimes, One Interface (Verified)
 
-Steer agents without losing progress:
+Same command, any AI backend:
 
 ```bash
-# Soft steer — guidance for the next task
-sage steer orch "Use PostgreSQL instead of SQLite"
+sage create a1 --runtime claude-code   # Anthropic Claude (Bedrock)
+sage create a2 --runtime gemini-cli    # Google Gemini
+sage create a3 --runtime codex         # OpenAI Codex (via LiteLLM)
+sage create a4 --runtime cline         # Cline (configurable)
+sage create a5 --runtime kiro          # Kiro (Bedrock)
+sage create a6 --runtime bash          # Custom scripts
 
-# Hard steer — stop everything, restart with new direction
-sage steer orch "Switch to Go instead of Python" --restart
-# Cascades: stops all children → restarts orch with context
+# All use the same interface:
+sage send --headless --json a1 "Review this code"
+sage send --headless --json a2 "Review this code"
+# ... identical JSON output format regardless of runtime
 ```
 
-### 🔄 Mixed Runtimes
+### 🏗️ Plan Orchestrator with Wave Execution
 
-Use the right tool for each job:
+Decompose complex goals into dependency-aware parallel waves:
 
 ```bash
-sage create planner --runtime claude-code    # strong reasoning
-sage create coder --runtime gemini-cli       # fast + free tier
-sage create reviewer --runtime codex         # OpenAI models
-sage create frontend --runtime cline         # IDE-native
-sage create scripts --runtime bash           # custom handlers
+sage plan "Build a Python REST API with auth, CRUD, tests, and docs"
+
+#  Wave 1: #1 Define API schema (sequential)
+#  Wave 2: #2 Build auth + #3 Build CRUD (parallel)
+#  Wave 3: #4 Write tests + #5 Generate docs (parallel)
 ```
 
-### 📋 Sync Calls
-
-When you need the answer right now:
+### 🔧 MCP + Skills Ecosystem
 
 ```bash
-# Blocks until done (60s default timeout)
-sage call worker "What's the time complexity of merge sort?" 30
+# Register MCP servers
+sage mcp add github --command "npx" --args "@modelcontextprotocol/server-github"
+sage create dev --runtime claude-code --mcp github
 
-# Perfect for scripting
-RESULT=$(sage call analyzer "Review this PR" 120)
-echo "$RESULT"
+# Install community skills
+sage skill install https://github.com/user/code-review-skill
+sage create reviewer --runtime claude-code --skill code-review-pro
+
+# Skills inject system prompts + tool configs automatically
+sage send reviewer "Review PR #42"
+```
+
+### 🛡️ Agent Guardrails
+
+```bash
+# Auto-kill after 30 minutes
+sage create worker --runtime claude-code --timeout 30m
+
+# Stop after 50 task completions
+sage create worker --runtime claude-code --max-turns 50
+
+# Per-agent environment isolation
+sage env set worker API_KEY=sk-xxx
+sage env set worker DATABASE_URL=postgres://...
 ```
 
 ---
@@ -516,8 +561,10 @@ Customize agent behavior by editing `instructions.md` in the agent directory.
 sage is a single bash script. Read it, understand it, improve it.
 
 ```bash
-# The entire engine
-wc -l sage    # ~3000 lines
+wc -l sage    # ~5000 lines
+
+# Run tests
+bats tests/   # 332 tests across 12 files
 
 # Run from source
 ./sage init --force
