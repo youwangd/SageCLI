@@ -762,7 +762,9 @@ mkdir -p "$INBOX" "$STATE" "$AGENT_DIR/replies"
 # Read runtime config
 RUNTIME=$(jq -r '.runtime // "bash"' "$AGENT_DIR/runtime.json" 2>/dev/null || echo "bash")
 TIMEOUT_SECONDS=$(jq -r '.timeout_seconds // 0' "$AGENT_DIR/runtime.json" 2>/dev/null || echo 0)
+MAX_TURNS=$(jq -r '.max_turns // 0' "$AGENT_DIR/runtime.json" 2>/dev/null || echo 0)
 AGENT_START_TS=$(date +%s)
+TURN_COUNT=0
 
 # Validate runtime name (prevent path traversal)
 if [[ ! "$RUNTIME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
@@ -830,6 +832,13 @@ while true; do
 
     # Trace: task done/failed
     echo "{\"ts\":$(date +%s),\"type\":\"done\",\"agent\":\"$AGENT_NAME\",\"task_id\":\"$local_task_id\",\"elapsed\":$task_elapsed,\"status\":\"$final_status\"}" >> "$SAGE_HOME/trace.jsonl" 2>/dev/null
+
+    # Max-turns enforcement
+    TURN_COUNT=$((TURN_COUNT + 1))
+    if [[ "$MAX_TURNS" -gt 0 && "$TURN_COUNT" -ge "$MAX_TURNS" ]]; then
+      log "max-turns reached ($TURN_COUNT/$MAX_TURNS) — stopping"
+      exit 0
+    fi
   done
   sleep 0.3
   # Timeout enforcement
@@ -851,7 +860,7 @@ RUNNER
 # sage create <name> [--runtime <rt>] [--model <m>]
 # ═══════════════════════════════════════════════
 cmd_create() {
-  local name="" runtime="" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name="" from_archive="" timeout_val=""
+  local name="" runtime="" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name="" from_archive="" timeout_val="" max_turns_val=""
   # Read config defaults (flags override)
   local _cfg_rt; _cfg_rt=$(_config_get default.runtime)
   local _cfg_model; _cfg_model=$(_config_get default.model)
@@ -872,6 +881,7 @@ cmd_create() {
       --skill)        skill_name="$2"; shift 2 ;;
       --from)         from_archive="$2"; shift 2 ;;
       --timeout)      timeout_val="$2"; shift 2 ;;
+      --max-turns)    max_turns_val="$2"; shift 2 ;;
       -*)             die "unknown flag: $1" ;;
       *)              name="$1"; shift ;;
     esac
@@ -909,6 +919,14 @@ cmd_create() {
       *)  die "invalid timeout '$timeout_val' — use Nm, Nh, Ns, or bare seconds" ;;
     esac
     [[ "$timeout_seconds" =~ ^[0-9]+$ ]] || die "invalid timeout '$timeout_val' — use Nm, Nh, Ns, or bare seconds"
+  fi
+
+  # Parse --max-turns value (must be positive integer)
+  local max_turns=""
+  if [[ -n "$max_turns_val" ]]; then
+    [[ "$max_turns_val" =~ ^[0-9]+$ ]] || die "invalid max-turns '$max_turns_val' — must be a positive integer"
+    [[ "$max_turns_val" -gt 0 ]] || die "invalid max-turns '$max_turns_val' — must be a positive integer"
+    max_turns="$max_turns_val"
   fi
 
   # Import from archive if --from specified
@@ -970,7 +988,8 @@ cmd_create() {
     --arg wr "$wr" \
     --argjson mcp "$mcp_json_arr" \
     --arg to "$timeout_seconds" \
-    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, acp_agent:$aa, worktree:$wt, worktree_branch:$wb, repo_root:$wr, mcp_servers:$mcp, created:(now|todate)} | if $to != "" then .timeout_seconds=($to|tonumber) else . end' \
+    --arg mt "$max_turns" \
+    '{runtime:$rt, model:$m, parent:$p, workdir:$wd, acp_agent:$aa, worktree:$wt, worktree_branch:$wb, repo_root:$wr, mcp_servers:$mcp, created:(now|todate)} | if $to != "" then .timeout_seconds=($to|tonumber) else . end | if $mt != "" then .max_turns=($mt|tonumber) else . end' \
     > "$agent_dir/runtime.json"
 
   # Assemble mcp.json from registry
@@ -4293,6 +4312,12 @@ cmd_info() {
     fi
   fi
 
+  # Max turns
+  local max_turns_display="none"
+  local max_turns_val
+  max_turns_val=$(jq -r '.max_turns // 0' "$agent_dir/runtime.json" 2>/dev/null || echo 0)
+  [[ "$max_turns_val" -gt 0 ]] && max_turns_display="$max_turns_val"
+
   # Recent tasks (last 5)
   local tasks_json="[]"
   if ls "$agent_dir"/results/*.status.json >/dev/null 2>&1; then
@@ -4305,7 +4330,8 @@ cmd_info() {
       --arg status "$status_text" --arg mcp "$mcp_servers" --arg skills "$skills" \
       --arg worktree "$worktree" --arg disk "$disk" --argjson tasks "$tasks_json" \
       --arg timeout "$timeout_display" --argjson timeout_sec "$timeout_sec" \
-      '{name:$name, runtime:$runtime, model:$model, status:$status, mcp_servers:($mcp|split(", ")), skills:($skills|split(", ")), worktree:$worktree, disk:$disk, timeout:$timeout, timeout_seconds:$timeout_sec, recent_tasks:$tasks}'
+      --argjson max_turns "$max_turns_val" \
+      '{name:$name, runtime:$runtime, model:$model, status:$status, mcp_servers:($mcp|split(", ")), skills:($skills|split(", ")), worktree:$worktree, disk:$disk, timeout:$timeout, timeout_seconds:$timeout_sec, max_turns:$max_turns, recent_tasks:$tasks}'
     return
   fi
 
@@ -4317,6 +4343,7 @@ cmd_info() {
   printf "  %-14s %s\n" "Skills:" "$skills"
   printf "  %-14s %s\n" "Worktree:" "$worktree"
   printf "  %-14s %s\n" "Timeout:" "$timeout_display"
+  printf "  %-14s %s\n" "Max Turns:" "$max_turns_display"
   printf "  %-14s %s\n" "Disk:" "$disk"
 
   local task_count
