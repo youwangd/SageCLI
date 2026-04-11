@@ -132,6 +132,7 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 **Use case**: "What did my agents do today?"
 
 - [x] `sage history` — agent activity timeline across all agents (--agent, -n, --json)
+- [x] `sage info <name>` — full agent config and status view (--json)
 
 ---
 
