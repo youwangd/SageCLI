@@ -58,7 +58,7 @@
 - Shared context store (context set/get/ls/rm, auto-inject)
 - Inter-agent messaging (msg send/ls/clear, auto-inject on send)
 - Agent chaining (send --then, multi-step pipelines)
-- Agent export/import (export, create --from, diff)
+- Agent export/import (export, create --from file/URL, diff)
 - Agent guardrails (--timeout, --max-turns, --retry)
 - Per-agent environment (env set/ls/rm, create --env)
 - Observability (history, info, stats)
