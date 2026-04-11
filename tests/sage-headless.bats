@@ -59,7 +59,7 @@ EOF
   [ -d "$downstream_results" ]
   ls "$downstream_results"/*.result.json >/dev/null 2>&1
   local result_content
-  result_content=$(cat "$downstream_results"/*.result.json | head -1)
+  result_content=$(jq -r '.output' "$downstream_results"/*.result.json | head -1)
   [[ "$result_content" == *"UPSTREAM_DATA"* ]]
 }
 

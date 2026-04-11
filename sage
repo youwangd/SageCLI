@@ -1435,7 +1435,7 @@ cmd_status() {
 # sage send <to> <payload>
 # ═══════════════════════════════════════════════
 cmd_send() {
-  local to="" message="" force=false headless=false json_output=false no_context=false
+  local to="" message="" force=false headless=false json_output=false no_context=false then_agent=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1443,6 +1443,7 @@ cmd_send() {
       --headless)    headless=true; shift ;;
       --json)        json_output=true; shift ;;
       --no-context)  no_context=true; shift ;;
+      --then)        then_agent="$2"; shift 2 ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1457,7 +1458,15 @@ cmd_send() {
     esac
   done
 
-  [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file> [--force|--headless|--json]"
+  [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file> [--force|--headless|--json|--then <agent>]"
+
+  # --then requires --headless
+  if [[ -n "$then_agent" && "$headless" != true ]]; then
+    die "--then requires --headless (chaining needs synchronous execution)"
+  fi
+  if [[ -n "$then_agent" ]]; then
+    agent_exists "$then_agent"
+  fi
   ensure_init
 
   if [[ "$to" != ".cli" ]]; then
@@ -1568,6 +1577,12 @@ $message"
     jq -n --arg s "$_rstatus" --arg id "$task_id" --argjson rc "$rc" \
       '{id:$id,status:$s,exit_code:$rc}' > "$results_dir/${task_id}.status.json"
     jq -n --arg out "$task_output" '{output:$out}' > "$results_dir/${task_id}.result.json"
+
+    # Chain to next agent if --then specified
+    if [[ -n "$then_agent" && "$_rstatus" == "done" ]]; then
+      local _chain_msg="Result from ${to}: ${task_output}"
+      "$0" send "$then_agent" "$_chain_msg" --headless
+    fi
 
     if [[ "$json_output" == true ]]; then
       jq -n --arg s "$_rstatus" --arg id "$task_id" --argjson rc "$rc" --argjson el "$elapsed" --arg out "$task_output" \
