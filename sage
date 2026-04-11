@@ -4509,6 +4509,7 @@ cmd_help() {
     status                      Show all agents
     ls                          List agent names
     clone <src> <dest>          Duplicate agent config (no state)
+    rename <old> <new>         Rename an agent
     diff <name> [--stat|--cached] Show git changes in agent worktree
     export <name> [--output f]  Export agent config as tar.gz archive
                   [--format json]  JSON export for programmatic use

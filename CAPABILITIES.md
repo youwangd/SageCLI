@@ -24,6 +24,7 @@
 - `sage msg`
 - `sage peek`
 - `sage plan`
+- `sage rename`
 - `sage restart`
 - `sage result`
 - `sage rm`
