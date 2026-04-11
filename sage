@@ -1132,7 +1132,7 @@ stop_agent() {
     ok "stopped $name (pid $pid)"
   else
     # No running process — still clean up stale tmux window
-    tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null
+    tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null || true
     info "$name not running"
   fi
 }
