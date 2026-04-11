@@ -1435,7 +1435,8 @@ cmd_status() {
 # sage send <to> <payload>
 # ═══════════════════════════════════════════════
 cmd_send() {
-  local to="" message="" force=false headless=false json_output=false no_context=false then_agent=""
+  local to="" message="" force=false headless=false json_output=false no_context=false
+  local then_chain=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1443,7 +1444,7 @@ cmd_send() {
       --headless)    headless=true; shift ;;
       --json)        json_output=true; shift ;;
       --no-context)  no_context=true; shift ;;
-      --then)        then_agent="$2"; shift 2 ;;
+      --then)        then_chain="${then_chain:+$then_chain }$2"; shift 2 ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1461,11 +1462,14 @@ cmd_send() {
   [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file> [--force|--headless|--json|--then <agent>]"
 
   # --then requires --headless
-  if [[ -n "$then_agent" && "$headless" != true ]]; then
+  if [[ -n "$then_chain" && "$headless" != true ]]; then
     die "--then requires --headless (chaining needs synchronous execution)"
   fi
-  if [[ -n "$then_agent" ]]; then
-    agent_exists "$then_agent"
+  if [[ -n "$then_chain" ]]; then
+    local _ta
+    for _ta in $then_chain; do
+      agent_exists "$_ta"
+    done
   fi
   ensure_init
 
@@ -1579,9 +1583,20 @@ $message"
     jq -n --arg out "$task_output" '{output:$out}' > "$results_dir/${task_id}.result.json"
 
     # Chain to next agent if --then specified
-    if [[ -n "$then_agent" && "$_rstatus" == "done" ]]; then
+    if [[ -n "$then_chain" && "$_rstatus" == "done" ]]; then
       local _chain_msg="Result from ${to}: ${task_output}"
-      "$0" send "$then_agent" "$_chain_msg" --headless
+      local _first _rest
+      _first="${then_chain%% *}"
+      _rest="${then_chain#"$_first"}"
+      _rest="${_rest# }"
+      local _chain_cmd=("$0" send "$_first" "$_chain_msg" --headless)
+      if [[ -n "$_rest" ]]; then
+        local _r
+        for _r in $_rest; do
+          _chain_cmd+=(--then "$_r")
+        done
+      fi
+      "${_chain_cmd[@]}"
     fi
 
     if [[ "$json_output" == true ]]; then
