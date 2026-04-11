@@ -45,6 +45,7 @@
 - bash
 - claude-code
 - cline
+- gemini-cli
 - kiro
 
 ## Features

@@ -164,6 +164,14 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 
 ---
 
+## Phase 11: New Runtime Handlers
+**Use case**: "Orchestrate agents powered by any major AI CLI — not just Claude"
+
+- [x] `sage create worker --runtime gemini-cli` — Google Gemini CLI runtime (headless -p, --yolo, GEMINI_SYSTEM_MD)
+- [ ] `sage create worker --runtime codex` — OpenAI Codex CLI runtime (exec mode)
+
+---
+
 ## Killer Use Cases to Build Toward
 
 1. **PR Review Pipeline**: `sage plan "Review PR #123"` → spawns reviewer + security auditor + test writer in parallel → merges findings
@@ -205,7 +213,7 @@ Sage sits at the intersection of 1+2 with the unique angle of being **pure bash,
 | mitchellh: "need hardware kill switch for agents" (3.2K ❤️) | POSITIVE — validates sage's guardrails | sage has --timeout + --max-turns ✅ |
 
 ### Action Items
-1. **[P0]** Add Gemini CLI runtime handler
+1. **[P0]** ~~Add Gemini CLI runtime handler~~ ✅ Done (Phase 11)
 2. **[P0]** Add Codex runtime handler
 3. **[P0]** Submit PR to awesome-cli-coding-agents to get listed
 4. **[P1]** Update README positioning: "orchestrate ANY agent" vs Claude-native teams
