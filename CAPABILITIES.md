@@ -9,6 +9,7 @@
 - `sage config`
 - `sage context`
 - `sage create`
+- `sage dashboard`
 - `sage diff`
 - `sage doctor`
 - `sage env`
@@ -68,3 +69,4 @@
 - ACP protocol support (persistent sessions)
 - Shell completions (bash/zsh tab-completion for commands, agents, runtimes)
 - Swarm patterns (plan --pattern fan-out, pipeline, debate, map-reduce + composable YAML pattern files via plan --run)
+- Dashboard (sage dashboard — agent overview with status, runtime, --json for scripting)

@@ -128,7 +128,7 @@ This is ruflo's main draw (31K stars). Sage has `plan` for dependency waves but 
 
 Every orchestrator with >5K stars has visualization. Terminal-only is a differentiator but also a ceiling. Cline Kanban proves demand.
 
-- [ ] `sage dashboard` — live TUI with agent list, status, recent output
+- [x] `sage dashboard` — live TUI with agent list, status, recent output
 - [ ] Built with `gum` or `charmbracelet/bubbletea` (stays terminal-native, no web server)
 - [ ] Real-time log tailing per agent
 - [ ] Plan progress visualization (wave execution)
