@@ -3,6 +3,7 @@
 ## Commands
 - `sage attach`
 - `sage call`
+- `sage checkpoint`
 - `sage clean`
 - `sage clone`
 - `sage completions`
@@ -28,6 +29,7 @@
 - `sage plan`
 - `sage rename`
 - `sage restart`
+- `sage restore`
 - `sage result`
 - `sage rm`
 - `sage runs`
@@ -72,3 +74,4 @@
 - Dashboard (sage dashboard — agent overview with status, runtime, --json for scripting)
 - Plan progress visualization (sage plan --show — wave-by-wave task status with color-coded icons)
 - Multi-agent log tailing (sage logs --all — color-coded interleaved output from all agents)
+- Agent checkpoint/restore (sage checkpoint/restore — save and resume agent state across reboots)
