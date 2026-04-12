@@ -102,3 +102,52 @@ teardown() {
   local goal=$(jq -r '.goal' "$SAGE_HOME/test-plan.json")
   [[ "$goal" == *"pipeline"* ]]
 }
+
+# --- debate pattern ---
+
+@test "plan --pattern debate requires --task" {
+  run sage plan --pattern debate --inputs "a,b,c" --yes
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--task"* ]]
+}
+
+@test "plan --pattern debate requires --inputs with at least 2 participants" {
+  run sage plan --pattern debate --task "Implement auth" --inputs "solo" --yes
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"at least 2"* ]]
+}
+
+@test "plan --pattern debate generates N+1 tasks (N participants + synthesizer)" {
+  run sage plan --pattern debate --task "Implement auth" --inputs "claude,gemini,codex" --save "$SAGE_HOME/test-plan.json" --yes
+  [ -f "$SAGE_HOME/test-plan.json" ]
+  local count=$(jq '.tasks | length' "$SAGE_HOME/test-plan.json")
+  [ "$count" -eq 4 ]
+}
+
+@test "plan --pattern debate first N tasks are parallel (no deps)" {
+  run sage plan --pattern debate --task "Solve puzzle" --inputs "a,b,c" --save "$SAGE_HOME/test-plan.json" --yes
+  local d1=$(jq '.tasks[0].depends | length' "$SAGE_HOME/test-plan.json")
+  local d2=$(jq '.tasks[1].depends | length' "$SAGE_HOME/test-plan.json")
+  local d3=$(jq '.tasks[2].depends | length' "$SAGE_HOME/test-plan.json")
+  [ "$d1" -eq 0 ]
+  [ "$d2" -eq 0 ]
+  [ "$d3" -eq 0 ]
+}
+
+@test "plan --pattern debate synthesizer depends on all participants" {
+  run sage plan --pattern debate --task "Design API" --inputs "a,b,c" --save "$SAGE_HOME/test-plan.json" --yes
+  local last_deps=$(jq '.tasks[-1].depends | sort' "$SAGE_HOME/test-plan.json")
+  [ "$last_deps" = "[1,2,3]" ]
+}
+
+@test "plan --pattern debate synthesizer description mentions synthesize" {
+  run sage plan --pattern debate --task "Build feature" --inputs "x,y" --save "$SAGE_HOME/test-plan.json" --yes
+  local desc=$(jq -r '.tasks[-1].description' "$SAGE_HOME/test-plan.json")
+  [[ "$desc" == *"ynthesize"* ]] || [[ "$desc" == *"best"* ]]
+}
+
+@test "plan --pattern debate sets goal with debate label" {
+  run sage plan --pattern debate --task "Write tests" --inputs "a,b" --save "$SAGE_HOME/test-plan.json" --yes
+  local goal=$(jq -r '.goal' "$SAGE_HOME/test-plan.json")
+  [[ "$goal" == *"debate"* ]]
+}
