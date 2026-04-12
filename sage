@@ -893,6 +893,53 @@ $completion_instruction"
 }
 RTEOF
 
+  # ── Runtime: ollama ──
+  cat > "$RUNTIMES_DIR/ollama.sh" << 'RTEOF'
+#!/bin/bash
+# Runtime: ollama (local model via ollama CLI)
+
+runtime_start() {
+  local agent_dir="$1" name="$2"
+  mkdir -p "$agent_dir/workspace"
+}
+
+runtime_inject() {
+  local name="$1" msg="$2"
+  local agent_dir="$AGENTS_DIR/$name"
+  local task=$(echo "$msg" | jq -r '.payload.task // .payload.text // (.payload | tostring)' 2>/dev/null)
+  local from=$(echo "$msg" | jq -r '.from' 2>/dev/null)
+  local msg_id=$(echo "$msg" | jq -r '.id' 2>/dev/null)
+  local reply_dir=$(echo "$msg" | jq -r '.reply_dir // empty' 2>/dev/null)
+  local model=$(jq -r '.model // "llama3.2:3b"' "$agent_dir/runtime.json" 2>/dev/null)
+  local instructions="$agent_dir/instructions.md"
+
+  local prompt=""
+  [[ -f "$instructions" ]] && prompt="$(cat "$instructions")"$'\n\n'
+  prompt+="$task"
+
+  log "invoking ollama run $model..."
+  local output
+  output=$(echo "$prompt" | ollama run "$model" 2>&1) || true
+
+  log "ollama finished: $(echo "$output" | tail -1 | head -c 120)"
+  [[ -n "$output" ]] && printf '%s\n' "$output"
+
+  local results_dir="$AGENTS_DIR/$name/results"
+  if [[ -d "$results_dir" && -n "$msg_id" ]]; then
+    local json_out
+    json_out=$(echo "$output" | jq -Rs .) || json_out="\"encoding failed\""
+    local _rtmp="$results_dir/${msg_id}.result.json.tmp"
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$json_out}" > "$_rtmp" && mv "$_rtmp" "$results_dir/${msg_id}.result.json" || rm -f "$_rtmp"
+  fi
+
+  if [[ -n "$reply_dir" ]]; then
+    mkdir -p "$reply_dir"
+    local _rptmp="$reply_dir/${msg_id}.json.tmp"
+    echo "{\"status\":\"done\",\"agent\":\"$name\",\"output\":$(echo "$output" | jq -Rs .)}" > "$_rptmp" && mv "$_rptmp" "$reply_dir/${msg_id}.json" || rm -f "$_rptmp"
+  fi
+}
+RTEOF
+
   # ── Runner ──
   cat > "$SAGE_HOME/runner.sh" << 'RUNNER'
 #!/bin/bash
@@ -1051,7 +1098,7 @@ cmd_create() {
     esac
   done
 
-  [[ -n "$name" ]] || die "usage: sage create <name> [--runtime bash|cline|claude-code|gemini-cli|codex|acp] [--agent <agent>] [--model <model>]"
+  [[ -n "$name" ]] || die "usage: sage create <name> [--runtime bash|cline|claude-code|gemini-cli|codex|ollama|acp] [--agent <agent>] [--model <model>]"
 
   # Validate agent name: alphanumeric, hyphens, underscores only
   if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
@@ -4994,7 +5041,7 @@ _sage_completions() {
     create)
       COMPREPLY=($(compgen -W "--runtime --worktree --mcp --skill --env --timeout --max-turns --from" -- "$cur"));;
     --runtime)
-      COMPREPLY=($(compgen -W "bash claude-code cline gemini-cli codex kiro acp" -- "$cur"));;
+      COMPREPLY=($(compgen -W "bash claude-code cline gemini-cli codex kiro ollama acp" -- "$cur"));;
     skill)
       COMPREPLY=($(compgen -W "install ls rm show run search registry" -- "$cur"));;
     mcp)
@@ -5140,7 +5187,7 @@ cmd_help() {
 
   AGENTS
     init [--force]              Initialize sage (~/.sage/)
-    create <name> [flags]       Create agent (--runtime bash|cline|claude-code|gemini-cli|codex|acp, --agent <a>, --model <m>)
+    create <name> [flags]       Create agent (--runtime bash|cline|claude-code|gemini-cli|codex|ollama|acp, --agent <a>, --model <m>)
     start [name|--all]          Start agent(s) in tmux
     stop [name|--all]           Stop agent(s)
     restart [name|--all]        Restart agent(s)
