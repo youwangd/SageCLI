@@ -4427,6 +4427,60 @@ $tmsg"
 # ═══════════════════════════════════════════════
 # sage help
 # ═══════════════════════════════════════════════
+# ═══ Dashboard ═══
+cmd_dashboard() {
+  ensure_init
+  local json=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=true; shift ;;
+      *) die "unknown flag: $1" ;;
+    esac
+  done
+
+  local agent_count=0
+  local agents=()
+  for d in "$AGENTS_DIR"/*/; do
+    [[ -d "$d" ]] || continue
+    local n=$(basename "$d")
+    [[ "$n" == .* ]] && continue
+    agents+=("$n")
+    agent_count=$((agent_count + 1))
+  done
+
+  if $json; then
+    if [[ $agent_count -eq 0 ]]; then printf '[]\n'; return 0; fi
+    local first=true
+    printf '['
+    for n in "${agents[@]}"; do
+      local rt=$(jq -r '.runtime // "bash"' "$AGENTS_DIR/$n/runtime.json" 2>/dev/null || echo "bash")
+      local st="stopped" pid=""
+      if pid=$(agent_pid "$n" 2>/dev/null); then st="running"; fi
+      $first || printf ','
+      first=false
+      printf '{"name":"%s","runtime":"%s","status":"%s"}' "$n" "$rt" "$st"
+    done
+    printf ']\n'
+    return 0
+  fi
+
+  if [[ $agent_count -eq 0 ]]; then
+    echo "No agents found. Create one: sage create <name>"
+    return 0
+  fi
+
+  echo "── sage dashboard ── $agent_count agents ──"
+  echo ""
+  printf "  %-16s %-10s %s\n" "NAME" "RUNTIME" "STATUS"
+  printf "  %-16s %-10s %s\n" "────" "───────" "──────"
+  for n in "${agents[@]}"; do
+    local rt=$(jq -r '.runtime // "bash"' "$AGENTS_DIR/$n/runtime.json" 2>/dev/null || echo "bash")
+    local st="stopped"
+    agent_pid "$n" >/dev/null 2>&1 && st="running"
+    printf "  %-16s %-10s %s\n" "$n" "$rt" "$st"
+  done
+}
+
 # ═══ Doctor ═══
 cmd_doctor() {
   local fails=0
@@ -4559,14 +4613,14 @@ cmd_diff() {
 
 cmd_completions() {
   local shell="${1:-}"
-  local cmds="attach call clean clone completions config context create diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
+  local cmds="attach call clean clone completions config context create dashboard diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
   case "$shell" in
     bash)
       cat <<'BASH_COMP'
 _sage_completions() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local prev="${COMP_WORDS[COMP_CWORD-1]}"
-  local cmds="attach call clean clone completions config context create diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
+  local cmds="attach call clean clone completions config context create dashboard diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
   if [[ $COMP_CWORD -eq 1 ]]; then
     COMPREPLY=($(compgen -W "$cmds" -- "$cur"))
     return
@@ -4741,6 +4795,7 @@ cmd_help() {
                   [--format json]  JSON export for programmatic use
     rm <name>                   Remove agent
     clean                       Clean up stale files
+    dashboard [--json]          Agent overview: status, runtime, activity
     doctor                      Check dependencies and environment health
     history [--agent a] [-n N]  Show agent activity timeline (--json for JSON)
     info <name>                 Show full agent configuration and status (--json)
@@ -5279,6 +5334,7 @@ case "${1:-}" in
   runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;
   help|-h|--help|"") cmd_help ;;
+  dashboard) shift; cmd_dashboard "$@" ;;
   doctor) cmd_doctor ;;
   history) shift; cmd_history "$@" ;;
   stats)   shift; cmd_stats "$@" ;;
