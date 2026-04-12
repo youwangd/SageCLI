@@ -30,6 +30,7 @@
 - `sage rename`
 - `sage restart`
 - `sage restore`
+- `sage recover`
 - `sage result`
 - `sage rm`
 - `sage runs`
@@ -75,3 +76,4 @@
 - Plan progress visualization (sage plan --show — wave-by-wave task status with color-coded icons)
 - Multi-agent log tailing (sage logs --all — color-coded interleaved output from all agents)
 - Agent checkpoint/restore (sage checkpoint/restore — save and resume agent state across reboots)
+- Session recovery (sage recover — detect and fix orphaned/dead agent sessions after crash or reboot)
