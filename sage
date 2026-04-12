@@ -4671,6 +4671,136 @@ cmd_doctor() {
   return "$fails"
 }
 
+# ═══════════════════════════════════════════════
+# sage checkpoint <name|--all>
+# ═══════════════════════════════════════════════
+cmd_checkpoint() {
+  local target="${1:-}"
+  [[ -n "$target" ]] || die "usage: sage checkpoint <name|--all>"
+  ensure_init
+  local ckpt_dir="$SAGE_HOME/checkpoints"
+  mkdir -p "$ckpt_dir"
+
+  if [[ "$target" == "--all" ]]; then
+    local count=0
+    for agent_dir in "$AGENTS_DIR"/*/; do
+      [[ -d "$agent_dir" ]] || continue
+      local n
+      n=$(basename "$agent_dir")
+      [[ "$n" == .* ]] && continue
+      _checkpoint_one "$n" "$ckpt_dir" && count=$((count + 1))
+    done
+    ok "checkpointed $count agent(s)"
+  else
+    agent_exists "$target"
+    _checkpoint_one "$target" "$ckpt_dir"
+    ok "checkpointed $target"
+  fi
+}
+
+_checkpoint_one() {
+  local name="$1" ckpt_dir="$2"
+  local adir="$AGENTS_DIR/$name"
+  local runtime
+  runtime=$(jq -r '.runtime // "bash"' "$adir/runtime.json" 2>/dev/null || echo "bash")
+
+  # Collect env vars
+  local env_json="{}"
+  if [[ -d "$adir/env" ]]; then
+    env_json="{"
+    local first=true
+    for f in "$adir/env"/*; do
+      [[ -f "$f" ]] || continue
+      local k v
+      k=$(basename "$f")
+      v=$(cat "$f")
+      $first || env_json="$env_json,"
+      env_json="$env_json$(printf '"%s":"%s"' "$k" "$v")"
+      first=false
+    done
+    env_json="$env_json}"
+  fi
+
+  # Collect mcp config
+  local mcp_json="null"
+  [[ -f "$adir/mcp.json" ]] && mcp_json=$(cat "$adir/mcp.json")
+
+  # Collect steer file
+  local steer="null"
+  [[ -f "$adir/STEER.md" ]] && steer=$(jq -Rs '.' "$adir/STEER.md")
+
+  # Check if running
+  local was_running=false
+  agent_pid "$name" >/dev/null 2>&1 && was_running=true
+
+  # Write checkpoint
+  printf '{"runtime":"%s","env":%s,"mcp":%s,"steer":%s,"was_running":%s,"timestamp":"%s"}\n' \
+    "$runtime" "$env_json" "$mcp_json" "$steer" "$was_running" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    > "$ckpt_dir/$name.json"
+}
+
+# ═══════════════════════════════════════════════
+# sage restore [name|--all]
+# ═══════════════════════════════════════════════
+cmd_restore() {
+  local target="${1:-}"
+  ensure_init
+  local ckpt_dir="$SAGE_HOME/checkpoints"
+
+  if [[ "$target" == "--all" || -z "$target" ]]; then
+    local count=0
+    for ckpt in "$ckpt_dir"/*.json; do
+      [[ -f "$ckpt" ]] || continue
+      local n
+      n=$(basename "$ckpt" .json)
+      _restore_one "$n" "$ckpt_dir" && count=$((count + 1))
+    done
+    [[ $count -gt 0 ]] && ok "restored $count agent(s)" || die "no checkpoints found"
+  else
+    [[ -f "$ckpt_dir/$target.json" ]] || die "no checkpoint for '$target'"
+    _restore_one "$target" "$ckpt_dir"
+    ok "restored $target"
+  fi
+}
+
+_restore_one() {
+  local name="$1" ckpt_dir="$2"
+  local ckpt="$ckpt_dir/$name.json"
+  local adir="$AGENTS_DIR/$name"
+
+  # Recreate agent dir if missing
+  if [[ ! -d "$adir" ]]; then
+    mkdir -p "$adir"
+    local runtime
+    runtime=$(jq -r '.runtime // "bash"' "$ckpt")
+    printf '{"runtime":"%s"}\n' "$runtime" > "$adir/runtime.json"
+  fi
+
+  # Restore env vars
+  local env_keys
+  env_keys=$(jq -r '.env // {} | keys[]' "$ckpt" 2>/dev/null) || true
+  if [[ -n "$env_keys" ]]; then
+    mkdir -p "$adir/env"
+    while IFS= read -r key; do
+      jq -r ".env[\"$key\"]" "$ckpt" > "$adir/env/$key"
+    done <<< "$env_keys"
+  fi
+
+  # Restore mcp config
+  local mcp
+  mcp=$(jq -r '.mcp // empty' "$ckpt" 2>/dev/null) || true
+  if [[ -n "$mcp" && "$mcp" != "null" ]]; then
+    jq '.mcp' "$ckpt" > "$adir/mcp.json"
+  fi
+
+  # Restore steer file
+  local steer
+  steer=$(jq -r '.steer // empty' "$ckpt" 2>/dev/null) || true
+  if [[ -n "$steer" && "$steer" != "null" ]]; then
+    printf '%s' "$steer" > "$adir/STEER.md"
+  fi
+}
+
 cmd_upgrade() {
   local check_only=false
   [[ "${1:-}" == "--check" ]] && check_only=true
@@ -4719,14 +4849,14 @@ cmd_diff() {
 
 cmd_completions() {
   local shell="${1:-}"
-  local cmds="attach call clean clone completions config context create dashboard diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
+  local cmds="attach call checkpoint clean clone completions config context create dashboard diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart restore result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
   case "$shell" in
     bash)
       cat <<'BASH_COMP'
 _sage_completions() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local prev="${COMP_WORDS[COMP_CWORD-1]}"
-  local cmds="attach call clean clone completions config context create dashboard diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
+  local cmds="attach call checkpoint clean clone completions config context create dashboard diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart restore result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
   if [[ $COMP_CWORD -eq 1 ]]; then
     COMPREPLY=($(compgen -W "$cmds" -- "$cur"))
     return
@@ -4902,6 +5032,8 @@ cmd_help() {
     rm <name>                   Remove agent
     clean                       Clean up stale files
     dashboard [--json]          Agent overview: status, runtime, activity
+    checkpoint <name|--all>     Save agent state to disk for later restore
+    restore [name|--all]        Restore agents from checkpoints after reboot
     doctor                      Check dependencies and environment health
     history [--agent a] [-n N]  Show agent activity timeline (--json for JSON)
     info <name>                 Show full agent configuration and status (--json)
@@ -5442,6 +5574,8 @@ case "${1:-}" in
   plan)    shift; cmd_plan "$@" ;;
   help|-h|--help|"") cmd_help ;;
   dashboard) shift; cmd_dashboard "$@" ;;
+  checkpoint) shift; cmd_checkpoint "$@" ;;
+  restore) shift; cmd_restore "$@" ;;
   doctor) cmd_doctor ;;
   history) shift; cmd_history "$@" ;;
   stats)   shift; cmd_stats "$@" ;;
