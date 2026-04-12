@@ -4770,7 +4770,7 @@ cmd_help() {
     plan --pattern <p> ...      Swarm pattern (fan-out, pipeline, debate, map-reduce)
       [--save <file>]           Save plan to file
       [--yes]                   Auto-approve (skip interactive)
-    plan --run <file>           Execute a saved plan
+    plan --run <file>           Execute a saved plan (JSON) or pattern file (YAML)
     plan --resume <file>        Resume from failure point
     plan --list                 Show saved plans
 

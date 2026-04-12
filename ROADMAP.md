@@ -6,7 +6,7 @@
 
 ## Current State
 
-SageCLI is a **5,154-line pure bash** AI agent orchestrator. 42 commands, 6 runtimes, 338 tests, CI on every push.
+SageCLI is a **5,154-line pure bash** AI agent orchestrator. 42 commands, 6 runtimes, 372 tests, CI on every push.
 
 **What we ship that nobody else does in pure bash:**
 - Runtime-agnostic orchestration (claude-code, cline, kiro, gemini-cli, codex, bash)
@@ -121,7 +121,7 @@ This is ruflo's main draw (31K stars). Sage has `plan` for dependency waves but 
 - [x] `sage plan --pattern pipeline` — chain agents sequentially (A→B→C), each transforms output
 - [x] `sage plan --pattern debate` — N agents argue, synthesizer picks best answer
 - [x] `sage plan --pattern map-reduce` — split work, parallel execute, merge results
-- [ ] Patterns are composable with existing plan YAML
+- [x] Patterns are composable with existing plan YAML
 
 ### Phase 15: TUI Dashboard
 **Use case**: "See all my agents, their status, and logs in one view"
