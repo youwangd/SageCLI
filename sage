@@ -3460,29 +3460,47 @@ _plan_pattern() {
   local pattern="$1" task_template="$2" inputs="$3" save_file="$4" auto_approve="$5"
 
   case "$pattern" in
-    fan-out) ;;
-    *) die "unknown pattern: $pattern (available: fan-out)" ;;
+    fan-out|pipeline) ;;
+    *) die "unknown pattern: $pattern (available: fan-out, pipeline)" ;;
   esac
 
-  [[ -n "$task_template" ]] || die "fan-out requires --task '<template with {} placeholder>'"
-  [[ -n "$inputs" ]] || die "fan-out requires --inputs 'item1,item2,...'"
+  [[ -n "$inputs" ]] || die "$pattern requires --inputs 'item1,item2,...'"
 
   local plan_id="plan-$(date +%s)"
   local plan_file="$PLANS_DIR/${plan_id}.json"
   local tasks="[]"
   local id=1
 
-  # Split inputs by comma
-  local IFS=','
-  for input in $inputs; do
-    input=$(echo "$input" | sed 's/^ *//;s/ *$//')
-    local desc="${task_template//\{\}/$input}"
-    tasks=$(echo "$tasks" | jq --arg d "$desc" --argjson i "$id" \
-      '. + [{"id":$i,"template":"implement","description":$d,"depends":[],"files":[]}]')
-    id=$((id + 1))
-  done
+  if [[ "$pattern" == "pipeline" ]]; then
+    [[ -n "$task_template" ]] || die "pipeline requires --task 'Step1 {},Step2 {},...'"
+    # Count steps (comma-separated task_template items)
+    local step_count
+    step_count=$(echo "$task_template" | tr ',' '\n' | wc -l)
+    [[ "$step_count" -ge 2 ]] || die "pipeline requires at least 2 steps in --task"
+    local IFS=','
+    for step in $task_template; do
+      step=$(echo "$step" | sed 's/^ *//;s/ *$//')
+      local desc="${step//\{\}/$inputs}"
+      local deps="[]"
+      [[ "$id" -gt 1 ]] && deps="[$((id - 1))]"
+      tasks=$(echo "$tasks" | jq --arg d "$desc" --argjson i "$id" --argjson dp "$deps" \
+        '. + [{"id":$i,"template":"implement","description":$d,"depends":$dp,"files":[]}]')
+      id=$((id + 1))
+    done
+  else
+    [[ -n "$task_template" ]] || die "fan-out requires --task '<template with {} placeholder>'"
+    # Split inputs by comma
+    local IFS=','
+    for input in $inputs; do
+      input=$(echo "$input" | sed 's/^ *//;s/ *$//')
+      local desc="${task_template//\{\}/$input}"
+      tasks=$(echo "$tasks" | jq --arg d "$desc" --argjson i "$id" \
+        '. + [{"id":$i,"template":"implement","description":$d,"depends":[],"files":[]}]')
+      id=$((id + 1))
+    done
+  fi
 
-  jq -n --arg g "fan-out: $task_template" --arg id "$plan_id" --argjson t "$tasks" \
+  jq -n --arg g "$pattern: $task_template" --arg id "$plan_id" --argjson t "$tasks" \
     '{goal:$g, plan_id:$id, status:"pending", tasks:$t}' > "$plan_file"
 
   if [[ -n "$save_file" ]]; then
