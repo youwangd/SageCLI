@@ -151,3 +151,59 @@ teardown() {
   local goal=$(jq -r '.goal' "$SAGE_HOME/test-plan.json")
   [[ "$goal" == *"debate"* ]]
 }
+
+# --- map-reduce pattern ---
+
+@test "plan --pattern map-reduce requires --task" {
+  run sage plan --pattern map-reduce --inputs "a,b,c"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"requires --task"* ]]
+}
+
+@test "plan --pattern map-reduce requires {} in --task" {
+  run sage plan --pattern map-reduce --task "Review code" --inputs "a,b"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"{}"* ]]
+}
+
+@test "plan --pattern map-reduce requires at least 2 inputs" {
+  run sage plan --pattern map-reduce --task "Review {}" --inputs "a"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"at least 2"* ]]
+}
+
+@test "plan --pattern map-reduce generates N+1 tasks (N map + 1 reduce)" {
+  run sage plan --pattern map-reduce --task "Review {}" --inputs "a,b,c" --save "$SAGE_HOME/test-plan.json" --yes
+  local count=$(jq '.tasks | length' "$SAGE_HOME/test-plan.json")
+  [ "$count" -eq 4 ]
+}
+
+@test "plan --pattern map-reduce map tasks are parallel (no deps)" {
+  run sage plan --pattern map-reduce --task "Lint {}" --inputs "x,y,z" --save "$SAGE_HOME/test-plan.json" --yes
+  local d1=$(jq '.tasks[0].depends | length' "$SAGE_HOME/test-plan.json")
+  local d2=$(jq '.tasks[1].depends | length' "$SAGE_HOME/test-plan.json")
+  local d3=$(jq '.tasks[2].depends | length' "$SAGE_HOME/test-plan.json")
+  [ "$d1" -eq 0 ]
+  [ "$d2" -eq 0 ]
+  [ "$d3" -eq 0 ]
+}
+
+@test "plan --pattern map-reduce reduce depends on all map tasks" {
+  run sage plan --pattern map-reduce --task "Test {}" --inputs "a,b,c" --save "$SAGE_HOME/test-plan.json" --yes
+  local last_deps=$(jq -c '.tasks[-1].depends | sort' "$SAGE_HOME/test-plan.json")
+  [ "$last_deps" = "[1,2,3]" ]
+}
+
+@test "plan --pattern map-reduce substitutes {} in map task descriptions" {
+  run sage plan --pattern map-reduce --task "Audit {}" --inputs "auth,db" --save "$SAGE_HOME/test-plan.json" --yes
+  local d1=$(jq -r '.tasks[0].description' "$SAGE_HOME/test-plan.json")
+  local d2=$(jq -r '.tasks[1].description' "$SAGE_HOME/test-plan.json")
+  [[ "$d1" == *"auth"* ]]
+  [[ "$d2" == *"db"* ]]
+}
+
+@test "plan --pattern map-reduce reduce description mentions reduce/merge" {
+  run sage plan --pattern map-reduce --task "Check {}" --inputs "a,b" --save "$SAGE_HOME/test-plan.json" --yes
+  local desc=$(jq -r '.tasks[-1].description' "$SAGE_HOME/test-plan.json")
+  [[ "$desc" == *"educe"* ]] || [[ "$desc" == *"erge"* ]]
+}
