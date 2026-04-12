@@ -619,7 +619,15 @@ _acp_process_events() {
         local entries=$(echo "$event" | jq -r '[.params.update.entries[]? | .content] | join(", ")' 2>/dev/null)
         [[ -n "$entries" ]] && printf "\033[33m  📋 %s\033[0m\n" "$entries"
         ;;
-      agent_thought_chunk|usage_update|available_commands_update|current_mode_update) ;;
+      usage_update)
+        local ui uo
+        ui=$(echo "$event" | jq -r '.params.update.inputTokens // .params.update.input_tokens // 0' 2>/dev/null)
+        uo=$(echo "$event" | jq -r '.params.update.outputTokens // .params.update.output_tokens // 0' 2>/dev/null)
+        if [[ "${ui:-0}" -gt 0 || "${uo:-0}" -gt 0 ]]; then
+          printf '{"ts":%s,"input":%s,"output":%s}\n' "$(date +%s)" "$ui" "$uo" >> "$AGENTS_DIR/$AGENT_NAME/tokens.jsonl"
+        fi
+        ;;
+      agent_thought_chunk|available_commands_update|current_mode_update) ;;
       *) [[ -n "$update" ]] && printf "\033[2m  [%s]\033[0m\n" "$update" ;;
     esac
 
@@ -5475,15 +5483,59 @@ cmd_history() {
 }
 
 # ═══ Stats ═══
+_stats_tokens() {
+  local json_mode="$1"
+  local total_in=0 total_out=0 json_agents="[]"
+
+  for agent_dir in "$AGENTS_DIR"/*/; do
+    [[ -d "$agent_dir" ]] || continue
+    local aname; aname=$(basename "$agent_dir")
+    [[ "$aname" == ".cli" ]] && continue
+    local tf="$agent_dir/tokens.jsonl"
+    [[ -f "$tf" ]] || continue
+    local ain=0 aout=0
+    while IFS= read -r line; do
+      local i o
+      i=$(echo "$line" | jq -r '.input // 0' 2>/dev/null) || continue
+      o=$(echo "$line" | jq -r '.output // 0' 2>/dev/null) || continue
+      [[ "$i" =~ ^[0-9]+$ ]] && ain=$((ain + i))
+      [[ "$o" =~ ^[0-9]+$ ]] && aout=$((aout + o))
+    done < "$tf"
+    [[ "$ain" -eq 0 && "$aout" -eq 0 ]] && continue
+    total_in=$((total_in + ain))
+    total_out=$((total_out + aout))
+    json_agents=$(echo "$json_agents" | jq --arg n "$aname" --argjson i "$ain" --argjson o "$aout" \
+      '. + [{name:$n,input_tokens:$i,output_tokens:$o,total:($i+$o)}]')
+  done
+
+  if [[ "$json_mode" == "true" ]]; then
+    jq -n --argjson agents "$json_agents" --argjson ti "$total_in" --argjson to "$total_out" \
+      '{agents:$agents,total_input:$ti,total_output:$to,total:($ti+$to)}'
+    return 0
+  fi
+
+  printf "  %-14s\n" "Tokens:"
+  local count; count=$(echo "$json_agents" | jq 'length')
+  if [[ "$count" -eq 0 ]]; then
+    printf "    (no token data)\n"
+    return 0
+  fi
+  echo "$json_agents" | jq -r '.[] | "    \(.name): \(.input_tokens) in / \(.output_tokens) out (\(.total) total)"'
+  printf "  %-14s %s in / %s out (%s total)\n" "Total:" "$total_in" "$total_out" "$((total_in + total_out))"
+}
+
 cmd_stats() {
   ensure_init
-  local json_mode=false
+  local json_mode=false tokens_mode=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json_mode=true; shift ;;
-      *) die "usage: sage stats [--json]" ;;
+      --tokens) tokens_mode=true; shift ;;
+      *) die "usage: sage stats [--json] [--tokens]" ;;
     esac
   done
+
+  if $tokens_mode; then _stats_tokens "$json_mode"; return; fi
 
   local total_agents=0 running=0 stopped=0
   local tasks_done=0 tasks_failed=0 tasks_pending=0 total_secs=0
