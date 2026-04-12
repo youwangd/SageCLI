@@ -51,7 +51,6 @@
 - gemini-cli
 - codex
 - kiro
-- codex
 
 ## Features
 - Git worktree isolation (create --worktree, merge, merge --dry-run)
@@ -68,3 +67,4 @@
 - Plan orchestrator (plan, wave-based dependency execution)
 - ACP protocol support (persistent sessions)
 - Shell completions (bash/zsh tab-completion for commands, agents, runtimes)
+- Swarm patterns (plan --pattern fan-out for parallel task distribution)
