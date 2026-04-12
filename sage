@@ -3134,6 +3134,7 @@ INST
 # ═══════════════════════════════════════════════
 cmd_plan() {
   local goal="" save_file="" run_file="" resume_file="" auto_approve=false
+  local pattern="" task_template="" inputs=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -3142,6 +3143,9 @@ cmd_plan() {
       --resume)   resume_file="$2"; shift 2 ;;
       --yes|-y)   auto_approve=true; shift ;;
       --list|-l)  _plan_list; return 0 ;;
+      --pattern)  pattern="$2"; shift 2 ;;
+      --task)     task_template="$2"; shift 2 ;;
+      --inputs)   inputs="$2"; shift 2 ;;
       -*)         die "unknown flag: $1" ;;
       *)          goal="$goal $1"; shift ;;
     esac
@@ -3150,6 +3154,12 @@ cmd_plan() {
   goal=$(echo "$goal" | sed 's/^ *//')
   ensure_init
   mkdir -p "$PLANS_DIR"
+
+  # Pattern-based plan generation (no LLM needed)
+  if [[ -n "$pattern" ]]; then
+    _plan_pattern "$pattern" "$task_template" "$inputs" "$save_file" "$auto_approve"
+    return $?
+  fi
 
   # Resume from existing plan
   if [[ -n "$resume_file" ]]; then
@@ -3443,6 +3453,57 @@ print(json.dumps(plan))
 
   # Cleanup planning agent
   rm -rf "$AGENTS_DIR/$plan_agent" 2>/dev/null || true
+}
+
+# Pattern-based plan generation
+_plan_pattern() {
+  local pattern="$1" task_template="$2" inputs="$3" save_file="$4" auto_approve="$5"
+
+  case "$pattern" in
+    fan-out) ;;
+    *) die "unknown pattern: $pattern (available: fan-out)" ;;
+  esac
+
+  [[ -n "$task_template" ]] || die "fan-out requires --task '<template with {} placeholder>'"
+  [[ -n "$inputs" ]] || die "fan-out requires --inputs 'item1,item2,...'"
+
+  local plan_id="plan-$(date +%s)"
+  local plan_file="$PLANS_DIR/${plan_id}.json"
+  local tasks="[]"
+  local id=1
+
+  # Split inputs by comma
+  local IFS=','
+  for input in $inputs; do
+    input=$(echo "$input" | sed 's/^ *//;s/ *$//')
+    local desc="${task_template//\{\}/$input}"
+    tasks=$(echo "$tasks" | jq --arg d "$desc" --argjson i "$id" \
+      '. + [{"id":$i,"template":"implement","description":$d,"depends":[],"files":[]}]')
+    id=$((id + 1))
+  done
+
+  jq -n --arg g "fan-out: $task_template" --arg id "$plan_id" --argjson t "$tasks" \
+    '{goal:$g, plan_id:$id, status:"pending", tasks:$t}' > "$plan_file"
+
+  if [[ -n "$save_file" ]]; then
+    cp "$plan_file" "$save_file"
+    ok "plan saved to $save_file"
+  fi
+
+  _plan_display "$plan_file"
+
+  if [[ "$auto_approve" == true ]]; then
+    _plan_execute "$plan_file" "fresh"
+    return $?
+  fi
+
+  echo ""
+  printf "  ${BOLD}[a]${NC}pprove  ${BOLD}[r]${NC}eject  "
+  read -r choice
+  case "$choice" in
+    a|approve) _plan_execute "$plan_file" "fresh" ;;
+    *) info "plan rejected" ;;
+  esac
 }
 
 # Display a plan

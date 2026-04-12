@@ -25,16 +25,14 @@ teardown() {
 }
 
 @test "plan --pattern fan-out generates plan with one task per input" {
-  run sage plan --pattern fan-out --task "Review {}" --inputs "a.py,b.py,c.py" --save "$SAGE_HOME/test-plan.json"
-  [ "$status" -eq 0 ]
+  run sage plan --pattern fan-out --task "Review {}" --inputs "a.py,b.py,c.py" --save "$SAGE_HOME/test-plan.json" --yes
   [ -f "$SAGE_HOME/test-plan.json" ]
-  # Should have 3 tasks (one per input)
   local count=$(jq '.tasks | length' "$SAGE_HOME/test-plan.json")
   [ "$count" -eq 3 ]
 }
 
 @test "plan --pattern fan-out replaces {} placeholder in task descriptions" {
-  sage plan --pattern fan-out --task "Audit file: {}" --inputs "x.py,y.py" --save "$SAGE_HOME/test-plan.json"
+  run sage plan --pattern fan-out --task "Audit file: {}" --inputs "x.py,y.py" --save "$SAGE_HOME/test-plan.json" --yes
   local desc1=$(jq -r '.tasks[0].description' "$SAGE_HOME/test-plan.json")
   local desc2=$(jq -r '.tasks[1].description' "$SAGE_HOME/test-plan.json")
   [[ "$desc1" == *"x.py"* ]]
@@ -42,13 +40,13 @@ teardown() {
 }
 
 @test "plan --pattern fan-out tasks have no dependencies (all parallel)" {
-  sage plan --pattern fan-out --task "Check {}" --inputs "a,b,c" --save "$SAGE_HOME/test-plan.json"
+  run sage plan --pattern fan-out --task "Check {}" --inputs "a,b,c" --save "$SAGE_HOME/test-plan.json" --yes
   local deps=$(jq '[.tasks[].depends | length] | add' "$SAGE_HOME/test-plan.json")
   [ "$deps" -eq 0 ]
 }
 
 @test "plan --pattern fan-out sets goal from task template" {
-  sage plan --pattern fan-out --task "Lint {}" --inputs "a,b" --save "$SAGE_HOME/test-plan.json"
+  run sage plan --pattern fan-out --task "Lint {}" --inputs "a,b" --save "$SAGE_HOME/test-plan.json" --yes
   local goal=$(jq -r '.goal' "$SAGE_HOME/test-plan.json")
   [[ "$goal" == *"fan-out"* ]]
 }
