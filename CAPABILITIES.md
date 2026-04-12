@@ -5,6 +5,7 @@
 - `sage call`
 - `sage clean`
 - `sage clone`
+- `sage completions`
 - `sage config`
 - `sage context`
 - `sage create`
@@ -66,3 +67,4 @@
 - Observability (history, info, stats, ls -l/--json)
 - Plan orchestrator (plan, wave-based dependency execution)
 - ACP protocol support (persistent sessions)
+- Shell completions (bash/zsh tab-completion for commands, agents, runtimes)
