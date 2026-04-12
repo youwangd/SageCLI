@@ -53,11 +53,11 @@ sage send --headless --json auditor "Security audit src/main.py"
 
 | Metric | Value |
 |--------|-------|
-| Lines of code | ~5,000 (single bash script) |
+| Lines of code | ~5,150 (single bash script) |
 | Dependencies | 3 (`bash`, `jq`, `tmux`) |
 | Runtimes | 6 (Claude Code, Gemini CLI, Codex, Cline, Kiro, bash) |
-| Commands | 41 |
-| Tests | 332 (bats-core, CI on ubuntu + macOS) |
+| Commands | 42 |
+| Tests | 338 (bats-core, CI on ubuntu + macOS) |
 | Install time | < 10 seconds |
 
 ### Architecture at a Glance
@@ -570,7 +570,7 @@ sage is a single bash script. Read it, understand it, improve it.
 wc -l sage    # ~5000 lines
 
 # Run tests
-bats tests/   # 332 tests across 12 files
+bats tests/   # 338 tests across 12 files
 
 # Run from source
 ./sage init --force
@@ -578,6 +578,26 @@ bats tests/   # 332 tests across 12 files
 ```
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for architecture details, runtime interface, and how to add new runtimes.
+
+---
+
+## Roadmap
+
+Phases 0–11 shipped (v1.0 → v1.3.0): testing foundation, git worktree isolation, headless/CI mode, MCP integration, skills system, context sharing, agent export/import, observability, guardrails, per-agent env, aggregate stats, and 6 runtimes.
+
+What's next:
+
+| Phase | What | Why |
+|-------|------|-----|
+| 12 | Shell completions | Tab-complete commands and agent names (in progress) |
+| 13 | Adoption & visibility | Demo GIF, HN launch, awesome-list merge |
+| 14 | Swarm patterns | `--pattern fan-out/pipeline/debate/map-reduce` |
+| 15 | TUI dashboard | Live agent status, log tailing, plan progress |
+| 16 | Persistent sessions | Survive reboots, resume plans |
+| 17 | Local model support | `--runtime ollama` / `--runtime llama-cpp` |
+| 18 | Cost tracking | Token counting, `stats --cost`, `stats --efficiency` |
+
+See [ROADMAP.md](ROADMAP.md) for competitive analysis and detailed specs.
 
 ---
 
