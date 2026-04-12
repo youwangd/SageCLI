@@ -136,7 +136,7 @@ teardown() {
 
 @test "plan --pattern debate synthesizer depends on all participants" {
   run sage plan --pattern debate --task "Design API" --inputs "a,b,c" --save "$SAGE_HOME/test-plan.json" --yes
-  local last_deps=$(jq '.tasks[-1].depends | sort' "$SAGE_HOME/test-plan.json")
+  local last_deps=$(jq -c '.tasks[-1].depends | sort' "$SAGE_HOME/test-plan.json")
   [ "$last_deps" = "[1,2,3]" ]
 }
 

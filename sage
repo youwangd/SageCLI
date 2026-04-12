@@ -3460,8 +3460,8 @@ _plan_pattern() {
   local pattern="$1" task_template="$2" inputs="$3" save_file="$4" auto_approve="$5"
 
   case "$pattern" in
-    fan-out|pipeline) ;;
-    *) die "unknown pattern: $pattern (available: fan-out, pipeline)" ;;
+    fan-out|pipeline|debate) ;;
+    *) die "unknown pattern: $pattern (available: fan-out, pipeline, debate)" ;;
   esac
 
   [[ -n "$inputs" ]] || die "$pattern requires --inputs 'item1,item2,...'"
@@ -3471,7 +3471,28 @@ _plan_pattern() {
   local tasks="[]"
   local id=1
 
-  if [[ "$pattern" == "pipeline" ]]; then
+  if [[ "$pattern" == "debate" ]]; then
+    [[ -n "$task_template" ]] || die "debate requires --task '<debate topic>'"
+    local input_count
+    input_count=$(echo "$inputs" | tr ',' '\n' | wc -l | tr -d ' ')
+    [[ "$input_count" -ge 2 ]] || die "debate requires at least 2 participants in --inputs"
+    local IFS=','
+    for participant in $inputs; do
+      participant=$(echo "$participant" | sed 's/^ *//;s/ *$//')
+      tasks=$(echo "$tasks" | jq --arg d "$participant: $task_template" --argjson i "$id" \
+        '. + [{"id":$i,"template":"implement","description":$d,"depends":[],"files":[]}]')
+      id=$((id + 1))
+    done
+    # Synthesizer depends on all participants
+    local all_deps="[]"
+    local dep_id=1
+    while [[ "$dep_id" -lt "$id" ]]; do
+      all_deps=$(echo "$all_deps" | jq --argjson d "$dep_id" '. + [$d]')
+      dep_id=$((dep_id + 1))
+    done
+    tasks=$(echo "$tasks" | jq --arg d "Synthesize: compare all responses and pick the best answer" --argjson i "$id" --argjson dp "$all_deps" \
+      '. + [{"id":$i,"template":"implement","description":$d,"depends":$dp,"files":[]}]')
+  elif [[ "$pattern" == "pipeline" ]]; then
     [[ -n "$task_template" ]] || die "pipeline requires --task 'Step1 {},Step2 {},...'"
     # Count steps (comma-separated task_template items)
     local step_count
