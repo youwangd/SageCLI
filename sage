@@ -3460,8 +3460,8 @@ _plan_pattern() {
   local pattern="$1" task_template="$2" inputs="$3" save_file="$4" auto_approve="$5"
 
   case "$pattern" in
-    fan-out|pipeline|debate) ;;
-    *) die "unknown pattern: $pattern (available: fan-out, pipeline, debate)" ;;
+    fan-out|pipeline|debate|map-reduce) ;;
+    *) die "unknown pattern: $pattern (available: fan-out, pipeline, debate, map-reduce)" ;;
   esac
 
   [[ -n "$inputs" ]] || die "$pattern requires --inputs 'item1,item2,...'"
@@ -3471,7 +3471,29 @@ _plan_pattern() {
   local tasks="[]"
   local id=1
 
-  if [[ "$pattern" == "debate" ]]; then
+  if [[ "$pattern" == "map-reduce" ]]; then
+    [[ -n "$task_template" ]] || die "map-reduce requires --task '<template with {} placeholder>'"
+    [[ "$task_template" == *"{}"* ]] || die "map-reduce --task must contain {} placeholder"
+    local input_count
+    input_count=$(echo "$inputs" | tr ',' '\n' | wc -l | tr -d ' ')
+    [[ "$input_count" -ge 2 ]] || die "map-reduce requires at least 2 inputs"
+    local IFS=','
+    for input in $inputs; do
+      input=$(echo "$input" | sed 's/^ *//;s/ *$//')
+      local desc="${task_template//\{\}/$input}"
+      tasks=$(echo "$tasks" | jq --arg d "$desc" --argjson i "$id" \
+        '. + [{"id":$i,"template":"implement","description":$d,"depends":[],"files":[]}]')
+      id=$((id + 1))
+    done
+    local all_deps="[]"
+    local dep_id=1
+    while [[ "$dep_id" -lt "$id" ]]; do
+      all_deps=$(echo "$all_deps" | jq --argjson d "$dep_id" '. + [$d]')
+      dep_id=$((dep_id + 1))
+    done
+    tasks=$(echo "$tasks" | jq --arg d "Reduce: merge all results into a single summary" --argjson i "$id" --argjson dp "$all_deps" \
+      '. + [{"id":$i,"template":"implement","description":$d,"depends":$dp,"files":[]}]')
+  elif [[ "$pattern" == "debate" ]]; then
     [[ -n "$task_template" ]] || die "debate requires --task '<debate topic>'"
     local input_count
     input_count=$(echo "$inputs" | tr ',' '\n' | wc -l | tr -d ' ')
