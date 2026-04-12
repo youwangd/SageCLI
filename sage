@@ -3143,6 +3143,7 @@ cmd_plan() {
       --resume)   resume_file="$2"; shift 2 ;;
       --yes|-y)   auto_approve=true; shift ;;
       --list|-l)  _plan_list; return 0 ;;
+      --show)     [[ -n "${2:-}" ]] || die "usage: sage plan --show <plan-file>"; _plan_show "$2"; return 0 ;;
       --pattern)  pattern="$2"; shift 2 ;;
       --task)     task_template="$2"; shift 2 ;;
       --inputs)   inputs="$2"; shift 2 ;;
@@ -4109,6 +4110,81 @@ _plan_list() {
   [[ $found -eq 0 ]] && printf "  ${DIM}no plans${NC}\n"
   echo ""
 }
+
+_plan_show() {
+  local plan_file="$1"
+  [[ -f "$plan_file" ]] || die "plan file not found: $plan_file"
+
+  local goal status task_count
+  goal=$(jq -r '.goal // "?"' "$plan_file")
+  status=$(jq -r '.status // "unknown"' "$plan_file")
+  task_count=$(jq '.tasks | length' "$plan_file")
+
+  local status_color="$NC"
+  case "$status" in
+    completed) status_color="$GREEN" ;;
+    running)   status_color="$YELLOW" ;;
+    failed|aborted) status_color="$RED" ;;
+  esac
+
+  printf "\n  ${BOLD}%s${NC}\n" "$goal"
+  printf "  Status: ${status_color}%s${NC}  Tasks: %d\n\n" "$status" "$task_count"
+
+  # Compute waves
+  local wave_json
+  wave_json=$(python3 -c "
+import json
+with open(\"$plan_file\") as f:
+    plan = json.load(f)
+tasks = plan.get(\"tasks\", [])
+task_map = {t[\"id\"]: t for t in tasks}
+waves = {}
+def get_wave(tid, visited=None):
+    if tid in waves: return waves[tid]
+    if visited is None: visited = set()
+    if tid in visited: return 1
+    visited.add(tid)
+    t = task_map.get(tid)
+    if not t: return 1
+    deps = t.get(\"depends\", [])
+    if not deps: waves[tid] = 1; return 1
+    waves[tid] = max(get_wave(d, visited.copy()) for d in deps) + 1
+    return waves[tid]
+for t in tasks:
+    get_wave(t[\"id\"])
+print(json.dumps(waves))
+" 2>/dev/null) || { printf "  ${DIM}(cannot compute waves)${NC}\n"; return 0; }
+
+  local max_wave
+  max_wave=$(echo "$wave_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(max(d.values()) if d else 0)" 2>/dev/null)
+  [[ -n "$max_wave" && "$max_wave" -gt 0 ]] || { printf "  ${DIM}no tasks${NC}\n"; return 0; }
+
+  for w in $(seq 1 "$max_wave"); do
+    printf "  ${BOLD}Wave %d${NC}\n" "$w"
+    local tids
+    tids=$(echo "$wave_json" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+for k, v in d.items():
+    if v == $w: print(k)
+" 2>/dev/null)
+    while IFS= read -r tid; do
+      [[ -n "$tid" ]] || continue
+      local tstat tdesc
+      tstat=$(jq -r ".tasks[] | select(.id == ($tid)) | .status // \"pending\"" "$plan_file")
+      tdesc=$(jq -r ".tasks[] | select(.id == ($tid)) | .description // \"?\"" "$plan_file" | head -c 80)
+      local icon="○"
+      case "$tstat" in
+        done)    icon="${GREEN}✓${NC}" ;;
+        running) icon="${YELLOW}▶${NC}" ;;
+        failed)  icon="${RED}✗${NC}" ;;
+      esac
+      printf "    %b #%-3s %-10s %s\n" "$icon" "$tid" "$tstat" "$tdesc"
+    done <<< "$tids"
+  done
+  echo ""
+}
+
 
 # ═══════════════════════════════════════════════
 # sage mcp — manage MCP server registry
