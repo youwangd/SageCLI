@@ -141,7 +141,7 @@ gastown's main draw (14K stars). Sage agents die on reboot.
 
 - [x] `sage create worker --persistent` — checkpoint agent state to disk
 - [x] `sage restore` — resume all persistent agents after reboot
-- [ ] Plan execution survives restarts (already partially works via plan state files)
+- [x] Plan execution survives restarts (plan --recover detects and resumes interrupted plans)
 - [x] Session recovery: detect orphaned tmux sessions, offer to reclaim
 
 ### Phase 17: Local Model Support

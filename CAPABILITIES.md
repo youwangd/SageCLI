@@ -77,3 +77,4 @@
 - Multi-agent log tailing (sage logs --all — color-coded interleaved output from all agents)
 - Agent checkpoint/restore (sage checkpoint/restore — save and resume agent state across reboots)
 - Session recovery (sage recover — detect and fix orphaned/dead agent sessions after crash or reboot)
+- Plan recovery (sage plan --recover — detect and resume interrupted plans after reboot)
