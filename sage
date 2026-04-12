@@ -3168,9 +3168,20 @@ cmd_plan() {
     return $?
   fi
 
-  # Run from saved plan file
+  # Run from saved plan file (JSON) or pattern file (YAML)
   if [[ -n "$run_file" ]]; then
     [[ -f "$run_file" ]] || die "plan file not found: $run_file"
+    if [[ "$run_file" == *.yaml || "$run_file" == *.yml ]]; then
+      local y_pattern y_task y_inputs
+      y_pattern=$(grep -E '^pattern:' "$run_file" | head -1 | sed 's/^pattern:[[:space:]]*//' | sed 's/^["'"'"']//;s/["'"'"']$//' || true)
+      y_task=$(grep -E '^task:' "$run_file" | head -1 | sed 's/^task:[[:space:]]*//' | sed 's/^["'"'"']//;s/["'"'"']$//' || true)
+      y_inputs=$(grep -E '^inputs:' "$run_file" | head -1 | sed 's/^inputs:[[:space:]]*//' | sed 's/^["'"'"']//;s/["'"'"']$//' || true)
+      # Handle YAML list syntax: [a, b, c] → a,b,c
+      y_inputs=$(echo "$y_inputs" | sed 's/^\[//;s/\]$//;s/,[[:space:]]*/,/g')
+      [[ -n "$y_pattern" ]] || die "YAML pattern file missing 'pattern:' field"
+      _plan_pattern "$y_pattern" "$y_task" "$y_inputs" "$save_file" "$auto_approve"
+      return $?
+    fi
     _plan_execute "$run_file" "fresh"
     return $?
   fi

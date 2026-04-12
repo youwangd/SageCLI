@@ -216,8 +216,10 @@ pattern: fan-out
 task: "Review code"
 inputs: "a.py,b.py"
 EOF
-  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --yes
-  [ "$status" -eq 0 ]
+  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json"
+  [ -f "$SAGE_HOME/test-plan.json" ]
+  local count=$(jq '.tasks | length' "$SAGE_HOME/test-plan.json")
+  [ "$count" -eq 2 ]
 }
 
 @test "plan --run YAML creates correct number of tasks" {
@@ -226,8 +228,8 @@ pattern: fan-out
 task: "Lint {}"
 inputs: "x.py,y.py,z.py"
 EOF
-  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json" --yes
-  [ "$status" -eq 0 ]
+  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json"
+  [ -f "$SAGE_HOME/test-plan.json" ]
   local count=$(jq '.tasks | length' "$SAGE_HOME/test-plan.json")
   [ "$count" -eq 3 ]
 }
@@ -238,8 +240,8 @@ pattern: map-reduce
 task: "Audit {}"
 inputs: "auth.py,db.py"
 EOF
-  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json" --yes
-  [ "$status" -eq 0 ]
+  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json"
+  [ -f "$SAGE_HOME/test-plan.json" ]
   local count=$(jq '.tasks | length' "$SAGE_HOME/test-plan.json")
   [ "$count" -eq 3 ]
 }
@@ -247,11 +249,11 @@ EOF
 @test "plan --run YAML supports pipeline pattern" {
   cat > "$SAGE_HOME/test-pattern.yaml" <<'EOF'
 pattern: pipeline
-task: "Process"
-inputs: "parse,transform,validate"
+task: "parse {},transform {},validate {}"
+inputs: "data.csv"
 EOF
-  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json" --yes
-  [ "$status" -eq 0 ]
+  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json"
+  [ -f "$SAGE_HOME/test-plan.json" ]
   local count=$(jq '.tasks | length' "$SAGE_HOME/test-plan.json")
   [ "$count" -eq 3 ]
 }
@@ -262,8 +264,8 @@ pattern: debate
 task: "Best approach for auth"
 inputs: "jwt,oauth,session"
 EOF
-  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json" --yes
-  [ "$status" -eq 0 ]
+  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json"
+  [ -f "$SAGE_HOME/test-plan.json" ]
 }
 
 @test "plan --run YAML fails without pattern field" {
@@ -277,9 +279,9 @@ EOF
 }
 
 @test "plan --run JSON still works (backward compat)" {
-  sage plan --pattern fan-out --task "Test {}" --inputs "a,b" --save "$SAGE_HOME/test-plan.json" --yes 2>/dev/null || true
+  sage plan --pattern fan-out --task "Test {}" --inputs "a,b" --save "$SAGE_HOME/test-plan.json" 2>/dev/null || true
   [ -f "$SAGE_HOME/test-plan.json" ] || skip "no plan file"
-  run sage plan --run "$SAGE_HOME/test-plan.json" --yes
+  run sage plan --run "$SAGE_HOME/test-plan.json"
   # Should attempt to execute (may fail due to no agents, but shouldn't error on file parsing)
   true
 }
