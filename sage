@@ -4801,6 +4801,75 @@ _restore_one() {
   fi
 }
 
+# ═══════════════════════════════════════════════
+# sage recover [--yes]
+# ═══════════════════════════════════════════════
+cmd_recover() {
+  ensure_init
+  local auto=false
+  [[ "${1:-}" == "--yes" || "${1:-}" == "-y" ]] && auto=true
+
+  local count=0
+
+  # 1) Dead agents: have .pid but process is gone
+  for pidfile in "$AGENTS_DIR"/*/.pid; do
+    [[ -f "$pidfile" ]] || continue
+    local pid name
+    pid=$(cat "$pidfile")
+    name=$(basename "$(dirname "$pidfile")")
+    if [[ "$pid" =~ ^[0-9]+$ ]] && ! kill -0 "$pid" 2>/dev/null; then
+      # Check for checkpoint
+      if [[ -f "$CHECKPOINTS_DIR/${name}.json" ]]; then
+        info "dead agent '$name' (pid $pid) — checkpoint found, restoring"
+        if $auto; then
+          rm -f "$pidfile"
+          _restore_one "$name" "$CHECKPOINTS_DIR"
+          count=$((count + 1))
+        else
+          printf "  restore '$name' from checkpoint? [y/N] "
+          read -r ans
+          if [[ "$ans" == "y" || "$ans" == "Y" ]]; then
+            rm -f "$pidfile"
+            _restore_one "$name" "$CHECKPOINTS_DIR"
+            count=$((count + 1))
+          fi
+        fi
+      else
+        info "dead agent '$name' (pid $pid) — no checkpoint, cleaning stale pid"
+        rm -f "$pidfile"
+        count=$((count + 1))
+      fi
+    fi
+  done
+
+  # 2) Checkpointed agents with no agent dir (deleted after checkpoint)
+  for ckpt in "$CHECKPOINTS_DIR"/*.json; do
+    [[ -f "$ckpt" ]] || continue
+    local cname
+    cname=$(basename "$ckpt" .json)
+    if [[ ! -d "$AGENTS_DIR/$cname" ]]; then
+      info "checkpointed agent '$cname' has no agent dir — restoring"
+      if $auto; then
+        _restore_one "$cname" "$CHECKPOINTS_DIR"
+        count=$((count + 1))
+      else
+        printf "  restore '$cname' from checkpoint? [y/N] "
+        read -r ans
+        if [[ "$ans" == "y" || "$ans" == "Y" ]]; then
+          _restore_one "$cname" "$CHECKPOINTS_DIR"
+          count=$((count + 1))
+        fi
+      fi
+    fi
+  done
+
+  if [[ "$count" -eq 0 ]]; then
+    ok "nothing to recover"
+  else
+    ok "recovered $count agent(s)"
+  fi
+}
+
 cmd_upgrade() {
   local check_only=false
   [[ "${1:-}" == "--check" ]] && check_only=true
@@ -4849,14 +4918,14 @@ cmd_diff() {
 
 cmd_completions() {
   local shell="${1:-}"
-  local cmds="attach call checkpoint clean clone completions config context create dashboard diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart restore result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
+  local cmds="attach call checkpoint clean clone completions config context create dashboard diff doctor env export help history inbox info init logs ls mcp merge msg peek plan recover rename restart restore result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
   case "$shell" in
     bash)
       cat <<'BASH_COMP'
 _sage_completions() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local prev="${COMP_WORDS[COMP_CWORD-1]}"
-  local cmds="attach call checkpoint clean clone completions config context create dashboard diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart restore result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
+  local cmds="attach call checkpoint clean clone completions config context create dashboard diff doctor env export help history inbox info init logs ls mcp merge msg peek plan recover rename restart restore result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
   if [[ $COMP_CWORD -eq 1 ]]; then
     COMPREPLY=($(compgen -W "$cmds" -- "$cur"))
     return
@@ -5034,6 +5103,7 @@ cmd_help() {
     dashboard [--json]          Agent overview: status, runtime, activity
     checkpoint <name|--all>     Save agent state to disk for later restore
     restore [name|--all]        Restore agents from checkpoints after reboot
+    recover [--yes]             Detect and fix orphaned/dead agent sessions
     doctor                      Check dependencies and environment health
     history [--agent a] [-n N]  Show agent activity timeline (--json for JSON)
     info <name>                 Show full agent configuration and status (--json)
@@ -5576,6 +5646,7 @@ case "${1:-}" in
   dashboard) shift; cmd_dashboard "$@" ;;
   checkpoint) shift; cmd_checkpoint "$@" ;;
   restore) shift; cmd_restore "$@" ;;
+  recover) shift; cmd_recover "$@" ;;
   doctor) cmd_doctor ;;
   history) shift; cmd_history "$@" ;;
   stats)   shift; cmd_stats "$@" ;;
