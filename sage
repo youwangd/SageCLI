@@ -4734,7 +4734,7 @@ cmd_help() {
 
   PLAN ORCHESTRATOR
     plan <goal>                 Decompose goal into task waves
-    plan --pattern <p> ...      Swarm pattern (fan-out, pipeline)
+    plan --pattern <p> ...      Swarm pattern (fan-out, pipeline, debate)
       [--save <file>]           Save plan to file
       [--yes]                   Auto-approve (skip interactive)
     plan --run <file>           Execute a saved plan

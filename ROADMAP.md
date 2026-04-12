@@ -119,7 +119,7 @@ This is ruflo's main draw (31K stars). Sage has `plan` for dependency waves but 
 
 - [x] `sage plan --pattern fan-out` — spawn N agents with same task on different inputs, collect results
 - [x] `sage plan --pattern pipeline` — chain agents sequentially (A→B→C), each transforms output
-- [ ] `sage plan --pattern debate` — N agents argue, synthesizer picks best answer
+- [x] `sage plan --pattern debate` — N agents argue, synthesizer picks best answer
 - [ ] `sage plan --pattern map-reduce` — split work, parallel execute, merge results
 - [ ] Patterns are composable with existing plan YAML
 
