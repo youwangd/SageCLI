@@ -1713,12 +1713,18 @@ cmd_call() {
 }
 
 # ═══════════════════════════════════════════════
-# sage logs <name> [-f] [--clear]
+# sage logs <name> [-f] [--clear] | sage logs --all [-f]
 # ═══════════════════════════════════════════════
 cmd_logs() {
   local name="${1:-}" flag="${2:-}"
-  [[ -n "$name" ]] || die "usage: sage logs <name> [-f|--clear]"
+  [[ -n "$name" ]] || die "usage: sage logs <name> [-f|--clear|--all]"
   ensure_init
+
+  if [[ "$name" == "--all" ]]; then
+    _logs_all "$flag"
+    return
+  fi
+
   # Validate name to prevent path traversal
   [[ "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "invalid agent name"
   local logfile="$LOGS_DIR/$name.log"
@@ -1731,6 +1737,30 @@ cmd_logs() {
 
   [[ -f "$logfile" ]] || die "no logs for '$name'"
   [[ "$flag" == "-f" ]] && tail -f "$logfile" || tail -50 "$logfile"
+}
+
+_logs_all() {
+  local follow="${1:-}" colors=("31" "32" "33" "34" "35" "36") ci=0 found=false
+  local pids=()
+  for logfile in "$LOGS_DIR"/*.log; do
+    [[ -f "$logfile" ]] || continue
+    local agent
+    agent="$(basename "$logfile" .log)"
+    found=true
+    local c="${colors[$((ci % ${#colors[@]}))]}"
+    ci=$((ci + 1))
+    if [[ "$follow" == "-f" ]]; then
+      tail -f "$logfile" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /" &
+      pids+=($!)
+    else
+      tail -50 "$logfile" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /"
+    fi
+  done
+  $found || die "no agent logs found"
+  if [[ ${#pids[@]} -gt 0 ]]; then
+    trap 'kill "${pids[@]}" 2>/dev/null' EXIT INT TERM
+    wait
+  fi
 }
 
 # ═══════════════════════════════════════════════
@@ -4907,6 +4937,7 @@ cmd_help() {
 
   DEBUG
     logs <name> [-f|--clear]    View/tail/clear agent logs
+    logs --all [-f]             Tail all agents' logs (color-coded)
     trace [name] [--tree] [-n N]  Show agent interaction trace
     attach [name]               Attach to tmux session
 
