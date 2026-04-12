@@ -3174,6 +3174,7 @@ cmd_plan() {
       --yes|-y)   auto_approve=true; shift ;;
       --list|-l)  _plan_list; return 0 ;;
       --show)     [[ -n "${2:-}" ]] || die "usage: sage plan --show <plan-file>"; _plan_show "$2"; return 0 ;;
+      --recover)  _plan_recover "$auto_approve"; return $? ;;
       --pattern)  pattern="$2"; shift 2 ;;
       --task)     task_template="$2"; shift 2 ;;
       --inputs)   inputs="$2"; shift 2 ;;
@@ -4110,6 +4111,45 @@ INST
   info "plan file: $plan_file"
 }
 
+# Recover interrupted plans (status=running but no live agents)
+_plan_recover() {
+  local auto="${1:-false}"
+  ensure_init
+  mkdir -p "$PLANS_DIR"
+
+  local interrupted=()
+  for pf in "$PLANS_DIR"/*.json; do
+    [[ -f "$pf" ]] || continue
+    local st
+    st=$(jq -r '.status // "unknown"' "$pf")
+    [[ "$st" == "running" ]] && interrupted+=("$pf")
+  done
+
+  if [[ ${#interrupted[@]} -eq 0 ]]; then
+    ok "no interrupted plans"
+    return 0
+  fi
+
+  printf "\n${BOLD}  ⚡ %d interrupted plan(s)${NC}\n\n" "${#interrupted[@]}"
+  for pf in "${interrupted[@]}"; do
+    local goal fname done_count total
+    goal=$(jq -r '.goal // "?"' "$pf" | head -c 60)
+    fname=$(basename "$pf")
+    total=$(jq '.tasks | length' "$pf")
+    done_count=$(jq '[.tasks[] | select(.status == "done")] | length' "$pf")
+    printf "  ${YELLOW}↻${NC} %s — %s (%d/%d tasks done)\n" "$fname" "$goal" "$done_count" "$total"
+  done
+  echo ""
+
+  if [[ "$auto" == "true" && ${#interrupted[@]} -eq 1 ]]; then
+    info "resuming ${interrupted[0]}..."
+    _plan_execute "${interrupted[0]}" "resume"
+    return $?
+  fi
+
+  info "resume with: sage plan --resume <plan-file>"
+}
+
 # List saved plans
 _plan_list() {
   ensure_init
@@ -4662,6 +4702,20 @@ cmd_doctor() {
     _doc_check "agents" 1 "no stale pids"
   fi
 
+  # stale plans (status=running but no live agents)
+  local stale_plans=0
+  if [[ -d "$PLANS_DIR" ]]; then
+    for pf in "$PLANS_DIR"/*.json; do
+      [[ -f "$pf" ]] || continue
+      local pst
+      pst=$(jq -r '.status // "unknown"' "$pf" 2>/dev/null)
+      [[ "$pst" == "running" ]] && stale_plans=$((stale_plans + 1))
+    done
+  fi
+  if [[ "$stale_plans" -gt 0 ]]; then
+    _doc_check "plans" "w" "$stale_plans interrupted plan(s) — run: sage plan --recover"
+  fi
+
   echo ""
   if [[ "$fails" -eq 0 ]]; then
     echo -e "${GREEN}All checks passed.${NC}"
@@ -5135,6 +5189,7 @@ cmd_help() {
       [--yes]                   Auto-approve (skip interactive)
     plan --run <file>           Execute a saved plan (JSON) or pattern file (YAML)
     plan --resume <file>        Resume from failure point
+    plan --recover              Detect and resume interrupted plans
     plan --list                 Show saved plans
 
   DEBUG
