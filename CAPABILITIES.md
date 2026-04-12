@@ -67,4 +67,4 @@
 - Plan orchestrator (plan, wave-based dependency execution)
 - ACP protocol support (persistent sessions)
 - Shell completions (bash/zsh tab-completion for commands, agents, runtimes)
-- Swarm patterns (plan --pattern fan-out, pipeline, debate for parallel/sequential/adversarial task distribution)
+- Swarm patterns (plan --pattern fan-out, pipeline, debate, map-reduce for parallel/sequential/adversarial/aggregation task distribution)
