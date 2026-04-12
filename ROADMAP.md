@@ -130,7 +130,7 @@ Every orchestrator with >5K stars has visualization. Terminal-only is a differen
 
 - [x] `sage dashboard` — live TUI with agent list, status, recent output
 - [ ] Built with `gum` or `charmbracelet/bubbletea` (stays terminal-native, no web server)
-- [ ] Real-time log tailing per agent
+- [x] Real-time log tailing per agent
 - [x] Plan progress visualization (wave execution)
 - [ ] Keyboard shortcuts: restart, stop, send task, view logs
 

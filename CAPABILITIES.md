@@ -71,3 +71,4 @@
 - Swarm patterns (plan --pattern fan-out, pipeline, debate, map-reduce + composable YAML pattern files via plan --run)
 - Dashboard (sage dashboard — agent overview with status, runtime, --json for scripting)
 - Plan progress visualization (sage plan --show — wave-by-wave task status with color-coded icons)
+- Multi-agent log tailing (sage logs --all — color-coded interleaved output from all agents)
