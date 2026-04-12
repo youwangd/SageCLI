@@ -4424,6 +4424,98 @@ cmd_diff() {
   git -C "$agent_dir/workspace" diff ${git_args[@]+"${git_args[@]}"}
 }
 
+cmd_completions() {
+  local shell="${1:-}"
+  local cmds="attach call clean clone completions config context create diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
+  case "$shell" in
+    bash)
+      cat <<'BASH_COMP'
+_sage_completions() {
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  local prev="${COMP_WORDS[COMP_CWORD-1]}"
+  local cmds="attach call clean clone completions config context create diff doctor env export help history inbox info init logs ls mcp merge msg peek plan rename restart result rm runs send skill start stats status steer stop task tasks tool trace upgrade version wait"
+  if [[ $COMP_CWORD -eq 1 ]]; then
+    COMPREPLY=($(compgen -W "$cmds" -- "$cur"))
+    return
+  fi
+  case "$prev" in
+    send|start|stop|restart|attach|peek|logs|rm|info|steer|wait|diff|merge|clone|rename|result|export|env|msg)
+      local agents=""
+      if [[ -d "${SAGE_HOME:-$HOME/.sage}/agents" ]]; then
+        agents=$(ls "${SAGE_HOME:-$HOME/.sage}/agents" 2>/dev/null)
+      fi
+      COMPREPLY=($(compgen -W "$agents" -- "$cur"));;
+    create)
+      COMPREPLY=($(compgen -W "--runtime --worktree --mcp --skill --env --timeout --max-turns --from" -- "$cur"));;
+    --runtime)
+      COMPREPLY=($(compgen -W "bash claude-code cline gemini-cli codex kiro acp" -- "$cur"));;
+    skill)
+      COMPREPLY=($(compgen -W "install ls rm show run search registry" -- "$cur"));;
+    mcp)
+      COMPREPLY=($(compgen -W "add ls rm tools" -- "$cur"));;
+    context)
+      COMPREPLY=($(compgen -W "set get ls rm clear" -- "$cur"));;
+    config)
+      COMPREPLY=($(compgen -W "set get ls rm" -- "$cur"));;
+  esac
+}
+complete -F _sage_completions sage
+BASH_COMP
+      ;;
+    zsh)
+      cat <<'ZSH_COMP'
+_sage() {
+  local -a commands=(
+    'attach:Attach to agent tmux session'
+    'call:Send task and wait for result'
+    'clean:Remove stopped agents'
+    'clone:Duplicate agent config'
+    'completions:Generate shell completions'
+    'config:Manage user defaults'
+    'context:Shared key-value store'
+    'create:Create a new agent'
+    'diff:Show worktree changes'
+    'doctor:Health check'
+    'env:Per-agent environment'
+    'export:Package agent as archive'
+    'help:Show help'
+    'history:Activity timeline'
+    'info:Agent details'
+    'init:Initialize sage'
+    'logs:View agent logs'
+    'ls:List agents'
+    'mcp:MCP server management'
+    'merge:Merge worktree branch'
+    'msg:Inter-agent messaging'
+    'plan:Orchestrate multi-agent plan'
+    'rename:Rename an agent'
+    'restart:Restart agent'
+    'result:Get task result'
+    'rm:Remove agent'
+    'runs:List task runs'
+    'send:Send task to agent'
+    'skill:Skills management'
+    'start:Start agent'
+    'stats:Usage statistics'
+    'status:Agent status'
+    'steer:Steer running agent'
+    'stop:Stop agent'
+    'task:Task management'
+    'tasks:List tasks'
+    'tool:Run agent tool'
+    'trace:Trace agent execution'
+    'upgrade:Self-update'
+    'wait:Wait for agent completion'
+  )
+  _describe 'sage command' commands
+}
+compdef _sage sage
+ZSH_COMP
+      ;;
+    *) die "usage: sage completions <bash|zsh>";;
+  esac
+}
+
 cmd_rename() {
   local old="${1:-}" new="${2:-}"
   [[ -n "$old" && -n "$new" ]] || die "usage: sage rename <old> <new>"
@@ -5036,6 +5128,7 @@ case "${1:-}" in
   rm)      cmd_rm "${2:-}" ;;
   clone)   shift; cmd_clone "$@" ;;
   rename)  shift; cmd_rename "$@" ;;
+  completions) shift; cmd_completions "$@" ;;
   diff)    shift; cmd_diff "$@" ;;
   export)  shift; cmd_export "$@" ;;
   merge)   shift; cmd_merge "$@" ;;
