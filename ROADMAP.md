@@ -92,14 +92,13 @@ All shipped. Tests for each. CI green.
 
 ## Forward Roadmap
 
-### Phase 12: Shell Completions & CLI Polish ← IN PROGRESS
+### Phase 12: Shell Completions & CLI Polish ← COMPLETE
 **Use case**: "Tab-complete commands and agent names like docker/kubectl"
-**Status**: Failing tests written, implementation next (sage-improver cycle 48)
 
-- [ ] `sage completions bash` — bash tab-completion script
-- [ ] `sage completions zsh` — zsh tab-completion script
-- [ ] Completions cover: 42 subcommands, agent names, runtime names, skill/mcp/context/env/msg subcommands
-- [ ] Install via `eval "$(sage completions bash)"` or source from completion dir
+- [x] `sage completions bash` — bash tab-completion script
+- [x] `sage completions zsh` — zsh tab-completion script
+- [x] Completions cover: 42 subcommands, agent names, runtime names, skill/mcp/context/env/msg subcommands
+- [x] Install via `eval "$(sage completions bash)"` or source from completion dir
 
 ### Phase 13: Adoption & Visibility
 **Use case**: "People need to know sage exists"
@@ -144,15 +143,15 @@ gastown's main draw (14K stars). Sage agents die on reboot.
 - [x] Plan execution survives restarts (plan --recover detects and resumes interrupted plans)
 - [x] Session recovery: detect orphaned tmux sessions, offer to reclaim
 
-### Phase 17: Local Model Support
+### Phase 17: Local Model Support ← IN PROGRESS
 **Use case**: "Run agents with ollama/llama.cpp, no cloud API needed"
 
 Reddit signal: "I no longer need a cloud LLM to do quick web research." Small models (9B) hitting 89% workflow completion. Growing demand.
 
-- [ ] `sage create worker --runtime ollama` — local model runtime via ollama CLI
+- [x] `sage create worker --runtime ollama` — local model runtime via ollama CLI
 - [ ] `sage create worker --runtime llama-cpp` — direct llama.cpp inference
-- [ ] Model selection: `--model qwen3:8b` or `--model llama3.2:3b`
-- [ ] Works with existing MCP/skills/context infrastructure
+- [x] Model selection: `--model qwen3:8b` or `--model llama3.2:3b`
+- [x] Works with existing MCP/skills/context infrastructure
 
 ### Phase 18: Agent Observability v2
 **Use case**: "How much did my agents cost? Which one is most efficient?"

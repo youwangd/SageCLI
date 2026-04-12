@@ -55,6 +55,7 @@
 - gemini-cli
 - codex
 - kiro
+- ollama
 
 ## Features
 - Git worktree isolation (create --worktree, merge, merge --dry-run)
@@ -78,3 +79,4 @@
 - Agent checkpoint/restore (sage checkpoint/restore — save and resume agent state across reboots)
 - Session recovery (sage recover — detect and fix orphaned/dead agent sessions after crash or reboot)
 - Plan recovery (sage plan --recover — detect and resume interrupted plans after reboot)
+- Local model support (ollama runtime — run agents with local models via ollama, no cloud API needed)
