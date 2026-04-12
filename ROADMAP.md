@@ -6,7 +6,7 @@
 
 ## Current State
 
-SageCLI is a **5,154-line pure bash** AI agent orchestrator. 42 commands, 6 runtimes, 372 tests, CI on every push.
+SageCLI is a **5,808-line pure bash** AI agent orchestrator. 42 commands, 8 runtimes, 430 tests, CI on every push.
 
 **What we ship that nobody else does in pure bash:**
 - Runtime-agnostic orchestration (claude-code, cline, kiro, gemini-cli, codex, bash)
@@ -143,13 +143,13 @@ gastown's main draw (14K stars). Sage agents die on reboot.
 - [x] Plan execution survives restarts (plan --recover detects and resumes interrupted plans)
 - [x] Session recovery: detect orphaned tmux sessions, offer to reclaim
 
-### Phase 17: Local Model Support ← IN PROGRESS
+### Phase 17: Local Model Support ← COMPLETE
 **Use case**: "Run agents with ollama/llama.cpp, no cloud API needed"
 
 Reddit signal: "I no longer need a cloud LLM to do quick web research." Small models (9B) hitting 89% workflow completion. Growing demand.
 
 - [x] `sage create worker --runtime ollama` — local model runtime via ollama CLI
-- [ ] `sage create worker --runtime llama-cpp` — direct llama.cpp inference
+- [x] `sage create worker --runtime llama-cpp` — direct llama.cpp inference
 - [x] Model selection: `--model qwen3:8b` or `--model llama3.2:3b`
 - [x] Works with existing MCP/skills/context infrastructure
 
