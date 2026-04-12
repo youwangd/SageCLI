@@ -69,7 +69,7 @@
 - Agent export/import (export, create --from file/URL, diff)
 - Agent guardrails (--timeout, --max-turns, --retry)
 - Per-agent environment (env set/ls/rm, create --env)
-- Observability (history, info, stats, ls -l/--json)
+- Observability (history, info, stats, ls -l/--json, token counting per agent)
 - Plan orchestrator (plan, wave-based dependency execution)
 - ACP protocol support (persistent sessions)
 - Shell completions (bash/zsh tab-completion for commands, agents, runtimes)
