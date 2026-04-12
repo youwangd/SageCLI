@@ -56,3 +56,49 @@ teardown() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"unknown pattern"* ]]
 }
+
+# --- pipeline pattern ---
+
+@test "plan --pattern pipeline requires --task with multiple steps" {
+  run sage plan --pattern pipeline --task "Analyze {}" --inputs "src/" --yes
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"at least 2"* ]]
+}
+
+@test "plan --pattern pipeline requires --inputs" {
+  run sage plan --pattern pipeline --task "Analyze {},Test {}" --yes
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--inputs"* ]]
+}
+
+@test "plan --pattern pipeline generates sequential tasks" {
+  run sage plan --pattern pipeline --task "Analyze {},Refactor {},Test {}" --inputs "main.py" --save "$SAGE_HOME/test-plan.json" --yes
+  [ -f "$SAGE_HOME/test-plan.json" ]
+  local count=$(jq '.tasks | length' "$SAGE_HOME/test-plan.json")
+  [ "$count" -eq 3 ]
+}
+
+@test "plan --pattern pipeline tasks have linear dependencies" {
+  run sage plan --pattern pipeline --task "Step A {},Step B {},Step C {}" --inputs "data" --save "$SAGE_HOME/test-plan.json" --yes
+  # Task 1: no deps, Task 2: depends on 1, Task 3: depends on 2
+  local d1=$(jq '.tasks[0].depends | length' "$SAGE_HOME/test-plan.json")
+  local d2=$(jq '.tasks[1].depends[0]' "$SAGE_HOME/test-plan.json")
+  local d3=$(jq '.tasks[2].depends[0]' "$SAGE_HOME/test-plan.json")
+  [ "$d1" -eq 0 ]
+  [ "$d2" -eq 1 ]
+  [ "$d3" -eq 2 ]
+}
+
+@test "plan --pattern pipeline replaces {} in each step" {
+  run sage plan --pattern pipeline --task "Read {},Transform {}" --inputs "file.txt" --save "$SAGE_HOME/test-plan.json" --yes
+  local desc1=$(jq -r '.tasks[0].description' "$SAGE_HOME/test-plan.json")
+  local desc2=$(jq -r '.tasks[1].description' "$SAGE_HOME/test-plan.json")
+  [[ "$desc1" == "Read file.txt" ]]
+  [[ "$desc2" == "Transform file.txt" ]]
+}
+
+@test "plan --pattern pipeline sets goal with pipeline label" {
+  run sage plan --pattern pipeline --task "A {},B {}" --inputs "x" --save "$SAGE_HOME/test-plan.json" --yes
+  local goal=$(jq -r '.goal' "$SAGE_HOME/test-plan.json")
+  [[ "$goal" == *"pipeline"* ]]
+}
