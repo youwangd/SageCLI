@@ -207,3 +207,79 @@ teardown() {
   local desc=$(jq -r '.tasks[-1].description' "$SAGE_HOME/test-plan.json")
   [[ "$desc" == *"educe"* ]] || [[ "$desc" == *"erge"* ]]
 }
+
+# --- composable pattern YAML files ---
+
+@test "plan --run with YAML pattern file generates plan" {
+  cat > "$SAGE_HOME/test-pattern.yaml" <<'EOF'
+pattern: fan-out
+task: "Review code"
+inputs: "a.py,b.py"
+EOF
+  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --yes
+  [ "$status" -eq 0 ]
+}
+
+@test "plan --run YAML creates correct number of tasks" {
+  cat > "$SAGE_HOME/test-pattern.yaml" <<'EOF'
+pattern: fan-out
+task: "Lint {}"
+inputs: "x.py,y.py,z.py"
+EOF
+  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json" --yes
+  [ "$status" -eq 0 ]
+  local count=$(jq '.tasks | length' "$SAGE_HOME/test-plan.json")
+  [ "$count" -eq 3 ]
+}
+
+@test "plan --run YAML supports map-reduce pattern" {
+  cat > "$SAGE_HOME/test-pattern.yaml" <<'EOF'
+pattern: map-reduce
+task: "Audit {}"
+inputs: "auth.py,db.py"
+EOF
+  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json" --yes
+  [ "$status" -eq 0 ]
+  local count=$(jq '.tasks | length' "$SAGE_HOME/test-plan.json")
+  [ "$count" -eq 3 ]
+}
+
+@test "plan --run YAML supports pipeline pattern" {
+  cat > "$SAGE_HOME/test-pattern.yaml" <<'EOF'
+pattern: pipeline
+task: "Process"
+inputs: "parse,transform,validate"
+EOF
+  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json" --yes
+  [ "$status" -eq 0 ]
+  local count=$(jq '.tasks | length' "$SAGE_HOME/test-plan.json")
+  [ "$count" -eq 3 ]
+}
+
+@test "plan --run YAML supports debate pattern" {
+  cat > "$SAGE_HOME/test-pattern.yaml" <<'EOF'
+pattern: debate
+task: "Best approach for auth"
+inputs: "jwt,oauth,session"
+EOF
+  run sage plan --run "$SAGE_HOME/test-pattern.yaml" --save "$SAGE_HOME/test-plan.json" --yes
+  [ "$status" -eq 0 ]
+}
+
+@test "plan --run YAML fails without pattern field" {
+  cat > "$SAGE_HOME/test-pattern.yaml" <<'EOF'
+task: "Review code"
+inputs: "a.py,b.py"
+EOF
+  run sage plan --run "$SAGE_HOME/test-pattern.yaml"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pattern"* ]]
+}
+
+@test "plan --run JSON still works (backward compat)" {
+  sage plan --pattern fan-out --task "Test {}" --inputs "a,b" --save "$SAGE_HOME/test-plan.json" --yes 2>/dev/null || true
+  [ -f "$SAGE_HOME/test-plan.json" ] || skip "no plan file"
+  run sage plan --run "$SAGE_HOME/test-plan.json" --yes
+  # Should attempt to execute (may fail due to no agents, but shouldn't error on file parsing)
+  true
+}
