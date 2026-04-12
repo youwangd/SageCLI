@@ -1,221 +1,202 @@
-# SageCLI — Competitive Analysis & Self-Improvement Roadmap
+# SageCLI — Roadmap & Competitive Intelligence
 
-**Date**: 2026-04-09 | **Repo**: github.com/youwangd/SageCLI | **Stars**: 1 | **Version**: 1.2.0
+**Updated**: 2026-04-12 | **Repo**: github.com/youwangd/SageCLI | **Stars**: 1 | **Version**: 1.3.0
 
 ---
 
 ## Current State
 
-SageCLI is a 3,530-line bash script that orchestrates AI coding agents via tmux. Key strengths:
-- **Zero dependencies** beyond bash/jq/tmux — genuinely unique positioning
-- **Runtime-agnostic** — supports Claude Code, Cline, ACP protocol, bash
-- **Mechanical task tracking** — status transitions are code, not LLM behavior
-- **Plan orchestrator** — dependency-aware wave execution with resume
-- **ACP support** — persistent sessions, universal agent bridge
-- **Security model** — name validation, workspace sandboxing, atomic writes
+SageCLI is a **5,154-line pure bash** AI agent orchestrator. 42 commands, 6 runtimes, 338 tests, CI on every push.
 
-**Critical gap**: Zero tests. No CI. No automated quality gates.
+**What we ship that nobody else does in pure bash:**
+- Runtime-agnostic orchestration (claude-code, cline, kiro, gemini-cli, codex, bash)
+- Plan orchestrator with wave-based dependency execution
+- Git worktree isolation per agent
+- MCP server lifecycle management
+- Skills system with registry support
+- Inter-agent messaging + shared context
+- Headless/CI mode with GitHub Action
+- Agent guardrails (timeout, max-turns, retry)
+- ACP protocol support
+- Agent export/import (file + URL)
+- Per-agent environment variables
+- Agent chaining (`--then` pipelines)
 
 ---
 
 ## Competitive Landscape (April 2026)
 
-### Direct Competitors (Orchestrators)
-| Project | Stars | Approach | Sage's Edge |
-|---------|-------|----------|-------------|
-| claude-flow | 21.6K | Multi-agent swarms | Sage is runtime-agnostic, not Claude-only |
-| gastown | 12.5K | Persistent work tracking | Sage has plan orchestrator with wave deps |
-| Claude Squad | 6.4K | tmux session manager | Sage adds task tracking + orchestration |
-| CLI Agent Orchestrator (AWS) | 330 | Hierarchical tmux delegation | Sage has ACP + plan system |
-| ORCH | 9 | Typed task queue + state machine | Similar scope, Sage more mature |
+### Star Tracker (from weekly intel 2026-04-11)
 
-### Adjacent (Session Managers)
-| Project | Stars | What they do |
-|---------|-------|-------------|
-| cmux | 8.1K | Parallel agent sessions |
-| Crystal | 3.0K | Parallel git worktrees |
-| Toad | 2.7K | Parallel CLI sessions |
+| Category | Project | Stars | Trend |
+|----------|---------|------:|-------|
+| Top Agents | opencode | 141K | Dominant |
+| | cline | 60K | IDE-native, CLI 2.0 launched |
+| | aider | 43K | Terminal pair programming |
+| | goose | 41K | Multi-LLM extensible |
+| Orchestrators | ruflo (ex claude-flow) | 31K | 🔥 +9.5K/wk, rebranded, added Codex |
+| | gastown | 14K | Persistent work tracking |
+| | claude-squad | 7K | tmux multi-agent |
+| | emdash (YC W26) | 3.8K | 🆕 Funded parallel agent env |
+| | aws/cli-agent-orchestrator | 451 | AWS official |
+| Session Mgrs | nimbalyst (ex crystal) | 3K | Pivoted to desktop app |
+| | toad | 2.8K | Unified terminal AI |
+| | mux (Coder) | 1.6K | Desktop parallel dev |
+| **Us** | **SageCLI** | **1** | Pure bash, zero-framework |
 
-### Key Insight
-The market has split into:
-1. **Session managers** (cmux, Claude Squad) — run agents side-by-side
-2. **Orchestrators** (claude-flow, gastown) — coordinate multi-agent work
-3. **Infrastructure** (sandboxes, routers, browsers)
+### Market Map
 
-Sage sits at the intersection of 1+2 with the unique angle of being **pure bash, zero-framework**. This is a genuine differentiator — every competitor requires Node.js, Python, Rust, or Go.
+The space has three lanes:
+1. **Session managers** (mux, claude-squad, toad) — run agents side-by-side
+2. **Orchestrators** (ruflo, gastown, emdash) — coordinate multi-agent work
+3. **Platform-native** (Claude Code Agent Teams, Copilot multi-file) — vendor lock-in
 
----
+Sage sits at 1+2 with the unique angle of **zero dependencies** (bash/jq/tmux only). Every competitor requires Node.js, Python, Rust, or Go.
 
-## What Top Projects Do That Sage Doesn't
+### Threat Assessment
 
-### From claude-flow (21.6K stars)
-- Swarm patterns (fan-out/fan-in, pipeline, debate)
-- Built-in memory/context sharing between agents
-- Web dashboard for monitoring
-
-### From gastown (12.5K stars)
-- Persistent work tracking across sessions
-- Git worktree isolation per agent
-- Progress visualization
-
-### From the awesome-cli-coding-agents list
-- **Git worktree isolation** — Crystal, Catnip, vibe-tree all use this
-- **Symbol-level locking** — Wit prevents merge conflicts via AST parsing
-- **Headless/CI mode** — Cursor CLI, Junie CLI, Droid all support this
-- **MCP integration** — Pi, Hermes, Kilo Code all have MCP support
-- **Skills system** — Pi, Hermes, Roo Code, OpenClaw all have pluggable skills
+| Threat | Level | Our Counter |
+|--------|-------|-------------|
+| Claude Code Agent Teams (official multi-agent) | HIGH | We orchestrate ANY runtime, not just Claude |
+| ruflo 31K stars + Codex integration | HIGH | We already have 6 runtimes including Codex |
+| emdash (YC-funded, 3.8K stars) | MEDIUM | We have more features, they have funding |
+| Cline Kanban (visual task board) | MEDIUM | We're terminal-only — gap |
+| Cline CLI 2.0 ("agent control plane") | MEDIUM | We already do this |
 
 ---
 
-## Improvement Roadmap (Test-Driven, Use-Case-First)
+## Completed Phases (v1.0 → v1.3.0)
 
-### Phase 0: Testing Foundation (MUST DO FIRST)
-**Use case**: "I want to refactor sage without breaking anything"
+All shipped. Tests for each. CI green.
 
-- [x] Create `tests/` directory with bats-core test framework
-- [x] Unit tests for every command — 63 tests across 6 files (create/rm, ls/clean/status/inbox/send, tool/tasks/result/call/logs/trace, steer/peek/wait/attach/plan, CI)
-- [x] Integration tests: full lifecycle (create → send → result → rm) — 8 tests in sage-integration.bats
-- [x] CI via GitHub Actions (test on ubuntu + macos) — `.github/workflows/ci.yml`
-- [x] Shellcheck linting on every PR — `--severity=error` in CI
-- [x] Coverage tracking — `tests/coverage.sh` reports 80% command coverage (20/25), CI integrated
-- [x] 100% command coverage — start/stop/restart tests + fix stop silent crash bug (243 tests)
-
-### Phase 1: Git Worktree Isolation
-**Use case**: "Run 3 agents implementing different features in parallel without merge conflicts"
-
-- [x] `sage create worker --worktree feature-auth` — auto-creates git worktree
-- [x] Each agent works in isolated branch
-- [x] `sage merge worker` — merges worktree back to main
-- [x] Conflict detection before merge
-
-### Phase 2: Headless/CI Mode
-**Use case**: "Run sage in GitHub Actions to auto-review PRs"
-
-- [x] `sage run --headless "Review this PR"` — no tmux required
-- [x] JSON output mode for CI parsing — `--headless --json` outputs structured JSON
-- [x] Exit codes for pass/fail — headless mode propagates handler exit code
-- [x] GitHub Action wrapper — `action.yml` composite action at repo root
-
-### Phase 3: MCP Tool Integration
-**Use case**: "My agent can use any MCP server as a tool"
-
-- [x] `sage create worker --mcp github,filesystem,browser`
-- [x] MCP server lifecycle management (start/stop with agent)
-- [x] Tool discovery and injection into agent prompts
-
-### Phase 4: Skills System
-**Use case**: "Community-contributed task templates and workflows"
-
-- [x] `sage skill install code-review-pro`
-- [x] Skills = task templates + tool configs + prompt injection
-- [x] Skills registry (GitHub-based, like Homebrew taps)
-
-### Phase 5: Memory & Context Sharing
-**Use case**: "Agent B picks up where Agent A left off"
-
-- [x] Shared context store between agents (file-based, stays Unix-native)
-- [x] `sage context set key value` / `sage context get key`
-- [x] Auto-inject relevant context into agent prompts
+| Phase | What | Key Commands |
+|-------|------|-------------|
+| 0 | Testing foundation | 338 bats tests, CI, shellcheck, coverage |
+| 1 | Git worktree isolation | `create --worktree`, `merge`, `diff` |
+| 2 | Headless/CI mode | `send --headless --json`, `action.yml` |
+| 3 | MCP tool integration | `mcp add/ls/rm`, `create --mcp` |
+| 4 | Skills system | `skill install/ls/rm/show/run` |
+| 5 | Memory & context sharing | `context set/get/ls/rm` |
+| 6 | Sharing & portability | `export`, `create --from` (file + URL) |
+| 7 | Observability | `history`, `info`, `stats`, `ls -l/--json` |
+| 8 | Agent guardrails | `--timeout`, `--max-turns`, `--retry` |
+| 9 | Per-agent environment | `env set/ls/rm`, `create --env` |
+| 10 | Aggregate statistics | `stats`, `stats --json` |
+| 11 | New runtimes | gemini-cli, codex (6 total) |
+| — | Inter-agent messaging | `msg send/ls/clear`, auto-inject |
+| — | Agent chaining | `send --then`, multi-step pipelines |
+| — | Agent rename | `rename` |
+| — | URL import | `create --from https://...` |
 
 ---
 
-## Phase 6: Sharing & Portability
-**Use case**: "Share my agent setup with teammates or across machines"
+## Forward Roadmap
 
-- [x] `sage export <name>` — package agent config as shareable tar.gz
-- [x] `sage create <name> --from <archive>` — import exported agent
-- [x] `sage diff <name>` — show git changes in agent worktree
-- [x] `sage export --format json` — JSON export for programmatic use
+### Phase 12: Shell Completions & CLI Polish ← IN PROGRESS
+**Use case**: "Tab-complete commands and agent names like docker/kubectl"
+**Status**: Failing tests written, implementation next (sage-improver cycle 48)
 
----
+- [ ] `sage completions bash` — bash tab-completion script
+- [ ] `sage completions zsh` — zsh tab-completion script
+- [ ] Completions cover: 42 subcommands, agent names, runtime names, skill/mcp/context/env/msg subcommands
+- [ ] Install via `eval "$(sage completions bash)"` or source from completion dir
 
-## Phase 7: Observability & Analytics
-**Use case**: "What did my agents do today?"
+### Phase 13: Adoption & Visibility
+**Use case**: "People need to know sage exists"
 
-- [x] `sage history` — agent activity timeline across all agents (--agent, -n, --json)
-- [x] `sage info <name>` — full agent config and status view (--json)
+This is the real bottleneck. 1 star with a feature-complete product = discovery problem.
 
----
+- [ ] Get merged into [awesome-cli-coding-agents](https://github.com/bradAGI/awesome-cli-coding-agents) (PR #47 submitted)
+- [ ] Record 2-minute demo GIF/asciinema for README (parallel multi-runtime audit use case)
+- [ ] HN Show launch post — position as "pure bash, zero-framework agent orchestrator"
+- [ ] r/ClaudeCode + r/LocalLLaMA posts with real use cases
+- [ ] Submit to Tembo "AI Coding Agents Compared" list
 
-## Phase 8: Agent Guardrails
-**Use case**: "My agent ran for 3 hours and burned $50 — I need a kill switch"
+### Phase 14: Swarm Patterns
+**Use case**: "Fan out 5 agents to review code, fan in their findings"
 
-- [x] `sage create worker --timeout 30m` — auto-kill agents after configurable duration (Nm/Nh/Ns)
-- [x] `sage create worker --max-turns 50` — auto-stop agents after N task completions
+This is ruflo's main draw (31K stars). Sage has `plan` for dependency waves but not named swarm patterns.
 
----
+- [ ] `sage plan --pattern fan-out` — spawn N agents with same task on different inputs, collect results
+- [ ] `sage plan --pattern pipeline` — chain agents sequentially (A→B→C), each transforms output
+- [ ] `sage plan --pattern debate` — N agents argue, synthesizer picks best answer
+- [ ] `sage plan --pattern map-reduce` — split work, parallel execute, merge results
+- [ ] Patterns are composable with existing plan YAML
 
-## Phase 9: Agent Environment
-**Use case**: "I need different API keys and configs for each agent"
+### Phase 15: TUI Dashboard
+**Use case**: "See all my agents, their status, and logs in one view"
 
-- [x] `sage env set <agent> KEY=VALUE` — per-agent environment variables
-- [x] `sage env ls <agent>` — list env vars (values masked)
-- [x] `sage env rm <agent> KEY` — remove env var
-- [x] `sage create worker --env KEY=VALUE` — set env vars at creation (repeatable)
-- [x] Runner auto-loads env file before executing
+Every orchestrator with >5K stars has visualization. Terminal-only is a differentiator but also a ceiling. Cline Kanban proves demand.
 
----
+- [ ] `sage dashboard` — live TUI with agent list, status, recent output
+- [ ] Built with `gum` or `charmbracelet/bubbletea` (stays terminal-native, no web server)
+- [ ] Real-time log tailing per agent
+- [ ] Plan progress visualization (wave execution)
+- [ ] Keyboard shortcuts: restart, stop, send task, view logs
 
-## Phase 10: Aggregate Statistics
-**Use case**: "What did my agents do today? How much compute time did I use?"
+### Phase 16: Persistent Sessions
+**Use case**: "Reboot my machine, come back, agents resume where they left off"
 
-- [x] `sage stats` — aggregate metrics: agent counts, task counts, total runtime, most active agent
-- [x] `sage stats --json` — JSON output for programmatic use
+gastown's main draw (14K stars). Sage agents die on reboot.
 
----
+- [ ] `sage create worker --persistent` — checkpoint agent state to disk
+- [ ] `sage restore` — resume all persistent agents after reboot
+- [ ] Plan execution survives restarts (already partially works via plan state files)
+- [ ] Session recovery: detect orphaned tmux sessions, offer to reclaim
 
-## Phase 11: New Runtime Handlers
-**Use case**: "Orchestrate agents powered by any major AI CLI — not just Claude"
+### Phase 17: Local Model Support
+**Use case**: "Run agents with ollama/llama.cpp, no cloud API needed"
 
-- [x] `sage create worker --runtime gemini-cli` — Google Gemini CLI runtime (headless -p, --yolo, GEMINI_SYSTEM_MD)
-- [x] `sage create worker --runtime codex` — OpenAI Codex CLI runtime (exec mode)
+Reddit signal: "I no longer need a cloud LLM to do quick web research." Small models (9B) hitting 89% workflow completion. Growing demand.
+
+- [ ] `sage create worker --runtime ollama` — local model runtime via ollama CLI
+- [ ] `sage create worker --runtime llama-cpp` — direct llama.cpp inference
+- [ ] Model selection: `--model qwen3:8b` or `--model llama3.2:3b`
+- [ ] Works with existing MCP/skills/context infrastructure
+
+### Phase 18: Agent Observability v2
+**Use case**: "How much did my agents cost? Which one is most efficient?"
+
+- [ ] Token counting per agent (parse model output for usage stats)
+- [ ] Cost estimation per runtime (configurable $/token rates)
+- [ ] `sage stats --cost` — aggregate cost across agents
+- [ ] `sage stats --efficiency` — tasks completed per dollar
 
 ---
 
 ## Killer Use Cases to Build Toward
 
-1. **PR Review Pipeline**: `sage plan "Review PR #123"` → spawns reviewer + security auditor + test writer in parallel → merges findings
-2. **Codebase Migration**: `sage plan "Migrate from Express to Fastify"` → spec → implement per-module → test → validate
-3. **CI Agent**: GitHub Action that runs `sage --headless` on every PR for automated code review
-4. **Oncall Triage**: `sage plan "Triage ticket T-12345"` → reads ticket → checks logs → proposes fix → writes tests
+1. **PR Review Pipeline**: `sage plan --pattern fan-out "Review PR #123"` → reviewer + security auditor + test writer in parallel → merge findings
+2. **Codebase Migration**: `sage plan --pattern pipeline "Migrate Express→Fastify"` → spec → implement per-module → test → validate
+3. **CI Agent**: GitHub Action runs `sage --headless` on every PR for automated review
+4. **Oncall Triage**: `sage plan "Triage ticket T-12345"` → read ticket → check logs → propose fix → write tests
+5. **Multi-Model Benchmark**: `sage plan --pattern debate "Implement auth"` → claude vs gemini vs codex → pick best implementation
 
 ---
-
-## Monitoring Competitors (Automated)
-
-### What to track daily:
-- New entries in awesome-cli-coding-agents (137 stars, 56 commits, active)
-- Star counts of top 10 competitors
-- New HN/Reddit posts about agent orchestration
-- New ACP/MCP protocol developments
-
-### What to learn from:
-- Every project with >1K stars — read their README, understand their hook
-- Every HN front-page agent post — what resonated, what got criticized
-- Claude Code docs updates — they're the platform, we're the orchestrator
 
 ## Competitor Signals (2026-04-11)
 
 | Signal | Impact | Sage Status |
 |--------|--------|-------------|
-| claude-flow → ruflo rebrand, 31K stars (+9.5K/wk), added Codex integration | HIGH — fastest growing orchestrator | sage already has runtime-agnostic orchestration but lacks Codex runtime |
-| emdash (YC W26) — 3.8K stars, open-source parallel agent dev env | MEDIUM — new funded competitor | sage already does parallel agents via plan + worktrees |
-| Claude Code Agent Teams — official multi-agent orchestration | HIGH — platform-native reduces need for external tools | sage's edge: works with ANY runtime, not just Claude Code |
-| Claude Code Custom Subagents — official subagent creation | MEDIUM — within-session only | sage orchestrates across sessions (broader scope) |
-| Cline CLI 2.0 — terminal as "agent control plane" | MEDIUM — Cline has 60K star funnel | sage already has CLI orchestration |
-| Cline Kanban — visual multi-agent task board | MEDIUM — demand for visual orchestration | sage is terminal-only (gap) |
-| AgentPipe (98⭐) — inter-agent chat rooms | LOW — early stage | sage has context sharing but no real-time messaging (gap) |
-| ACP in JetBrains + Zed — protocol adoption growing | POSITIVE — validates sage's ACP investment | sage already supports ACP ✅ |
-| MCP Gateway pattern emerging — enterprise MCP infra | LOW (for now) — premature for sage | sage has mcp add/ls/rm ✅ |
-| Gemini CLI (Google) — open-source terminal agent | MEDIUM — new runtime to support | sage doesn't have gemini-cli runtime (gap) |
-| Codex $100 plan + 2X limits — rapid growth | HIGH — users will want to orchestrate Codex | sage doesn't have codex runtime (gap) |
-| HN: "I still prefer MCP over skills" (262pts) — MCP vs skills debate | INFO — sage supports both | sage has mcp + skill commands ✅ |
-| mitchellh: "need hardware kill switch for agents" (3.2K ❤️) | POSITIVE — validates sage's guardrails | sage has --timeout + --max-turns ✅ |
+| ruflo 31K stars, Codex integration, enterprise features | HIGH | sage has 6 runtimes but 1 star — adoption gap |
+| emdash (YC W26) 3.8K stars, funded | MEDIUM | sage has more features, they have money |
+| Claude Code Agent Teams — official multi-agent | HIGH | sage works with ANY runtime, not just Claude |
+| Claude Code Custom Subagents | MEDIUM | sage orchestrates across sessions (broader) |
+| Cline CLI 2.0 "agent control plane" | MEDIUM | sage already does this |
+| Cline Kanban visual task board | MEDIUM | sage is terminal-only (Phase 15 addresses) |
+| AgentPipe inter-agent chat rooms | LOW | sage has `msg` commands ✅ |
+| ACP in JetBrains + Zed | POSITIVE | validates sage's ACP investment ✅ |
+| MCP Gateway pattern emerging | LOW | sage has `mcp` commands, gateway premature |
+| mitchellh "hardware kill switch" (3.2K ❤️) | POSITIVE | sage has `--timeout` + `--max-turns` ✅ |
+| Local models hitting 89% workflow completion | MEDIUM | Phase 17 addresses |
+| "15 AI Coding Agents Compared" — sage not listed | HIGH | Phase 13 addresses |
 
-### Action Items
-1. **[P0]** ~~Add Gemini CLI runtime handler~~ ✅ Done (Phase 11)
-2. **[P0]** ~~Add Codex runtime handler~~ ✅ Done (Phase 11)
-3. **[P0]** ~~Submit PR to awesome-cli-coding-agents to get listed~~ ✅ Done ([PR #47](https://github.com/bradAGI/awesome-cli-coding-agents/pull/47))
-4. **[P1]** ~~Update README positioning: "orchestrate ANY agent" vs Claude-native teams~~ ✅ Done (c43433c)
-5. **[P1]** ~~Explore inter-agent messaging (beyond context sharing)~~ ✅ Done — `sage msg send/ls/clear` (e99e9c2)
-6. **[P2]** Consider lightweight web UI for plan visualization
+---
+
+## Monitoring
+
+- **Weekly intel**: `sage-competitor-intel` cron (Mondays 12:00 UTC) → `/home/dyouwang/SageCLI/WEEKLY-INTEL.md`
+- **Daily report**: `sagecli-daily-report` cron (14:00 UTC) → email
+- **Self-improver**: `sage-improver` cron (hourly) → auto-ships features via TDD
+
+*Next intel scan: 2026-04-13 (Monday)*
