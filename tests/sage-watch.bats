@@ -69,3 +69,50 @@ _create_agent() {
   # Should have detected the change (even if send fails because agent isn't running in tmux)
   [[ "$output" == *"change detected"* || "$output" == *"watching"* ]]
 }
+
+@test "watch --on-change runs command on file change" {
+  echo "initial" > "$WATCH_DIR/test.txt"
+  local out_file="$SAGE_HOME/on-change-output.txt"
+  (sleep 2; echo "changed" >> "$WATCH_DIR/test.txt") &
+  local bg_pid=$!
+  if command -v timeout >/dev/null 2>&1; then
+    run timeout 10 "$SAGE" watch "$WATCH_DIR" --on-change "env | grep SAGE_WATCH > $out_file" --max-triggers 1 --debounce 0
+  else
+    run perl -e 'alarm 10; exec @ARGV' "$SAGE" watch "$WATCH_DIR" --on-change "env | grep SAGE_WATCH > $out_file" --max-triggers 1 --debounce 0
+  fi
+  wait "$bg_pid" 2>/dev/null || true
+  [[ "$output" == *"change detected"* ]]
+  [[ -f "$out_file" ]]
+  grep -q "SAGE_WATCH_FILES" "$out_file"
+}
+
+@test "watch rejects --agent and --on-change together" {
+  _create_agent "bot1"
+  run "$SAGE" watch "$WATCH_DIR" --agent bot1 --on-change "echo hi"
+  [[ "$status" -ne 0 ]]
+  [[ "$output" == *"mutually exclusive"* || "$output" == *"cannot"* ]]
+}
+
+@test "watch requires --agent or --on-change" {
+  run "$SAGE" watch "$WATCH_DIR"
+  [[ "$status" -ne 0 ]]
+  [[ "$output" == *"--agent"* || "$output" == *"--on-change"* ]]
+}
+
+@test "watch --on-change without agent does not require agent" {
+  echo "initial" > "$WATCH_DIR/test.txt"
+  (sleep 2; echo "changed" >> "$WATCH_DIR/test.txt") &
+  local bg_pid=$!
+  if command -v timeout >/dev/null 2>&1; then
+    run timeout 10 "$SAGE" watch "$WATCH_DIR" --on-change "echo ok" --max-triggers 1 --debounce 0
+  else
+    run perl -e 'alarm 10; exec @ARGV' "$SAGE" watch "$WATCH_DIR" --on-change "echo ok" --max-triggers 1 --debounce 0
+  fi
+  wait "$bg_pid" 2>/dev/null || true
+  [[ "$output" == *"change detected"* || "$output" == *"watching"* ]]
+}
+
+@test "watch --on-change --help shows on-change option" {
+  run "$SAGE" watch --help
+  [[ "$output" == *"--on-change"* ]]
+}
