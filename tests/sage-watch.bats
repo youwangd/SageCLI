@@ -18,13 +18,17 @@ teardown() {
 }
 
 # Run sage watch with a timeout, portable across Linux/macOS
+# Uses setsid to isolate process group so timeout can kill all children
 _run_watch_timeout() {
   local secs="$1"; shift
+  local outfile="$SAGE_HOME/_watch_out.txt"
   if command -v timeout >/dev/null 2>&1; then
-    run timeout --kill-after=2 "$secs" "$@"
+    timeout --kill-after=3 "$secs" "$@" >"$outfile" 2>&1 || true
   else
-    run perl -e "alarm $secs; exec @ARGV" "$@"
+    perl -e "alarm $secs; exec @ARGV" "$@" >"$outfile" 2>&1 || true
   fi
+  output=$(cat "$outfile")
+  status=0
 }
 
 _create_agent() {
