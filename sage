@@ -5524,18 +5524,80 @@ _stats_tokens() {
   printf "  %-14s %s in / %s out (%s total)\n" "Total:" "$total_in" "$total_out" "$((total_in + total_out))"
 }
 
+_stats_cost() {
+  local json_mode="$1"
+  local cf="$SAGE_HOME/config.json"
+  local total_cost=0 json_agents="[]"
+  # Default pricing ($/M tokens): input, output
+  local -A _def_in=([claude-code]=3 [gemini-cli]=1.25 [codex]=2.50 [kiro]=3 [cline]=3)
+  local -A _def_out=([claude-code]=15 [gemini-cli]=5 [codex]=10 [kiro]=15 [cline]=15)
+
+  for agent_dir in "$AGENTS_DIR"/*/; do
+    [[ -d "$agent_dir" ]] || continue
+    local aname; aname=$(basename "$agent_dir")
+    [[ "$aname" == ".cli" ]] && continue
+    local tf="$agent_dir/tokens.jsonl"
+    [[ -f "$tf" ]] || continue
+    local ain=0 aout=0
+    while IFS= read -r line; do
+      local i o
+      i=$(echo "$line" | jq -r '.input // 0' 2>/dev/null) || continue
+      o=$(echo "$line" | jq -r '.output // 0' 2>/dev/null) || continue
+      [[ "$i" =~ ^[0-9]+$ ]] && ain=$((ain + i))
+      [[ "$o" =~ ^[0-9]+$ ]] && aout=$((aout + o))
+    done < "$tf"
+    [[ "$ain" -eq 0 && "$aout" -eq 0 ]] && continue
+    local rt; rt=$(jq -r '.runtime // "bash"' "$agent_dir/runtime.json" 2>/dev/null || echo "bash")
+    # Check config overrides, then defaults
+    local pin=0 pout=0
+    local cfg_in; cfg_in=$(_config_get "pricing.$rt.input")
+    local cfg_out; cfg_out=$(_config_get "pricing.$rt.output")
+    if [[ -n "$cfg_in" ]]; then pin="$cfg_in"; elif [[ -n "${_def_in[$rt]:-}" ]]; then pin="${_def_in[$rt]}"; fi
+    if [[ -n "$cfg_out" ]]; then pout="$cfg_out"; elif [[ -n "${_def_out[$rt]:-}" ]]; then pout="${_def_out[$rt]}"; fi
+    # cost = tokens * (rate / 1M)
+    local cost; cost=$(echo "scale=6; $ain * $pin / 1000000 + $aout * $pout / 1000000" | bc)
+    # Truncate to integer for jq compatibility if whole number
+    local cost_int; cost_int=$(echo "$cost" | sed 's/\.0*$//')
+    [[ "$cost_int" == .* ]] && cost_int="0$cost_int"
+    total_cost=$(echo "scale=6; $total_cost + $cost" | bc)
+    json_agents=$(echo "$json_agents" | jq --arg n "$aname" --arg rt "$rt" \
+      --argjson i "$ain" --argjson o "$aout" --argjson c "${cost_int:-0}" \
+      '. + [{name:$n,runtime:$rt,input_tokens:$i,output_tokens:$o,cost_usd:$c}]')
+  done
+
+  local total_int; total_int=$(echo "$total_cost" | sed 's/\.0*$//')
+  [[ "$total_int" == .* ]] && total_int="0$total_int"
+
+  if [[ "$json_mode" == "true" ]]; then
+    jq -n --argjson agents "$json_agents" --argjson tc "${total_int:-0}" \
+      '{agents:$agents,total_cost_usd:$tc}'
+    return 0
+  fi
+
+  printf "  %-14s\n" "Cost:"
+  local count; count=$(echo "$json_agents" | jq 'length')
+  if [[ "$count" -eq 0 ]]; then
+    printf "    (no token data)\n"
+    return 0
+  fi
+  echo "$json_agents" | jq -r '.[] | "    \(.name) (\(.runtime)): $\(.cost_usd)"'
+  printf "  %-14s $%s\n" "Total:" "$total_int"
+}
+
 cmd_stats() {
   ensure_init
-  local json_mode=false tokens_mode=false
+  local json_mode=false tokens_mode=false cost_mode=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json_mode=true; shift ;;
       --tokens) tokens_mode=true; shift ;;
-      *) die "usage: sage stats [--json] [--tokens]" ;;
+      --cost) cost_mode=true; shift ;;
+      *) die "usage: sage stats [--json] [--tokens] [--cost]" ;;
     esac
   done
 
   if $tokens_mode; then _stats_tokens "$json_mode"; return; fi
+  if $cost_mode; then _stats_cost "$json_mode"; return; fi
 
   local total_agents=0 running=0 stopped=0
   local tasks_done=0 tasks_failed=0 tasks_pending=0 total_secs=0
