@@ -42,20 +42,24 @@ _trigger_change() {
   _track_pid $!
 }
 
-# Run sage watch with a hard timeout
+# Run sage watch with a hard timeout — uses a wrapper script to isolate FDs
 _run_watch_timeout() {
   local secs="$1"; shift
   local outfile="$SAGE_HOME/_watch_out.txt"
-  "$@" >"$outfile" 2>&1 &
+  local wrapper="$SAGE_HOME/_watch_wrapper.sh"
+  # Write a wrapper that closes inherited FDs 3+ so bats doesn't wait for them
+  cat > "$wrapper" <<'WRAPPER'
+exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null || true
+exec "$@"
+WRAPPER
+  chmod +x "$wrapper"
+  bash "$wrapper" "$@" >"$outfile" 2>&1 &
   local wpid=$!
   _track_pid $wpid
-  # Background: wait then kill watch (if still running)
-  { sleep "$secs" && kill -9 "$wpid" 2>/dev/null; } &
+  ( sleep "$secs"; kill -9 "$wpid" 2>/dev/null ) &
   local kpid=$!
   _track_pid $kpid
   wait "$wpid" 2>/dev/null || true
-  # Kill the killer's sleep — it's a direct child of kpid
-  pkill -9 -P "$kpid" 2>/dev/null || true
   kill -9 "$kpid" 2>/dev/null || true
   wait "$kpid" 2>/dev/null || true
   output=$(cat "$outfile")
