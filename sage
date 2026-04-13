@@ -1126,7 +1126,7 @@ RUNNER
 # sage create <name> [--runtime <rt>] [--model <m>]
 # ═══════════════════════════════════════════════
 cmd_create() {
-  local name="" runtime="" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name="" from_archive="" timeout_val="" max_turns_val=""
+  local name="" runtime="" model="" parent="" acp_agent="" worktree_branch="" mcp_servers="" skill_name="" from_archive="" timeout_val="" max_turns_val="" allow_env=""
   local -a env_pairs=()
   # Read config defaults (flags override)
   local _cfg_rt; _cfg_rt=$(_config_get default.runtime)
@@ -1150,6 +1150,7 @@ cmd_create() {
       --timeout)      timeout_val="$2"; shift 2 ;;
       --max-turns)    max_turns_val="$2"; shift 2 ;;
       --env)          env_pairs+=("$2"); shift 2 ;;
+      --allow-env)    allow_env="$2"; shift 2 ;;
       -*)             die "unknown flag: $1" ;;
       *)              name="$1"; shift ;;
     esac
@@ -1290,6 +1291,11 @@ cmd_create() {
       [[ "$pair" == *=* ]] || die "invalid env format '$pair' — use KEY=VALUE"
       echo "$pair"
     done > "$agent_dir/env"
+  fi
+
+  # Write env var allowlist from --allow-env
+  if [[ -n "$allow_env" ]]; then
+    echo "$allow_env" | tr ',' '\n' > "$agent_dir/allow-env"
   fi
 
   # Validate and attach skill
@@ -6061,7 +6067,28 @@ cmd_env() {
       echo "$cleaned" > "$env_file"
       ok "removed $key from $name"
       ;;
-    *) die "usage: sage env <set|ls|rm> <agent> [KEY=VALUE|KEY]" ;;
+    scope)
+      local name="${1:-}"; shift 2>/dev/null || true
+      [[ -n "$name" ]] || die "usage: sage env scope <agent> [KEY1,KEY2|--clear]"
+      ensure_init; agent_exists "$name"
+      local allow_file="$AGENTS_DIR/$name/allow-env"
+      local arg="${1:-}"
+      if [[ -z "$arg" ]]; then
+        # Show current scope
+        if [[ -f "$allow_file" ]]; then
+          echo "  allowed: $(tr '\n' ',' < "$allow_file" | sed 's/,$//')"
+        else
+          echo "  scope: unrestricted (all env vars allowed)"
+        fi
+      elif [[ "$arg" == "--clear" ]]; then
+        rm -f "$allow_file"
+        ok "cleared env scope for $name (unrestricted)"
+      else
+        echo "$arg" | tr ',' '\n' > "$allow_file"
+        ok "env scope set for $name: $arg"
+      fi
+      ;;
+    *) die "usage: sage env <set|ls|rm|scope> <agent> [KEY=VALUE|KEY]" ;;
   esac
 }
 
