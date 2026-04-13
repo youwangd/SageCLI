@@ -1378,6 +1378,22 @@ cmd_start() {
   local target="${1:-}"
   ensure_init
 
+  # Enforce max-agents concurrency limit (check before tmux setup)
+  if [[ -n "$target" && "$target" != "--all" ]]; then
+    local _max_agents=""
+    [[ -f "$SAGE_HOME/config.json" ]] && _max_agents=$(jq -r '.["max-agents"] // empty' "$SAGE_HOME/config.json" 2>/dev/null) || true
+    if [[ -n "$_max_agents" && "$_max_agents" =~ ^[0-9]+$ ]]; then
+      local _running=0
+      for _pf in "$AGENTS_DIR"/*/.pid; do
+        [[ -f "$_pf" ]] || continue
+        kill -0 "$(cat "$_pf")" 2>/dev/null && ((_running++)) || true
+      done
+      if [[ "$_running" -ge "$_max_agents" ]]; then
+        die "concurrency limit reached ($_running/$_max_agents agents running) — increase with: sage config set max-agents N"
+      fi
+    fi
+  fi
+
   if ! tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
     tmux new-session -d -s "$TMUX_SESSION" -n "hub" "echo '⚡ sage hub — $(date)'; bash"
   fi
@@ -1402,6 +1418,20 @@ start_agent() {
   if agent_pid "$name" >/dev/null 2>&1; then
     warn "$name already running (pid $(agent_pid "$name"))"
     return 1
+  fi
+
+  # Enforce max-agents concurrency limit
+  local _max_agents=""
+  [[ -f "$SAGE_HOME/config.json" ]] && _max_agents=$(jq -r '.["max-agents"] // empty' "$SAGE_HOME/config.json" 2>/dev/null) || true
+  if [[ -n "$_max_agents" && "$_max_agents" =~ ^[0-9]+$ ]]; then
+    local _running=0
+    for _pf in "$AGENTS_DIR"/*/.pid; do
+      [[ -f "$_pf" ]] || continue
+      kill -0 "$(cat "$_pf")" 2>/dev/null && ((_running++)) || true
+    done
+    if [[ "$_running" -ge "$_max_agents" ]]; then
+      die "concurrency limit reached ($_running/$_max_agents agents running) — increase with: sage config set max-agents N"
+    fi
   fi
 
   local runtime=$(jq -r '.runtime // "bash"' "$AGENTS_DIR/$name/runtime.json" 2>/dev/null || echo "bash")
