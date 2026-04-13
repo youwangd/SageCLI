@@ -9,16 +9,24 @@ setup() {
 }
 
 teardown() {
-  # Kill all tracked PIDs and full process trees
-  local pid
+  # Collect full process tree (all descendants) BEFORE killing parents
+  local all_pids_to_kill=()
+  local pid child grandchild
   for pid in "${_ALL_PIDS[@]:-}"; do
-    # Kill entire process tree (children, grandchildren)
-    local child
+    all_pids_to_kill+=("$pid")
     for child in $(pgrep -P "$pid" 2>/dev/null); do
-      pkill -9 -P "$child" 2>/dev/null || true
-      kill -9 "$child" 2>/dev/null || true
+      all_pids_to_kill+=("$child")
+      for grandchild in $(pgrep -P "$child" 2>/dev/null); do
+        all_pids_to_kill+=("$grandchild")
+      done
     done
-    kill -9 "$pid" 2>/dev/null || true
+  done
+  # Kill all collected PIDs in one pass (children first, then parents)
+  local i
+  for (( i=${#all_pids_to_kill[@]}-1; i>=0; i-- )); do
+    kill -9 "${all_pids_to_kill[$i]}" 2>/dev/null || true
+  done
+  for pid in "${_ALL_PIDS[@]:-}"; do
     wait "$pid" 2>/dev/null || true
   done
   _ALL_PIDS=()
