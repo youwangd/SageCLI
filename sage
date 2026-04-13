@@ -2103,6 +2103,112 @@ cmd_wait() {
   done
 }
 
+
+# ═══════════════════════════════════════════════
+# sage watch <dir> --agent <name> [--pattern GLOB] [--debounce N] [--max-triggers N]
+# ═══════════════════════════════════════════════
+cmd_watch() {
+  local dir="" agent="" pattern="" debounce=2 max_triggers=0 task_msg=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent|-a)       agent="$2"; shift 2 ;;
+      --pattern|-p)     pattern="$2"; shift 2 ;;
+      --debounce|-d)    debounce="$2"; shift 2 ;;
+      --max-triggers)   max_triggers="$2"; shift 2 ;;
+      --task|-t)        task_msg="$2"; shift 2 ;;
+      --help|-h)
+        cat <<'HELP'
+Usage: sage watch <dir> --agent <name> [options]
+
+Watch a directory for file changes and trigger an agent.
+
+Options:
+  --agent, -a <name>    Agent to trigger (required)
+  --pattern, -p <glob>  Filter files by glob (e.g. '*.py')
+  --debounce, -d <sec>  Cooldown between triggers (default: 2)
+  --max-triggers <n>    Exit after N triggers (0 = unlimited)
+  --task, -t <msg>      Custom task message (default: auto-generated)
+  --help, -h            Show this help
+HELP
+        return 0 ;;
+      -*) die "unknown flag: $1" ;;
+      *)  dir="$1"; shift ;;
+    esac
+  done
+
+  [[ -n "$dir" ]] || die "usage: sage watch <dir> --agent <name> [--pattern GLOB]"
+  [[ -n "$agent" ]] || die "missing required flag: --agent <name>"
+  [[ -d "$dir" ]] || die "directory does not exist: $dir"
+  ensure_init; agent_exists "$agent"
+
+  local trigger_count=0
+  local snapshot_file
+  snapshot_file=$(mktemp)
+  trap 'rm -f "$snapshot_file"' EXIT
+
+  # Take initial snapshot: file paths + mtimes
+  _watch_snapshot() {
+    if [[ -n "$pattern" ]]; then
+      find "$dir" -name "$pattern" -type f -exec stat -c '%n %Y' {} + 2>/dev/null | sort
+    else
+      find "$dir" -type f -exec stat -c '%n %Y' {} + 2>/dev/null | sort
+    fi
+  }
+
+  # macOS compat: stat format differs
+  if ! stat -c '%n' /dev/null >/dev/null 2>&1; then
+    _watch_snapshot() {
+      if [[ -n "$pattern" ]]; then
+        find "$dir" -name "$pattern" -type f -exec stat -f '%N %m' {} + 2>/dev/null | sort
+      else
+        find "$dir" -type f -exec stat -f '%N %m' {} + 2>/dev/null | sort
+      fi
+    }
+  fi
+
+  _watch_snapshot > "$snapshot_file"
+  info "watching $dir for changes (agent: $agent, debounce: ${debounce}s)"
+  [[ -n "$pattern" ]] && info "pattern: $pattern"
+  info "press Ctrl-C to stop"
+
+  while true; do
+    sleep 1
+    local new_snapshot
+    new_snapshot=$(_watch_snapshot)
+    local changed
+    changed=$(diff <(cat "$snapshot_file") <(echo "$new_snapshot") 2>/dev/null | grep '^>' | sed 's/^> //' | awk '{print $1}')
+
+    if [[ -n "$changed" ]]; then
+      local file_list
+      file_list=$(echo "$changed" | head -5)
+      local count
+      count=$(echo "$changed" | wc -l | tr -d ' ')
+      echo "$new_snapshot" > "$snapshot_file"
+
+      info "change detected: $count file(s)"
+      echo "$file_list" | while IFS= read -r f; do
+        [[ -n "$f" ]] && echo "  $f"
+      done
+
+      # Debounce
+      [[ "$debounce" -gt 0 ]] && sleep "$debounce"
+
+      # Re-snapshot after debounce to catch rapid saves
+      _watch_snapshot > "$snapshot_file"
+
+      local msg="${task_msg:-Files changed in $dir: $file_list}"
+      info "triggering $agent..."
+      cmd_send "$agent" "$msg" 2>/dev/null || warn "failed to send to $agent"
+
+      trigger_count=$((trigger_count + 1))
+      if [[ "$max_triggers" -gt 0 && "$trigger_count" -ge "$max_triggers" ]]; then
+        info "reached max triggers ($max_triggers), exiting"
+        return 0
+      fi
+    fi
+  done
+}
 # ═══════════════════════════════════════════════
 # sage steer <name> <message> [--restart]
 # ═══════════════════════════════════════════════
@@ -5229,6 +5335,7 @@ _sage() {
     'trace:Trace agent execution'
     'upgrade:Self-update'
     'wait:Wait for agent completion'
+    'watch:Watch directory and trigger agent on file changes'
   )
   _describe 'sage command' commands
 }
@@ -5347,6 +5454,7 @@ cmd_help() {
     tasks [name]                List tasks with status
     result <task-id>            Get task result
     wait <name> [--timeout N]   Wait for agent to finish (long-running tasks)
+    watch <dir> --agent <name>  Watch directory, trigger agent on file changes
     peek <name> [--lines N]     See what agent is doing (tmux pane + workspace)
     steer <name> <msg> [--restart] Course-correct a running agent
     inbox [--json] [--clear]    View/clear messages sent to you (.cli)
@@ -6019,6 +6127,7 @@ case "${1:-}" in
   result)  cmd_result "${2:-}" ;;
   steer)   shift; cmd_steer "$@" ;;
   wait)    shift; cmd_wait "$@" ;;
+  watch)   shift; cmd_watch "$@" ;;
   peek)    shift; cmd_peek "$@" ;;
   inbox)   shift; cmd_inbox "$@" ;;
   logs)    cmd_logs "${2:-}" "${3:-}" ;;
