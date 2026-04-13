@@ -9,8 +9,9 @@ setup() {
 }
 
 teardown() {
-  # Kill any leftover watch/trigger processes
-  pkill -f "sage watch $WATCH_DIR" 2>/dev/null || true
+  # Kill any leftover processes from this test
+  [[ -n "${_WATCH_PID:-}" ]] && kill -9 "$_WATCH_PID" 2>/dev/null && wait "$_WATCH_PID" 2>/dev/null || true
+  [[ -n "${_KILLER_PID:-}" ]] && kill -9 "$_KILLER_PID" 2>/dev/null && wait "$_KILLER_PID" 2>/dev/null || true
   rm -rf "$SAGE_HOME" "$WATCH_DIR"
 }
 
@@ -25,11 +26,11 @@ _run_watch_timeout() {
   local secs="$1"; shift
   local outfile="$SAGE_HOME/_watch_out.txt"
   "$@" >"$outfile" 2>&1 &
-  local pid=$!
-  (sleep "$secs"; kill -9 "$pid" 2>/dev/null; pkill -9 -P "$pid" 2>/dev/null) &
-  local killer=$!
-  wait "$pid" 2>/dev/null || true
-  kill "$killer" 2>/dev/null; wait "$killer" 2>/dev/null || true
+  _WATCH_PID=$!
+  (sleep "$secs"; kill -9 "$_WATCH_PID" 2>/dev/null; pkill -9 -P "$_WATCH_PID" 2>/dev/null) &
+  _KILLER_PID=$!
+  wait "$_WATCH_PID" 2>/dev/null || true
+  kill "$_KILLER_PID" 2>/dev/null; wait "$_KILLER_PID" 2>/dev/null || true
   output=$(cat "$outfile")
   status=0
 }

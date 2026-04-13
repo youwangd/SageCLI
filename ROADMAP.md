@@ -180,22 +180,30 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 
 ---
 
-## Competitor Signals (2026-04-11)
+## Competitor Signals (2026-04-13)
 
 | Signal | Impact | Sage Status |
 |--------|--------|-------------|
-| ruflo 31K stars, Codex integration, enterprise features | HIGH | sage has 6 runtimes but 1 star — adoption gap |
-| emdash (YC W26) 3.8K stars, funded | MEDIUM | sage has more features, they have money |
-| Claude Code Agent Teams — official multi-agent | HIGH | sage works with ANY runtime, not just Claude |
-| Claude Code Custom Subagents | MEDIUM | sage orchestrates across sessions (broader) |
-| Cline CLI 2.0 "agent control plane" | MEDIUM | sage already does this |
-| Cline Kanban visual task board | MEDIUM | sage is terminal-only (Phase 15 addresses) |
-| AgentPipe inter-agent chat rooms | LOW | sage has `msg` commands ✅ |
-| ACP in JetBrains + Zed | POSITIVE | validates sage's ACP investment ✅ |
-| MCP Gateway pattern emerging | LOW | sage has `mcp` commands, gateway premature |
-| mitchellh "hardware kill switch" (3.2K ❤️) | POSITIVE | sage has `--timeout` + `--max-turns` ✅ |
-| Local models hitting 89% workflow completion | MEDIUM | Phase 17 addresses |
-| "15 AI Coding Agents Compared" — sage not listed | HIGH | Phase 13 addresses |
+| claude-code-router 32K stars — proxy any LLM through Claude Code UI | HIGH (mindshare) | sage has 8 native runtimes ✅ — no proxy needed |
+| ruflo 31.5K stars, growth decelerating (416/wk vs 9.5K last week) | HIGH | sage has 8 runtimes including Codex ✅ |
+| steipete strict execution mode (1,570 ❤️) — "don't be lazy" agents | MEDIUM | sage has `--retry` but no `--strict` — **gap** |
+| Anthropic managed agent runtime API (build vs buy debate) | MEDIUM | sage is the "build" option — zero vendor lock-in ✅ |
+| Cline Kanban launch — persistent visual task board | MEDIUM | sage has `dashboard --live` but no persistent Kanban — **gap** |
+| Claude Code Agent Teams docs updated (known limitations) | POSITIVE | sage handles resumption/coordination/shutdown ✅ |
+| HN "trust agents with API keys" — security concern growing | MEDIUM | sage has timeout/max-turns but no key scoping — **gap** |
+| ACP in JetBrains + Zed + Kiro — adoption accelerating | POSITIVE | sage has ACP ✅ |
+| emdash (YC W26) 3.8K stars, growth slowing | LOW | sage has more features, they have funding |
+| r/LocalLLaMA "open source agent stack" thread — sage not mentioned | HIGH | sage has ollama/llama-cpp ✅ but zero visibility |
+| 6,900+ MCP servers tracked — ecosystem exploding | POSITIVE | sage has `mcp add/ls/rm` ✅ |
+| gastown declining (13.9K, -58/wk) | POSITIVE | persistent sessions alone isn't enough |
+
+### Action Items from Intel (2026-04-13)
+- [ ] **P0**: Follow up on awesome-cli-coding-agents PR #47
+- [ ] **P0**: Post to r/LocalLLaMA "open source agent stack" thread with sage's ollama/llama-cpp story
+- [ ] **P1**: Implement `--strict` execution flag (retry-on-incomplete pattern)
+- [ ] **P1**: Add API key scoping/sandboxing for agent security
+- [ ] **P2**: Consider `sage proxy` mode (claude-code-router proves 32K-star demand)
+- [ ] **P2**: Persistent Kanban view in `dashboard --live`
 
 ---
 
