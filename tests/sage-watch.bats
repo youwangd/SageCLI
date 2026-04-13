@@ -6,10 +6,25 @@ setup() {
   mkdir -p "$AGENTS_DIR"
   SAGE="$BATS_TEST_DIRNAME/../sage"
   WATCH_DIR=$(mktemp -d)
+  _BG_PIDS=()
 }
 
 teardown() {
+  # Kill any background processes to prevent hangs in CI
+  for pid in "${_BG_PIDS[@]}"; do
+    kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
+  done
   rm -rf "$SAGE_HOME" "$WATCH_DIR"
+}
+
+# Run sage watch with a timeout, portable across Linux/macOS
+_run_watch_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    run timeout --kill-after=2 "$secs" "$@"
+  else
+    run perl -e "alarm $secs; exec @ARGV" "$@"
+  fi
 }
 
 _create_agent() {
@@ -54,19 +69,10 @@ _create_agent() {
 @test "watch detects file change and exits after trigger" {
   _create_agent "bot1"
   echo "initial" > "$WATCH_DIR/test.txt"
-  # Modify file after delay in background
   (sleep 2; echo "changed" >> "$WATCH_DIR/test.txt") &
-  local bg_pid=$!
-  # Use --max-triggers 1 so watch exits after first detection
-  # Use perl timeout for macOS compat (no GNU timeout)
+  _BG_PIDS+=($!)
   export SAGE_HOME
-  if command -v timeout >/dev/null 2>&1; then
-    run timeout 10 "$SAGE" watch "$WATCH_DIR" --agent bot1 --max-triggers 1 --debounce 0
-  else
-    run perl -e 'alarm 10; exec @ARGV' "$SAGE" watch "$WATCH_DIR" --agent bot1 --max-triggers 1 --debounce 0
-  fi
-  wait "$bg_pid" 2>/dev/null || true
-  # Should have detected the change (even if send fails because agent isn't running in tmux)
+  _run_watch_timeout 10 "$SAGE" watch "$WATCH_DIR" --agent bot1 --max-triggers 1 --debounce 0
   [[ "$output" == *"change detected"* || "$output" == *"watching"* ]]
 }
 
@@ -74,13 +80,8 @@ _create_agent() {
   echo "initial" > "$WATCH_DIR/test.txt"
   local out_file="$SAGE_HOME/on-change-output.txt"
   (sleep 2; echo "changed" >> "$WATCH_DIR/test.txt") &
-  local bg_pid=$!
-  if command -v timeout >/dev/null 2>&1; then
-    run timeout 10 "$SAGE" watch "$WATCH_DIR" --on-change "env | grep SAGE_WATCH > $out_file" --max-triggers 1 --debounce 0
-  else
-    run perl -e 'alarm 10; exec @ARGV' "$SAGE" watch "$WATCH_DIR" --on-change "env | grep SAGE_WATCH > $out_file" --max-triggers 1 --debounce 0
-  fi
-  wait "$bg_pid" 2>/dev/null || true
+  _BG_PIDS+=($!)
+  _run_watch_timeout 10 "$SAGE" watch "$WATCH_DIR" --on-change "env | grep SAGE_WATCH > $out_file" --max-triggers 1 --debounce 0
   [[ "$output" == *"change detected"* ]]
   [[ -f "$out_file" ]]
   grep -q "SAGE_WATCH_FILES" "$out_file"
@@ -102,13 +103,8 @@ _create_agent() {
 @test "watch --on-change without agent does not require agent" {
   echo "initial" > "$WATCH_DIR/test.txt"
   (sleep 2; echo "changed" >> "$WATCH_DIR/test.txt") &
-  local bg_pid=$!
-  if command -v timeout >/dev/null 2>&1; then
-    run timeout 10 "$SAGE" watch "$WATCH_DIR" --on-change "echo ok" --max-triggers 1 --debounce 0
-  else
-    run perl -e 'alarm 10; exec @ARGV' "$SAGE" watch "$WATCH_DIR" --on-change "echo ok" --max-triggers 1 --debounce 0
-  fi
-  wait "$bg_pid" 2>/dev/null || true
+  _BG_PIDS+=($!)
+  _run_watch_timeout 10 "$SAGE" watch "$WATCH_DIR" --on-change "echo ok" --max-triggers 1 --debounce 0
   [[ "$output" == *"change detected"* || "$output" == *"watching"* ]]
 }
 
