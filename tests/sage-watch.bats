@@ -6,19 +6,21 @@ setup() {
   mkdir -p "$AGENTS_DIR"
   SAGE="$BATS_TEST_DIRNAME/../sage"
   WATCH_DIR=$(mktemp -d)
-  _BG_PIDS=()
 }
 
 teardown() {
-  # Kill any background processes to prevent hangs in CI
-  for pid in "${_BG_PIDS[@]}"; do
-    kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
-  done
+  # Kill any leftover watch/trigger processes
+  pkill -f "sage watch $WATCH_DIR" 2>/dev/null || true
   rm -rf "$SAGE_HOME" "$WATCH_DIR"
 }
 
-# Run sage watch with a timeout, portable across Linux/macOS
-# Uses setsid to isolate process group so timeout can kill all children
+# Trigger a file change after a delay, fully detached from parent
+_trigger_change() {
+  local dir="$1" delay="${2:-2}"
+  nohup bash -c "sleep $delay; echo changed >> '$dir/test.txt'" </dev/null >/dev/null 2>&1 &
+}
+
+# Run sage watch with a timeout, capturing output to file to avoid pipe hangs
 _run_watch_timeout() {
   local secs="$1"; shift
   local outfile="$SAGE_HOME/_watch_out.txt"
@@ -73,8 +75,7 @@ _create_agent() {
 @test "watch detects file change and exits after trigger" {
   _create_agent "bot1"
   echo "initial" > "$WATCH_DIR/test.txt"
-  (sleep 2; echo "changed" >> "$WATCH_DIR/test.txt") &
-  _BG_PIDS+=($!)
+  _trigger_change "$WATCH_DIR"
   export SAGE_HOME
   _run_watch_timeout 10 "$SAGE" watch "$WATCH_DIR" --agent bot1 --max-triggers 1 --debounce 0
   [[ "$output" == *"change detected"* || "$output" == *"watching"* ]]
@@ -83,8 +84,7 @@ _create_agent() {
 @test "watch --on-change runs command on file change" {
   echo "initial" > "$WATCH_DIR/test.txt"
   local out_file="$SAGE_HOME/on-change-output.txt"
-  (sleep 2; echo "changed" >> "$WATCH_DIR/test.txt") &
-  _BG_PIDS+=($!)
+  _trigger_change "$WATCH_DIR"
   _run_watch_timeout 10 "$SAGE" watch "$WATCH_DIR" --on-change "env | grep SAGE_WATCH > $out_file" --max-triggers 1 --debounce 0
   [[ "$output" == *"change detected"* ]]
   [[ -f "$out_file" ]]
@@ -106,8 +106,7 @@ _create_agent() {
 
 @test "watch --on-change without agent does not require agent" {
   echo "initial" > "$WATCH_DIR/test.txt"
-  (sleep 2; echo "changed" >> "$WATCH_DIR/test.txt") &
-  _BG_PIDS+=($!)
+  _trigger_change "$WATCH_DIR"
   _run_watch_timeout 10 "$SAGE" watch "$WATCH_DIR" --on-change "echo ok" --max-triggers 1 --debounce 0
   [[ "$output" == *"change detected"* || "$output" == *"watching"* ]]
 }
