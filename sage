@@ -1555,7 +1555,7 @@ cmd_status() {
 # ═══════════════════════════════════════════════
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
-  local then_chain="" retry_max=0
+  local then_chain="" retry_max=0 strict=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1565,6 +1565,7 @@ cmd_send() {
       --no-context)  no_context=true; shift ;;
       --then)        then_chain="${then_chain:+$then_chain }$2"; shift 2 ;;
       --retry)       retry_max="$2"; shift 2 ;;
+      --strict)      strict=true; shift ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1587,6 +1588,9 @@ cmd_send() {
   fi
   if [[ "$retry_max" -gt 0 && "$headless" != true ]]; then
     die "--retry requires --headless"
+  fi
+  if [[ "$strict" == true && "$headless" != true ]]; then
+    die "--strict requires --headless"
   fi
   if [[ -n "$then_chain" ]]; then
     local _ta
@@ -1707,6 +1711,35 @@ $message"
       task_output=$(runtime_inject "$to" "$msg" 2>&1) || rc=$?
     done
     local elapsed=$(( $(date +%s) - start_ts ))
+
+    # Strict mode: retry if output looks incomplete
+    if [[ "$strict" == true && $rc -eq 0 ]]; then
+      local _strict_i=0 _strict_max=3
+      while [[ $_strict_i -lt $_strict_max ]]; do
+        # Check for incompleteness markers (case-insensitive)
+        local _lower
+        _lower=$(printf '%s' "$task_output" | tr '[:upper:]' '[:lower:]')
+        local _incomplete=false
+        case "$_lower" in
+          *"todo"*|*"fixme"*|*"i will "*|*"i cannot "*|*"i could not "*|*"i can't "*|*"i'll "*) _incomplete=true ;;
+        esac
+        if [[ "$_incomplete" != true ]]; then break; fi
+        _strict_i=$((_strict_i + 1))
+        log "strict: incomplete output detected, retry $_strict_i/$_strict_max"
+        local _strict_msg
+        _strict_msg=$(jq -n --arg id "$task_id" --arg from "cli" --arg t "STRICT MODE: Your previous response was incomplete. Complete the original task fully. Original task: $message" '{id:$id,from:$from,payload:{text:$t}}')
+        rc=0
+        task_output=$(runtime_inject "$to" "$_strict_msg" 2>&1) || rc=$?
+      done
+      # If still incomplete after all retries, exit 2
+      if [[ $_strict_i -ge $_strict_max ]]; then
+        local _lower_final
+        _lower_final=$(printf '%s' "$task_output" | tr '[:upper:]' '[:lower:]')
+        case "$_lower_final" in
+          *"todo"*|*"fixme"*|*"i will "*|*"i cannot "*|*"i could not "*|*"i can't "*|*"i'll "*) rc=2 ;;
+        esac
+      fi
+    fi
 
     # Write result files so `sage result <task_id>` works
     local _rstatus="done"; [[ $rc -ne 0 ]] && _rstatus="failed"
