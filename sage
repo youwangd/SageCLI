@@ -2108,7 +2108,7 @@ cmd_wait() {
 # sage watch <dir> --agent <name> [--pattern GLOB] [--debounce N] [--max-triggers N]
 # ═══════════════════════════════════════════════
 cmd_watch() {
-  local dir="" agent="" pattern="" debounce=2 max_triggers=0 task_msg="" on_change=""
+  local dir="" agent="" pattern="" debounce=2 max_triggers=0 task_msg="" on_change="" plan_file=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -2118,22 +2118,24 @@ cmd_watch() {
       --max-triggers)   max_triggers="$2"; shift 2 ;;
       --task|-t)        task_msg="$2"; shift 2 ;;
       --on-change)      on_change="$2"; shift 2 ;;
+      --plan)           plan_file="$2"; shift 2 ;;
       --help|-h)
         cat <<'HELP'
-Usage: sage watch <dir> [--agent <name>] [--on-change <cmd>] [options]
+Usage: sage watch <dir> [--agent <name>] [--on-change <cmd>] [--plan <file>] [options]
 
-Watch a directory for file changes and trigger an agent or command.
+Watch a directory for file changes and trigger an agent, command, or plan.
 
 Options:
   --agent, -a <name>    Agent to trigger on change
   --on-change <cmd>     Run command on change (SAGE_WATCH_FILES env set)
+  --plan <file>         Re-run a plan YAML on change
   --pattern, -p <glob>  Filter files by glob (e.g. '*.py')
   --debounce, -d <sec>  Cooldown between triggers (default: 2)
   --max-triggers <n>    Exit after N triggers (0 = unlimited)
   --task, -t <msg>      Custom task message (default: auto-generated)
   --help, -h            Show this help
 
-Requires --agent or --on-change (mutually exclusive).
+Requires --agent, --on-change, or --plan (mutually exclusive).
 HELP
         return 0 ;;
       -*) die "unknown flag: $1" ;;
@@ -2142,9 +2144,16 @@ HELP
   done
 
   [[ -n "$dir" ]] || die "usage: sage watch <dir> --agent <name> [--pattern GLOB]"
-  [[ -n "$agent" || -n "$on_change" ]] || die "requires --agent or --on-change"
-  [[ -z "$agent" || -z "$on_change" ]] || die "--agent and --on-change are mutually exclusive"
+  [[ -n "$agent" || -n "$on_change" || -n "$plan_file" ]] || die "requires --agent, --on-change, or --plan"
+  local _mode_count=0
+  [[ -n "$agent" ]] && _mode_count=$((_mode_count + 1))
+  [[ -n "$on_change" ]] && _mode_count=$((_mode_count + 1))
+  [[ -n "$plan_file" ]] && _mode_count=$((_mode_count + 1))
+  [[ "$_mode_count" -le 1 ]] || die "--agent, --on-change, and --plan are mutually exclusive"
   [[ -d "$dir" ]] || die "directory does not exist: $dir"
+  if [[ -n "$plan_file" && ! -f "$plan_file" ]]; then
+    die "plan file not found: $plan_file"
+  fi
   if [[ -n "$agent" ]]; then
     ensure_init; agent_exists "$agent"
   fi
@@ -2210,6 +2219,9 @@ HELP
       if [[ -n "$on_change" ]]; then
         info "running: $on_change"
         SAGE_WATCH_FILES="$changed" eval "$on_change" || warn "on-change command failed"
+      elif [[ -n "$plan_file" ]]; then
+        info "running plan: $plan_file"
+        SAGE_WATCH_FILES="$changed" cmd_plan --run "$plan_file" --yes 2>/dev/null || warn "plan execution failed"
       else
         info "triggering $agent..."
         cmd_send "$agent" "$msg" 2>/dev/null || warn "failed to send to $agent"
