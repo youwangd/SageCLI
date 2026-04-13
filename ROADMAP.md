@@ -166,7 +166,7 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 
 - [x] `sage watch <dir> --agent <name>` — poll-based file watcher with debounce
 - [x] `sage watch --on-change <script>` — run arbitrary command on change
-- [ ] Watch integration with plan orchestrator (auto-re-run plan on file change)
+- [x] Watch integration with plan orchestrator (auto-re-run plan on file change)
 
 ---
 
