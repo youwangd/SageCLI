@@ -5592,20 +5592,75 @@ _stats_cost() {
   printf "  %-14s $%s\n" "Total:" "$total_int"
 }
 
+_stats_efficiency() {
+  local json_mode="$1"
+  local cost_json; cost_json=$(_stats_cost "true")
+  local total_done=0 total_cost=0 json_agents="[]"
+  local agents_arr; agents_arr=$(echo "$cost_json" | jq -c '.agents[]' 2>/dev/null) || true
+  while IFS= read -r agent_line; do
+    [[ -z "$agent_line" ]] && continue
+    local aname; aname=$(echo "$agent_line" | jq -r '.name')
+    local acost; acost=$(echo "$agent_line" | jq '.cost_usd')
+    local rt; rt=$(echo "$agent_line" | jq -r '.runtime')
+    local done_count=0
+    for sf in "$AGENTS_DIR/$aname"/results/*.status.json; do
+      [[ -f "$sf" ]] || continue
+      local st; st=$(jq -r '.status // ""' "$sf" 2>/dev/null)
+      [[ "$st" == "done" ]] && done_count=$((done_count + 1))
+    done
+    [[ "$done_count" -eq 0 && "$acost" == "0" ]] && continue
+    total_done=$((total_done + done_count))
+    total_cost=$(echo "scale=6; $total_cost + $acost" | bc)
+    local tpd="null"
+    if [[ "$acost" != "0" ]] && echo "$acost" | grep -qE '^[0-9.]+$'; then
+      tpd=$(echo "scale=2; $done_count / $acost" | bc)
+      [[ "$tpd" == .* ]] && tpd="0$tpd"
+    fi
+    json_agents=$(echo "$json_agents" | jq --arg n "$aname" --arg rt "$rt" \
+      --argjson d "$done_count" --argjson c "$acost" --argjson t "$tpd" \
+      '. + [{name:$n,runtime:$rt,completed_tasks:$d,cost_usd:$c,tasks_per_dollar:$t}]')
+  done <<< "$agents_arr"
+  local total_tpd="null"
+  if echo "$total_cost" | grep -qE '^[0-9.]*[1-9]'; then
+    total_tpd=$(echo "scale=2; $total_done / $total_cost" | bc)
+    [[ "$total_tpd" == .* ]] && total_tpd="0$total_tpd"
+  fi
+  if [[ "$json_mode" == "true" ]]; then
+    jq -n --argjson agents "$json_agents" --argjson td "$total_done" \
+      --argjson tc "$total_cost" --argjson ttpd "$total_tpd" \
+      '{agents:$agents,total_completed:$td,total_cost_usd:$tc,total_tasks_per_dollar:$ttpd}'
+    return 0
+  fi
+  printf "  %-14s\n" "Efficiency:"
+  local count; count=$(echo "$json_agents" | jq 'length')
+  if [[ "$count" -eq 0 ]]; then
+    printf "    (no data)\n"
+    return 0
+  fi
+  echo "$json_agents" | jq -r '.[] | if .tasks_per_dollar == null then "    \(.name) (\(.runtime)): \(.completed_tasks) tasks, $\(.cost_usd) — N/A (free)" else "    \(.name) (\(.runtime)): \(.completed_tasks) tasks, $\(.cost_usd) — \(.tasks_per_dollar) tasks/$" end'
+  if [[ "$total_tpd" == "null" ]]; then
+    printf "  %-14s %d tasks, $0 — N/A\n" "Total:" "$total_done"
+  else
+    printf "  %-14s %d tasks, $%s — %s tasks/$\n" "Total:" "$total_done" "$(echo "$total_cost" | sed 's/\.0*$//')" "$total_tpd"
+  fi
+}
+
 cmd_stats() {
   ensure_init
-  local json_mode=false tokens_mode=false cost_mode=false
+  local json_mode=false tokens_mode=false cost_mode=false efficiency_mode=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json_mode=true; shift ;;
       --tokens) tokens_mode=true; shift ;;
       --cost) cost_mode=true; shift ;;
-      *) die "usage: sage stats [--json] [--tokens] [--cost]" ;;
+      --efficiency) efficiency_mode=true; shift ;;
+      *) die "usage: sage stats [--json] [--tokens] [--cost] [--efficiency]" ;;
     esac
   done
 
   if $tokens_mode; then _stats_tokens "$json_mode"; return; fi
   if $cost_mode; then _stats_cost "$json_mode"; return; fi
+  if $efficiency_mode; then _stats_efficiency "$json_mode"; return; fi
 
   local total_agents=0 running=0 stopped=0
   local tasks_done=0 tasks_failed=0 tasks_pending=0 total_secs=0
