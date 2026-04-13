@@ -4678,15 +4678,88 @@ $tmsg"
 # sage help
 # ═══════════════════════════════════════════════
 # ═══ Dashboard ═══
+_dashboard_live() {
+  local agents=() selected=0
+  _dash_load_agents() {
+    agents=()
+    for d in "$AGENTS_DIR"/*/; do
+      [[ -d "$d" ]] || continue
+      local n; n=$(basename "$d")
+      [[ "$n" == .* ]] && continue
+      agents+=("$n")
+    done
+  }
+  _dash_render() {
+    local count=${#agents[@]}
+    if [[ $count -eq 0 ]]; then
+      echo "No agents found. Create one: sage create <name>"
+      echo ""
+      echo "  q=quit"
+      return
+    fi
+    echo "── sage dashboard (live) ── $count agents ──"
+    echo ""
+    local i=0
+    for n in "${agents[@]}"; do
+      local rt; rt=$(jq -r '.runtime // "bash"' "$AGENTS_DIR/$n/runtime.json" 2>/dev/null || echo "bash")
+      local st="stopped"
+      agent_pid "$n" >/dev/null 2>&1 && st="running"
+      local marker="  "
+      [[ $i -eq $selected ]] && marker="> "
+      printf "%s%-16s %-10s %s\n" "$marker" "$n" "$rt" "$st"
+      i=$((i + 1))
+    done
+    echo ""
+    echo "  j/k=navigate  r=restart  s=stop  l=logs  t=send task  q=quit"
+  }
+  _dash_load_agents
+  # Non-TTY: render once and exit
+  if [[ ! -t 0 ]]; then
+    _dash_render
+    return 0
+  fi
+  # Interactive loop
+  trap 'tput cnorm 2>/dev/null; stty echo 2>/dev/null' EXIT
+  tput civis 2>/dev/null  # hide cursor
+  while true; do
+    tput clear 2>/dev/null || printf '\033[2J\033[H'
+    _dash_render
+    local key=""
+    read -rsn1 -t 2 key || true
+    local count=${#agents[@]}
+    case "$key" in
+      q) break ;;
+      j) [[ $count -gt 0 ]] && selected=$(( (selected + 1) % count )) ;;
+      k) [[ $count -gt 0 ]] && selected=$(( (selected - 1 + count) % count )) ;;
+      r) [[ $count -gt 0 ]] && { cmd_restart "${agents[$selected]}" 2>/dev/null; sleep 1; } ;;
+      s) [[ $count -gt 0 ]] && { cmd_stop "${agents[$selected]}" 2>/dev/null; sleep 1; } ;;
+      l) [[ $count -gt 0 ]] && { tput cnorm 2>/dev/null; cmd_logs "${agents[$selected]}" 2>/dev/null; } ;;
+      t) [[ $count -gt 0 ]] && {
+           tput cnorm 2>/dev/null
+           printf "Task for %s: " "${agents[$selected]}"
+           local task; read -r task
+           [[ -n "$task" ]] && cmd_send "${agents[$selected]}" "$task" 2>/dev/null
+           tput civis 2>/dev/null
+           sleep 1
+         } ;;
+      "") _dash_load_agents ;;  # timeout — refresh
+    esac
+  done
+  tput cnorm 2>/dev/null
+}
+
 cmd_dashboard() {
   ensure_init
-  local json=false
+  local json=false live=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json=true; shift ;;
+      --live) live=true; shift ;;
       *) die "unknown flag: $1" ;;
     esac
   done
+  if $json && $live; then die "--json and --live are mutually exclusive"; fi
+  if $live; then _dashboard_live; return; fi
 
   local agent_count=0
   local agents=()
@@ -5258,7 +5331,7 @@ cmd_help() {
                   [--format json]  JSON export for programmatic use
     rm <name>                   Remove agent
     clean                       Clean up stale files
-    dashboard [--json]          Agent overview: status, runtime, activity
+    dashboard [--json|--live]    Agent overview: status, runtime, activity
     checkpoint <name|--all>     Save agent state to disk for later restore
     restore [name|--all]        Restore agents from checkpoints after reboot
     recover [--yes]             Detect and fix orphaned/dead agent sessions
