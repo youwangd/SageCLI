@@ -5529,8 +5529,16 @@ _stats_cost() {
   local cf="$SAGE_HOME/config.json"
   local total_cost=0 json_agents="[]"
   # Default pricing ($/M tokens): input, output
-  local -A _def_in=([claude-code]=3 [gemini-cli]=1.25 [codex]=2.50 [kiro]=3 [cline]=3)
-  local -A _def_out=([claude-code]=15 [gemini-cli]=5 [codex]=10 [kiro]=15 [cline]=15)
+  _def_pricing() {
+    case "$1:$2" in
+      claude-code:in) echo 3;; claude-code:out) echo 15;;
+      gemini-cli:in) echo 1.25;; gemini-cli:out) echo 5;;
+      codex:in) echo 2.50;; codex:out) echo 10;;
+      kiro:in) echo 3;; kiro:out) echo 15;;
+      cline:in) echo 3;; cline:out) echo 15;;
+      *) echo 0;;
+    esac
+  }
 
   for agent_dir in "$AGENTS_DIR"/*/; do
     [[ -d "$agent_dir" ]] || continue
@@ -5552,8 +5560,8 @@ _stats_cost() {
     local pin=0 pout=0
     local cfg_in; cfg_in=$(_config_get "pricing.$rt.input")
     local cfg_out; cfg_out=$(_config_get "pricing.$rt.output")
-    if [[ -n "$cfg_in" ]]; then pin="$cfg_in"; elif [[ -n "${_def_in[$rt]:-}" ]]; then pin="${_def_in[$rt]}"; fi
-    if [[ -n "$cfg_out" ]]; then pout="$cfg_out"; elif [[ -n "${_def_out[$rt]:-}" ]]; then pout="${_def_out[$rt]}"; fi
+    if [[ -n "$cfg_in" ]]; then pin="$cfg_in"; else pin=$(_def_pricing "$rt" in); fi
+    if [[ -n "$cfg_out" ]]; then pout="$cfg_out"; else pout=$(_def_pricing "$rt" out); fi
     # cost = tokens * (rate / 1M)
     local cost; cost=$(echo "scale=6; $ain * $pin / 1000000 + $aout * $pout / 1000000" | bc)
     # Truncate to integer for jq compatibility if whole number
