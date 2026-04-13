@@ -6,7 +6,7 @@
 
 ## Current State
 
-SageCLI is a **6,167-line pure bash** AI agent orchestrator. 47 commands, 8 runtimes, 460 tests, CI on every push.
+SageCLI is a **6,179-line pure bash** AI agent orchestrator. 47 commands, 8 runtimes, 465 tests, CI on every push.
 
 **What we ship that nobody else does in pure bash:**
 - Runtime-agnostic orchestration (claude-code, cline, kiro, gemini-cli, codex, bash)
@@ -165,7 +165,7 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 **Use case**: "Watch my src/ dir, auto-trigger test agent on every save"
 
 - [x] `sage watch <dir> --agent <name>` — poll-based file watcher with debounce
-- [ ] `sage watch --on-change <script>` — run arbitrary command on change
+- [x] `sage watch --on-change <script>` — run arbitrary command on change
 - [ ] Watch integration with plan orchestrator (auto-re-run plan on file change)
 
 ---
