@@ -20,15 +20,16 @@ _trigger_change() {
   nohup bash -c "sleep $delay; echo changed >> '$dir/test.txt'" </dev/null >/dev/null 2>&1 &
 }
 
-# Run sage watch with a timeout, capturing output to file to avoid pipe hangs
+# Run sage watch with a hard timeout, killing entire process group
 _run_watch_timeout() {
   local secs="$1"; shift
   local outfile="$SAGE_HOME/_watch_out.txt"
-  if command -v timeout >/dev/null 2>&1; then
-    timeout --kill-after=3 "$secs" "$@" >"$outfile" 2>&1 || true
-  else
-    perl -e "alarm $secs; exec @ARGV" "$@" >"$outfile" 2>&1 || true
-  fi
+  "$@" >"$outfile" 2>&1 &
+  local pid=$!
+  (sleep "$secs"; kill -9 "$pid" 2>/dev/null; pkill -9 -P "$pid" 2>/dev/null) &
+  local killer=$!
+  wait "$pid" 2>/dev/null || true
+  kill "$killer" 2>/dev/null; wait "$killer" 2>/dev/null || true
   output=$(cat "$outfile")
   status=0
 }
