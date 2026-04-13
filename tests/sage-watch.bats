@@ -58,9 +58,13 @@ _create_agent() {
   (sleep 2; echo "changed" >> "$WATCH_DIR/test.txt") &
   local bg_pid=$!
   # Use --max-triggers 1 so watch exits after first detection
-  # Redirect stderr to stdout so bats captures all output
+  # Use perl timeout for macOS compat (no GNU timeout)
   export SAGE_HOME
-  run timeout 10 "$SAGE" watch "$WATCH_DIR" --agent bot1 --max-triggers 1 --debounce 0
+  if command -v timeout >/dev/null 2>&1; then
+    run timeout 10 "$SAGE" watch "$WATCH_DIR" --agent bot1 --max-triggers 1 --debounce 0
+  else
+    run perl -e 'alarm 10; exec @ARGV' "$SAGE" watch "$WATCH_DIR" --agent bot1 --max-triggers 1 --debounce 0
+  fi
   wait "$bg_pid" 2>/dev/null || true
   # Should have detected the change (even if send fails because agent isn't running in tmux)
   [[ "$output" == *"change detected"* || "$output" == *"watching"* ]]
