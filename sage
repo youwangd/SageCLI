@@ -2108,7 +2108,7 @@ cmd_wait() {
 # sage watch <dir> --agent <name> [--pattern GLOB] [--debounce N] [--max-triggers N]
 # ═══════════════════════════════════════════════
 cmd_watch() {
-  local dir="" agent="" pattern="" debounce=2 max_triggers=0 task_msg=""
+  local dir="" agent="" pattern="" debounce=2 max_triggers=0 task_msg="" on_change=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -2117,19 +2117,23 @@ cmd_watch() {
       --debounce|-d)    debounce="$2"; shift 2 ;;
       --max-triggers)   max_triggers="$2"; shift 2 ;;
       --task|-t)        task_msg="$2"; shift 2 ;;
+      --on-change)      on_change="$2"; shift 2 ;;
       --help|-h)
         cat <<'HELP'
-Usage: sage watch <dir> --agent <name> [options]
+Usage: sage watch <dir> [--agent <name>] [--on-change <cmd>] [options]
 
-Watch a directory for file changes and trigger an agent.
+Watch a directory for file changes and trigger an agent or command.
 
 Options:
-  --agent, -a <name>    Agent to trigger (required)
+  --agent, -a <name>    Agent to trigger on change
+  --on-change <cmd>     Run command on change (SAGE_WATCH_FILES env set)
   --pattern, -p <glob>  Filter files by glob (e.g. '*.py')
   --debounce, -d <sec>  Cooldown between triggers (default: 2)
   --max-triggers <n>    Exit after N triggers (0 = unlimited)
   --task, -t <msg>      Custom task message (default: auto-generated)
   --help, -h            Show this help
+
+Requires --agent or --on-change (mutually exclusive).
 HELP
         return 0 ;;
       -*) die "unknown flag: $1" ;;
@@ -2138,14 +2142,17 @@ HELP
   done
 
   [[ -n "$dir" ]] || die "usage: sage watch <dir> --agent <name> [--pattern GLOB]"
-  [[ -n "$agent" ]] || die "missing required flag: --agent <name>"
+  [[ -n "$agent" || -n "$on_change" ]] || die "requires --agent or --on-change"
+  [[ -z "$agent" || -z "$on_change" ]] || die "--agent and --on-change are mutually exclusive"
   [[ -d "$dir" ]] || die "directory does not exist: $dir"
-  ensure_init; agent_exists "$agent"
+  if [[ -n "$agent" ]]; then
+    ensure_init; agent_exists "$agent"
+  fi
 
   local trigger_count=0
   local snapshot_file
   snapshot_file=$(mktemp)
-  trap 'rm -f "$snapshot_file"' EXIT
+  trap 'rm -f "${snapshot_file:-}"' EXIT
 
   # Take initial snapshot: file paths + mtimes
   _watch_snapshot() {
@@ -2177,7 +2184,7 @@ HELP
     local new_snapshot
     new_snapshot=$(_watch_snapshot)
     local changed
-    changed=$(diff <(cat "$snapshot_file") <(echo "$new_snapshot") 2>/dev/null | grep '^>' | sed 's/^> //' | awk '{print $1}')
+    changed=$(diff <(cat "$snapshot_file") <(echo "$new_snapshot") 2>/dev/null | grep '^>' | sed 's/^> //' | awk '{print $1}' || true)
 
     if [[ -n "$changed" ]]; then
       local file_list
@@ -2198,8 +2205,13 @@ HELP
       _watch_snapshot > "$snapshot_file"
 
       local msg="${task_msg:-Files changed in $dir: $file_list}"
-      info "triggering $agent..."
-      cmd_send "$agent" "$msg" 2>/dev/null || warn "failed to send to $agent"
+      if [[ -n "$on_change" ]]; then
+        info "running: $on_change"
+        SAGE_WATCH_FILES="$changed" eval "$on_change" || warn "on-change command failed"
+      else
+        info "triggering $agent..."
+        cmd_send "$agent" "$msg" 2>/dev/null || warn "failed to send to $agent"
+      fi
 
       trigger_count=$((trigger_count + 1))
       if [[ "$max_triggers" -gt 0 && "$trigger_count" -ge "$max_triggers" ]]; then
