@@ -74,7 +74,7 @@
 - ACP protocol support (persistent sessions)
 - Shell completions (bash/zsh tab-completion for commands, agents, runtimes)
 - Swarm patterns (plan --pattern fan-out, pipeline, debate, map-reduce + composable YAML pattern files via plan --run)
-- Dashboard (sage dashboard — agent overview with status, runtime, --json for scripting)
+- Dashboard (sage dashboard — agent overview with status, runtime, --json for scripting, --live interactive mode with keyboard shortcuts)
 - Plan progress visualization (sage plan --show — wave-by-wave task status with color-coded icons)
 - Multi-agent log tailing (sage logs --all — color-coded interleaved output from all agents)
 - Agent checkpoint/restore (sage checkpoint/restore — save and resume agent state across reboots)

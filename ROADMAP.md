@@ -6,7 +6,7 @@
 
 ## Current State
 
-SageCLI is a **5,985-line pure bash** AI agent orchestrator. 42 commands, 8 runtimes, 448 tests, CI on every push.
+SageCLI is a **6,060-line pure bash** AI agent orchestrator. 42 commands, 8 runtimes, 454 tests, CI on every push.
 
 **What we ship that nobody else does in pure bash:**
 - Runtime-agnostic orchestration (claude-code, cline, kiro, gemini-cli, codex, bash)
@@ -131,7 +131,7 @@ Every orchestrator with >5K stars has visualization. Terminal-only is a differen
 - [ ] Built with `gum` or `charmbracelet/bubbletea` (stays terminal-native, no web server)
 - [x] Real-time log tailing per agent
 - [x] Plan progress visualization (wave execution)
-- [ ] Keyboard shortcuts: restart, stop, send task, view logs
+- [x] Keyboard shortcuts: restart, stop, send task, view logs
 
 ### Phase 16: Persistent Sessions
 **Use case**: "Reboot my machine, come back, agents resume where they left off"
