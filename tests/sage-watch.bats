@@ -9,16 +9,24 @@ setup() {
 }
 
 teardown() {
-  # Kill any leftover processes from this test
-  [[ -n "${_WATCH_PID:-}" ]] && kill -9 "$_WATCH_PID" 2>/dev/null && wait "$_WATCH_PID" 2>/dev/null || true
-  [[ -n "${_KILLER_PID:-}" ]] && kill -9 "$_KILLER_PID" 2>/dev/null && wait "$_KILLER_PID" 2>/dev/null || true
+  # Kill all tracked PIDs and their children
+  local pid
+  for pid in "${_ALL_PIDS[@]:-}"; do
+    kill -9 "$pid" 2>/dev/null || true
+    pkill -9 -P "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  done
+  _ALL_PIDS=()
   rm -rf "$SAGE_HOME" "$WATCH_DIR"
 }
 
-# Trigger a file change after a delay, fully detached from parent
+_track_pid() { _ALL_PIDS+=("$1"); }
+
+# Trigger a file change after a delay
 _trigger_change() {
   local dir="$1" delay="${2:-2}"
-  nohup bash -c "sleep $delay; echo changed >> '$dir/test.txt'" </dev/null >/dev/null 2>&1 &
+  bash -c "sleep $delay; echo changed >> '$dir/test.txt'" &
+  _track_pid $!
 }
 
 # Run sage watch with a hard timeout, killing entire process group
@@ -26,11 +34,13 @@ _run_watch_timeout() {
   local secs="$1"; shift
   local outfile="$SAGE_HOME/_watch_out.txt"
   "$@" >"$outfile" 2>&1 &
-  _WATCH_PID=$!
-  (sleep "$secs"; kill -9 "$_WATCH_PID" 2>/dev/null; pkill -9 -P "$_WATCH_PID" 2>/dev/null) &
-  _KILLER_PID=$!
-  wait "$_WATCH_PID" 2>/dev/null || true
-  kill "$_KILLER_PID" 2>/dev/null; wait "$_KILLER_PID" 2>/dev/null || true
+  _track_pid $!
+  local wpid=$!
+  (sleep "$secs"; kill -9 "$wpid" 2>/dev/null; pkill -9 -P "$wpid" 2>/dev/null) &
+  _track_pid $!
+  local kpid=$!
+  wait "$wpid" 2>/dev/null || true
+  kill "$kpid" 2>/dev/null; wait "$kpid" 2>/dev/null || true
   output=$(cat "$outfile")
   status=0
 }
