@@ -148,3 +148,48 @@ _create_agent() {
   run "$SAGE" watch --help
   [[ "$output" == *"--on-change"* ]]
 }
+
+@test "watch --plan triggers plan execution on file change" {
+  # Create a minimal plan YAML
+  local plan_file="$SAGE_HOME/test-plan.yaml"
+  cat > "$plan_file" <<'YAML'
+goal: test plan
+waves:
+  - name: wave1
+    tasks:
+      - agent: tester
+        task: run tests
+YAML
+  _create_agent "tester"
+  echo "initial" > "$WATCH_DIR/test.txt"
+  local marker="$SAGE_HOME/_plan_ran"
+  # Use --on-change to verify --plan is NOT accepted with it
+  _trigger_change "$WATCH_DIR"
+  _run_watch_timeout 10 "$SAGE" watch "$WATCH_DIR" --plan "$plan_file" --max-triggers 1 --debounce 0
+  [[ "$output" == *"change detected"* ]]
+  [[ "$output" == *"plan"* ]]
+}
+
+@test "watch --plan rejects non-existent plan file" {
+  run "$SAGE" watch "$WATCH_DIR" --plan "/nonexistent/plan.yaml"
+  [[ "$status" -ne 0 ]]
+  [[ "$output" == *"not"* || "$output" == *"exist"* || "$output" == *"found"* ]]
+}
+
+@test "watch --plan is mutually exclusive with --agent" {
+  _create_agent "bot1"
+  run "$SAGE" watch "$WATCH_DIR" --agent bot1 --plan "some.yaml"
+  [[ "$status" -ne 0 ]]
+  [[ "$output" == *"mutually exclusive"* || "$output" == *"cannot"* ]]
+}
+
+@test "watch --plan is mutually exclusive with --on-change" {
+  run "$SAGE" watch "$WATCH_DIR" --on-change "echo hi" --plan "some.yaml"
+  [[ "$status" -ne 0 ]]
+  [[ "$output" == *"mutually exclusive"* || "$output" == *"cannot"* ]]
+}
+
+@test "watch --help shows --plan option" {
+  run "$SAGE" watch --help
+  [[ "$output" == *"--plan"* ]]
+}
