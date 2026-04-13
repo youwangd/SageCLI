@@ -6,7 +6,7 @@
 
 ## Current State
 
-SageCLI is a **5,930-line pure bash** AI agent orchestrator. 42 commands, 8 runtimes, 442 tests, CI on every push.
+SageCLI is a **5,985-line pure bash** AI agent orchestrator. 42 commands, 8 runtimes, 448 tests, CI on every push.
 
 **What we ship that nobody else does in pure bash:**
 - Runtime-agnostic orchestration (claude-code, cline, kiro, gemini-cli, codex, bash)
@@ -153,13 +153,13 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 - [x] Model selection: `--model qwen3:8b` or `--model llama3.2:3b`
 - [x] Works with existing MCP/skills/context infrastructure
 
-### Phase 18: Agent Observability v2 ← IN PROGRESS
+### Phase 18: Agent Observability v2 ← COMPLETE
 **Use case**: "How much did my agents cost? Which one is most efficient?"
 
 - [x] Token counting per agent (parse model output for usage stats)
 - [x] Cost estimation per runtime (configurable $/token rates)
 - [x] `sage stats --cost` — aggregate cost across agents
-- [ ] `sage stats --efficiency` — tasks completed per dollar
+- [x] `sage stats --efficiency` — tasks completed per dollar
 
 ---
 
