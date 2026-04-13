@@ -9,11 +9,16 @@ setup() {
 }
 
 teardown() {
-  # Kill all tracked PIDs and their children
+  # Kill all tracked PIDs and full process trees
   local pid
   for pid in "${_ALL_PIDS[@]:-}"; do
+    # Kill entire process tree (children, grandchildren)
+    local child
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+      pkill -9 -P "$child" 2>/dev/null || true
+      kill -9 "$child" 2>/dev/null || true
+    done
     kill -9 "$pid" 2>/dev/null || true
-    pkill -9 -P "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
   _ALL_PIDS=()
@@ -29,18 +34,22 @@ _trigger_change() {
   _track_pid $!
 }
 
-# Run sage watch with a hard timeout, killing entire process group
+# Run sage watch with a hard timeout
 _run_watch_timeout() {
   local secs="$1"; shift
   local outfile="$SAGE_HOME/_watch_out.txt"
   "$@" >"$outfile" 2>&1 &
-  _track_pid $!
   local wpid=$!
-  (sleep "$secs"; kill -9 "$wpid" 2>/dev/null; pkill -9 -P "$wpid" 2>/dev/null) &
-  _track_pid $!
+  _track_pid $wpid
+  # Background: wait then kill watch (if still running)
+  { sleep "$secs" && kill -9 "$wpid" 2>/dev/null; } &
   local kpid=$!
+  _track_pid $kpid
   wait "$wpid" 2>/dev/null || true
-  kill "$kpid" 2>/dev/null; wait "$kpid" 2>/dev/null || true
+  # Kill the killer's sleep — it's a direct child of kpid
+  pkill -9 -P "$kpid" 2>/dev/null || true
+  kill -9 "$kpid" 2>/dev/null || true
+  wait "$kpid" 2>/dev/null || true
   output=$(cat "$outfile")
   status=0
 }
