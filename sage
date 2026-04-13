@@ -1654,6 +1654,21 @@ $message"
     fi
   fi
 
+  # Auto-inject per-agent memory
+  local _mem_dir="$AGENTS_DIR/$to/memory"
+  if [[ -d "$_mem_dir" ]]; then
+    local _mem_keys _mem_block=""
+    _mem_keys=$(ls "$_mem_dir/" 2>/dev/null) || true
+    if [[ -n "$_mem_keys" ]]; then
+      while IFS= read -r _mk; do
+        _mem_block="${_mem_block}${_mk}=$(cat "$_mem_dir/$_mk")"$'\n'
+      done <<< "$_mem_keys"
+      message="[Memory]
+${_mem_block}
+$message"
+    fi
+  fi
+
   # Auto-inject unread messages and clear them
   local _msg_dir="$AGENTS_DIR/$to/messages"
   if [[ -d "$_msg_dir" ]]; then
@@ -6201,6 +6216,52 @@ cmd_context() {
     *) die "usage: sage context {set|get|ls|rm|clear}" ;;
   esac
 }
+cmd_memory() {
+  ensure_init
+  local sub="${1:-}"
+  local agent="${2:-}"
+  [[ -n "$sub" && -n "$agent" ]] || die "usage: sage memory {set|get|ls|rm|clear} <agent> [key] [value]"
+  local mem_dir="$AGENTS_DIR/$agent/memory"
+  [[ -d "$AGENTS_DIR/$agent" ]] || die "agent '$agent' not found"
+  mkdir -p "$mem_dir"
+  case "$sub" in
+    set)
+      [[ -n "${3:-}" && -n "${4:-}" ]] || die "usage: sage memory set <agent> <key> <value>"
+      local key="$3"; shift 3; local val="$*"
+      [[ "$key" =~ ^[a-zA-Z0-9._-]+$ ]] || die "invalid key '$key'"
+      printf '%s' "$val" > "$mem_dir/$key"
+      info "set $key for $agent"
+      ;;
+    get)
+      [[ -n "${3:-}" ]] || die "usage: sage memory get <agent> <key>"
+      [[ -f "$mem_dir/$3" ]] || die "key '$3' not found"
+      cat "$mem_dir/$3"
+      ;;
+    ls)
+      local keys
+      keys=$(ls "$mem_dir/" 2>/dev/null)
+      if [[ -z "$keys" ]]; then
+        info "no memory keys for $agent"
+      else
+        for k in $keys; do
+          printf "  %s = %s\n" "$k" "$(cat "$mem_dir/$k")"
+        done
+      fi
+      ;;
+    rm)
+      [[ -n "${3:-}" ]] || die "usage: sage memory rm <agent> <key>"
+      [[ -f "$mem_dir/$3" ]] || die "key '$3' not found"
+      rm "$mem_dir/$3"
+      info "removed $3 from $agent"
+      ;;
+    clear)
+      rm -f "$mem_dir"/* 2>/dev/null
+      info "cleared all memory for $agent"
+      ;;
+    *) die "usage: sage memory {set|get|ls|rm|clear} <agent> [key] [value]" ;;
+  esac
+}
+
 
 # ═══ Main ═══
 case "${1:-}" in
@@ -6235,6 +6296,7 @@ case "${1:-}" in
   mcp)     shift; cmd_mcp "$@" ;;
   skill)   shift; cmd_skill "$@" ;;
   context) shift; cmd_context "$@" ;;
+  memory)  shift; cmd_memory "$@" ;;
   msg)     shift; cmd_msg "$@" ;;
   env)     shift; cmd_env "$@" ;;
   config)  shift; cmd_config "$@" ;;
