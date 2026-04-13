@@ -20,6 +20,7 @@ SageCLI is a **6,179-line pure bash** AI agent orchestrator. 47 commands, 8 runt
 - ACP protocol support
 - Agent export/import (file + URL)
 - Per-agent environment variables
+- Per-agent persistent memory (auto-injected into prompts)
 - Agent chaining (`--then` pipelines)
 
 ---

@@ -23,6 +23,7 @@
 - `sage logs`
 - `sage ls`
 - `sage mcp`
+- `sage memory`
 - `sage merge`
 - `sage msg`
 - `sage peek`
@@ -65,6 +66,7 @@
 - MCP server registry (mcp add/ls/rm, create --mcp, mcp tools)
 - Skills system (skill install/ls/rm/show/run, create --skill, registries)
 - Shared context store (context set/get/ls/rm, auto-inject)
+- Per-agent persistent memory (memory set/get/ls/rm/clear, auto-inject into prompts)
 - Inter-agent messaging (msg send/ls/clear, auto-inject on send)
 - Agent chaining (send --then, multi-step pipelines)
 - Agent export/import (export, create --from file/URL, diff)
