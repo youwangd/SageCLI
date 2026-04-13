@@ -2181,17 +2181,19 @@ HELP
 
   while true; do
     sleep 1
-    local new_snapshot
-    new_snapshot=$(_watch_snapshot)
+    local new_snapshot_file
+    new_snapshot_file=$(mktemp)
+    _watch_snapshot > "$new_snapshot_file"
     local changed
-    changed=$(diff <(cat "$snapshot_file") <(echo "$new_snapshot") 2>/dev/null | grep '^>' | sed 's/^> //' | awk '{print $1}' || true)
+    changed=$(diff "$snapshot_file" "$new_snapshot_file" 2>/dev/null | grep '^>' | sed 's/^> //' | awk '{print $1}' || true)
 
     if [[ -n "$changed" ]]; then
       local file_list
       file_list=$(echo "$changed" | head -5)
       local count
       count=$(echo "$changed" | wc -l | tr -d ' ')
-      echo "$new_snapshot" > "$snapshot_file"
+      cp "$new_snapshot_file" "$snapshot_file"
+      rm -f "$new_snapshot_file"
 
       info "change detected: $count file(s)"
       echo "$file_list" | while IFS= read -r f; do
@@ -2216,8 +2218,11 @@ HELP
       trigger_count=$((trigger_count + 1))
       if [[ "$max_triggers" -gt 0 && "$trigger_count" -ge "$max_triggers" ]]; then
         info "reached max triggers ($max_triggers), exiting"
+        rm -f "$new_snapshot_file"
         return 0
       fi
+    else
+      rm -f "$new_snapshot_file"
     fi
   done
 }
