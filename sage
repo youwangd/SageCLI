@@ -6767,7 +6767,8 @@ case "${1:-}" in
   task)    shift; cmd_task "$@" ;;
   runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;
-  help|-h|--help|"") shift; cmd_help "$@" ;;
+  help|-h|--help) shift; cmd_help "$@" ;;
+  "") cmd_help ;;
   dashboard) shift; cmd_dashboard "$@" ;;
   checkpoint) shift; cmd_checkpoint "$@" ;;
   restore) shift; cmd_restore "$@" ;;
