@@ -5796,7 +5796,134 @@ cmd_export() {
   ok "exported '$name' → $output"
 }
 
+_help_command() {
+  case "$1" in
+    send)
+      cat << 'HELP'
+  sage send <agent> <message|@file> [flags]
+
+  Send a task to an agent. Reads from stdin when piped.
+
+  FLAGS
+    --headless      Run synchronously without tmux (required for --then/--on-fail/--retry)
+    --json          Output result as JSON (requires --headless)
+    --force         Cancel current task and send new one
+    --then <agent>  Chain: on success, forward output to next agent
+    --on-fail <cmd> Run command on failure (env: SAGE_FAIL_AGENT, SAGE_FAIL_TASK, SAGE_FAIL_OUTPUT)
+    --retry N       Retry N times on failure
+    --strict        Retry if output looks incomplete (max 3 retries)
+    --dry-run       Preview assembled prompt without executing
+    --attach <file> Append file contents as context (max 100KB, repeatable)
+    --tag <label>   Tag the task for filtering (repeatable)
+    --no-context    Skip injecting shared context
+
+  EXAMPLES
+    sage send worker "Fix the login bug"
+    echo "Review this" | sage send reviewer --headless --json
+    sage send builder "Deploy" --headless --on-fail 'sage send ops "deploy failed"'
+    sage send coder "Refactor auth" --attach src/auth.py --tag refactor
+HELP
+      ;;
+    create)
+      cat << 'HELP'
+  sage create <name> [flags]
+
+  Create a new agent.
+
+  FLAGS
+    --runtime <rt>   Runtime: bash|cline|claude-code|gemini-cli|codex|ollama|llama-cpp|acp
+    --model <model>  Model name (e.g. claude-sonnet-4-20250514, qwen3:8b)
+    --agent <name>   ACP agent name (with --runtime acp)
+    --worktree       Create git worktree for isolation
+    --mcp <server>   Attach MCP server (repeatable)
+    --skill <name>   Attach skill
+    --from <path|url> Import agent from archive or URL
+    --env K=V        Set environment variable (repeatable)
+    --allow-env K,K  Restrict env var access (allowlist)
+    --timeout <dur>  Task timeout (e.g. 5m, 1h)
+    --max-turns N    Max LLM turns per task
+
+  EXAMPLES
+    sage create worker --runtime claude-code
+    sage create local-bot --runtime ollama --model qwen3:8b
+    sage create reviewer --runtime cline --worktree --mcp github
+HELP
+      ;;
+    plan)
+      cat << 'HELP'
+  sage plan <goal> [flags]
+  sage plan --run <file> [flags]
+  sage plan --pattern <pattern> [flags]
+
+  Orchestrate multi-agent work with dependency waves.
+
+  FLAGS
+    --pattern <p>    Swarm pattern: fan-out, pipeline, debate, map-reduce
+    --run <file>     Execute saved plan (JSON/YAML)
+    --resume <file>  Resume from failure point
+    --recover        Detect and resume interrupted plans
+    --validate <f>   Check plan structure without executing
+    --save <file>    Save generated plan to file
+    --show           Visualize wave execution progress
+    --yes            Auto-approve without prompting
+
+  EXAMPLES
+    sage plan "Review PR #42 for security and style"
+    sage plan --pattern fan-out "Audit src/*.py" --yes
+    sage plan --validate my-plan.yaml
+    sage plan --run deploy-pipeline.yaml --resume deploy-pipeline.yaml
+HELP
+      ;;
+    logs)
+      cat << 'HELP'
+  sage logs <name> [flags]
+
+  View, tail, search, or clear agent logs.
+
+  FLAGS
+    -f              Follow/tail log output
+    --clear         Clear log file
+    --all           Show all agents' logs (color-coded)
+    --grep <pat>    Search logs (case-insensitive, highlighted)
+
+  EXAMPLES
+    sage logs worker -f
+    sage logs --all --grep "error"
+    sage logs builder --clear
+HELP
+      ;;
+    history)
+      cat << 'HELP'
+  sage history [flags]
+
+  Show agent activity timeline.
+
+  FLAGS
+    --agent <name>  Filter by agent
+    --tag <label>   Filter by task tag
+    --since <dur>   Filter by age (30m, 2h, 1d, 1w)
+    --json          Output as JSON
+    -n N            Limit to N entries
+
+  EXAMPLES
+    sage history --agent worker --since 1d
+    sage history --tag deploy --json
+    sage history -n 5
+HELP
+      ;;
+    *)
+      echo "  No detailed help for '$1'. Showing full help:"
+      echo
+      cmd_help
+      ;;
+  esac
+}
+
 cmd_help() {
+  if [[ -n "${1:-}" ]]; then
+    _help_command "$1"
+    return
+  fi
   cat << 'EOF'
 
   ⚡ sage — Simple Agent Engine
@@ -6640,7 +6767,7 @@ case "${1:-}" in
   task)    shift; cmd_task "$@" ;;
   runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;
-  help|-h|--help|"") cmd_help ;;
+  help|-h|--help|"") shift; cmd_help "$@" ;;
   dashboard) shift; cmd_dashboard "$@" ;;
   checkpoint) shift; cmd_checkpoint "$@" ;;
   restore) shift; cmd_restore "$@" ;;
