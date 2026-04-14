@@ -10,19 +10,17 @@ setup() {
 }
 
 teardown() {
-  # Kill any test agents
-  for pidfile in "$SAGE_HOME"/agents/*/.pid; do
-    [[ -f "$pidfile" ]] && kill "$(cat "$pidfile")" 2>/dev/null || true
-  done
-  sleep 0.2
   rm -rf "$SAGE_HOME"
+}
+
+# Helper: simulate a running agent by writing current shell's PID (always alive)
+_fake_running() {
+  echo "$$" > "$SAGE_HOME/agents/$1/.pid"
 }
 
 @test "max-agents: no limit by default allows start" {
   "$SAGE" create bot1 >/dev/null 2>&1
-  # Should succeed — no limit set
   run "$SAGE" start bot1
-  # start may fail due to no runtime, but should NOT fail with "concurrency limit"
   [[ "$output" != *"concurrency limit"* ]]
 }
 
@@ -36,13 +34,8 @@ teardown() {
   "$SAGE" config set max-agents 1
   "$SAGE" create bot1 >/dev/null 2>&1
   "$SAGE" create bot2 >/dev/null 2>&1
-  # Simulate bot1 running by creating a pid file with a live process
-  bash -c "sleep 10" &
-  local pid=$!
-  echo "$pid" > "$SAGE_HOME/agents/bot1/.pid"
-  # Now try to start bot2 — should fail
+  _fake_running bot1
   run "$SAGE" start bot2
-  kill "$pid" 2>/dev/null || true
   [ "$status" -ne 0 ]
   [[ "$output" == *"concurrency limit"* ]]
 }
@@ -51,11 +44,8 @@ teardown() {
   "$SAGE" config set max-agents 1
   "$SAGE" create bot1 >/dev/null 2>&1
   "$SAGE" create bot2 >/dev/null 2>&1
-  bash -c "sleep 10" &
-  local pid=$!
-  echo "$pid" > "$SAGE_HOME/agents/bot1/.pid"
+  _fake_running bot1
   run "$SAGE" send bot2 "hello"
-  kill "$pid" 2>/dev/null || true
   [ "$status" -ne 0 ]
   [[ "$output" == *"concurrency limit"* ]]
 }
@@ -64,11 +54,7 @@ teardown() {
   "$SAGE" config set max-agents 2
   "$SAGE" create bot1 >/dev/null 2>&1
   "$SAGE" create bot2 >/dev/null 2>&1
-  bash -c "sleep 10" &
-  local pid=$!
-  echo "$pid" > "$SAGE_HOME/agents/bot1/.pid"
-  # bot2 start should NOT fail with concurrency limit (1 running, limit 2)
+  _fake_running bot1
   run "$SAGE" start bot2
-  kill "$pid" 2>/dev/null || true
   [[ "$output" != *"concurrency limit"* ]]
 }
