@@ -1591,7 +1591,7 @@ cmd_status() {
 # ═══════════════════════════════════════════════
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
-  local then_chain="" retry_max=0 strict=false
+  local then_chain="" retry_max=0 strict=false dry_run=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1602,6 +1602,7 @@ cmd_send() {
       --then)        then_chain="${then_chain:+$then_chain }$2"; shift 2 ;;
       --retry)       retry_max="$2"; shift 2 ;;
       --strict)      strict=true; shift ;;
+      --dry-run)     dry_run=true; shift ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1645,7 +1646,7 @@ cmd_send() {
   if [[ "$to" != ".cli" ]]; then
     agent_exists "$to"
     # Auto-start if not running (skip for headless — no tmux needed)
-    if [[ "$headless" != true ]] && ! agent_pid "$to" >/dev/null 2>&1; then
+    if [[ "$headless" != true && "$dry_run" != true ]] && ! agent_pid "$to" >/dev/null 2>&1; then
       cmd_start "$to"
     fi
   fi
@@ -1723,6 +1724,12 @@ ${_msg_block}
 $message"
       rm -f "$_msg_dir"/*.json
     fi
+  fi
+
+  # --dry-run: print assembled prompt and exit
+  if [[ "$dry_run" == true ]]; then
+    printf '%s\n' "$message"
+    return 0
   fi
 
   # --headless: run task directly without tmux
