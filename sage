@@ -5506,6 +5506,41 @@ cmd_recover() {
   fi
 }
 
+cmd_alias() {
+  ensure_init
+  local aliasfile="$SAGE_HOME/aliases.json"
+  [[ -f "$aliasfile" ]] || echo '{}' > "$aliasfile"
+
+  local action="${1:-ls}"; shift 2>/dev/null || true
+
+  case "$action" in
+    set)
+      local name="$1" expansion="$2"
+      [[ -n "$name" && -n "$expansion" ]] || die "usage: sage alias set <name> <expansion>"
+      local tmp; tmp=$(jq --arg k "$name" --arg v "$expansion" '.[$k]=$v' "$aliasfile")
+      printf '%s\n' "$tmp" > "$aliasfile"
+      ok "alias '$name' → $expansion"
+      ;;
+    ls)
+      if [[ "$(jq 'length' "$aliasfile")" -eq 0 ]]; then
+        printf "\n  ${DIM}no aliases defined${NC}\n\n"; return
+      fi
+      printf "\n${BOLD}  Aliases${NC}\n\n"
+      jq -r 'to_entries[]|"  \(.key) → \(.value)"' "$aliasfile"
+      printf "\n"
+      ;;
+    rm)
+      local name="$1"
+      [[ -n "$name" ]] || die "usage: sage alias rm <name>"
+      jq -e --arg k "$name" 'has($k)' "$aliasfile" >/dev/null 2>&1 || die "alias '$name' not found"
+      local tmp; tmp=$(jq --arg k "$name" 'del(.[$k])' "$aliasfile")
+      printf '%s\n' "$tmp" > "$aliasfile"
+      ok "removed alias '$name'"
+      ;;
+    *) die "usage: sage alias [set|ls|rm]" ;;
+  esac
+}
+
 cmd_upgrade() {
   local check_only=false
   [[ "${1:-}" == "--check" ]] && check_only=true
@@ -6526,10 +6561,21 @@ case "${1:-}" in
   restore) shift; cmd_restore "$@" ;;
   recover) shift; cmd_recover "$@" ;;
   doctor) shift; cmd_doctor "$@" ;;
+  alias)  shift; cmd_alias "$@" ;;
   history) shift; cmd_history "$@" ;;
   stats)   shift; cmd_stats "$@" ;;
   info)    shift; cmd_info "$@" ;;
   upgrade) shift; cmd_upgrade "$@" ;;
   version|--version|-v) echo "sage $SAGE_VERSION" ;;
-  *)       die "unknown command: $1. Run: sage help" ;;
+  *)
+    # Check aliases before failing
+    _af="$SAGE_HOME/aliases.json"
+    if [[ -f "$_af" ]] && jq -e --arg k "$1" 'has($k)' "$_af" >/dev/null 2>&1; then
+      _exp=$(jq -r --arg k "$1" '.[$k]' "$_af")
+      shift
+      eval "set -- $_exp \"\$@\""
+      exec "$0" "$@"
+    fi
+    die "unknown command: $1. Run: sage help"
+    ;;
 esac
