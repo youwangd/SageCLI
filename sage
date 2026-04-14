@@ -1616,6 +1616,11 @@ cmd_send() {
     esac
   done
 
+  # Read from stdin if piped and no message given
+  if [[ -z "$message" && ! -t 0 ]]; then
+    message=$(cat)
+  fi
+
   [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file> [--force|--headless|--json|--then <agent>]"
 
   # --then requires --headless
