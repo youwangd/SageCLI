@@ -5106,6 +5106,21 @@ cmd_doctor() {
   if [[ "${1:-}" == "--agents" ]]; then
     _doctor_agents; return $?
   fi
+  if [[ "${1:-}" == "--all" ]]; then
+    local total_fails=0 r=0
+    cmd_doctor; total_fails=$?
+    echo ""
+    _doctor_security; r=$?; total_fails=$((total_fails + r))
+    echo ""
+    _doctor_agents; r=$?; total_fails=$((total_fails + r))
+    echo ""
+    if [[ "$total_fails" -eq 0 ]]; then
+      echo -e "${GREEN}All checks passed (basic + security + agents).${NC}"
+    else
+      echo -e "${RED}$total_fails total issue(s) across all checks.${NC}"
+    fi
+    return "$total_fails"
+  fi
   local fails=0
   _doc_check() {
     local label="$1" ok="$2" msg="$3"
@@ -5199,6 +5214,8 @@ cmd_doctor() {
   else
     echo -e "${RED}$fails issue(s) found.${NC}"
   fi
+  echo ""
+  echo "Run --all for full check (basic + security + agents)"
   return "$fails"
 }
 
