@@ -87,4 +87,5 @@
 - Agent checkpoint/restore (sage checkpoint/restore — save and resume agent state across reboots)
 - Session recovery (sage recover — detect and fix orphaned/dead agent sessions after crash or reboot)
 - Plan recovery (sage plan --recover — detect and resume interrupted plans after reboot)
+- Plan validation (sage plan --validate — check plan YAML/JSON structure, fields, and dependency cycles without executing)
 - Local model support (ollama + llama-cpp runtimes — run agents with local models, no cloud API needed)

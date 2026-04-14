@@ -10,7 +10,7 @@ SageCLI is a **6,179-line pure bash** AI agent orchestrator. 47 commands, 8 runt
 
 **What we ship that nobody else does in pure bash:**
 - Runtime-agnostic orchestration (claude-code, cline, kiro, gemini-cli, codex, bash)
-- Plan orchestrator with wave-based dependency execution
+- Plan orchestrator with wave-based dependency execution and validation
 - Git worktree isolation per agent
 - MCP server lifecycle management
 - Skills system with registry support

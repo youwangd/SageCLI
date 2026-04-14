@@ -5745,6 +5745,7 @@ cmd_help() {
     plan --run <file>           Execute a saved plan (JSON) or pattern file (YAML)
     plan --resume <file>        Resume from failure point
     plan --recover              Detect and resume interrupted plans
+    plan --validate <file>      Validate plan YAML/JSON without executing
     plan --list                 Show saved plans
 
   DEBUG
