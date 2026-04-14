@@ -77,6 +77,7 @@
 - Command aliases (alias set/ls/rm — reusable shortcuts for common workflows, like git aliases)
 - File attachment (send --attach <file> — append file contents as context alongside message, multiple files supported, 100KB limit)
 - Task tagging (send --tag <label> — tag tasks for filtering, history --tag <label> filters by tag, multiple tags supported, shown in history output)
+- Time-based history filter (history --since <duration> — filter tasks by age: 30m, 2h, 1d, 1w, combines with --tag and --agent)
 - Security audit (doctor --security — report agents missing guardrails with exit code)
 - Runtime dependency check (doctor --agents — verify each agent's runtime binary is installed)
 - Unified health check (doctor --all — run basic + security + agents checks in one pass)
