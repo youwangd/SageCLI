@@ -1910,16 +1910,23 @@ cmd_call() {
 # sage logs <name> [-f] [--clear] | sage logs --all [-f]
 # ═══════════════════════════════════════════════
 cmd_logs() {
-  local name="${1:-}" flag="${2:-}"
-  [[ -n "$name" ]] || die "usage: sage logs <name> [-f|--clear|--all]"
+  local name="" flag="" grep_pat=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --grep) grep_pat="${2:-}"; [[ -n "$grep_pat" ]] || die "usage: sage logs <name> --grep <pattern>"; shift 2 ;;
+      -f|--clear|--all) flag="$1"; shift ;;
+      -*) die "unknown flag: $1" ;;
+      *) [[ -z "$name" ]] && name="$1" || flag="$1"; shift ;;
+    esac
+  done
+  [[ -n "$name" || "$flag" == "--all" ]] || die "usage: sage logs <name> [-f|--clear|--all|--grep <pattern>]"
   ensure_init
 
-  if [[ "$name" == "--all" ]]; then
-    _logs_all "$flag"
+  if [[ "$flag" == "--all" ]]; then
+    _logs_all "" "$grep_pat"
     return
   fi
 
-  # Validate name to prevent path traversal
   [[ "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "invalid agent name"
   local logfile="$LOGS_DIR/$name.log"
 
@@ -1930,11 +1937,18 @@ cmd_logs() {
   fi
 
   [[ -f "$logfile" ]] || die "no logs for '$name'"
-  [[ "$flag" == "-f" ]] && tail -f "$logfile" || tail -50 "$logfile"
+
+  if [[ -n "$grep_pat" ]]; then
+    grep -i --color=always "$grep_pat" "$logfile" || true
+  elif [[ "$flag" == "-f" ]]; then
+    tail -f "$logfile"
+  else
+    tail -50 "$logfile"
+  fi
 }
 
 _logs_all() {
-  local follow="${1:-}" colors=("31" "32" "33" "34" "35" "36") ci=0 found=false
+  local follow="${1:-}" grep_pat="${2:-}" colors=("31" "32" "33" "34" "35" "36") ci=0 found=false
   local pids=()
   for logfile in "$LOGS_DIR"/*.log; do
     [[ -f "$logfile" ]] || continue
@@ -1943,7 +1957,9 @@ _logs_all() {
     found=true
     local c="${colors[$((ci % ${#colors[@]}))]}"
     ci=$((ci + 1))
-    if [[ "$follow" == "-f" ]]; then
+    if [[ -n "$grep_pat" ]]; then
+      grep -i "$grep_pat" "$logfile" 2>/dev/null | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /"
+    elif [[ "$follow" == "-f" ]]; then
       tail -f "$logfile" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /" &
       pids+=($!)
     else
@@ -6474,7 +6490,7 @@ case "${1:-}" in
   watch)   shift; cmd_watch "$@" ;;
   peek)    shift; cmd_peek "$@" ;;
   inbox)   shift; cmd_inbox "$@" ;;
-  logs)    cmd_logs "${2:-}" "${3:-}" ;;
+  logs)    shift; cmd_logs "$@" ;;
   trace)   shift; cmd_trace "$@" ;;
   attach)  cmd_attach "${2:-}" ;;
   ls)      shift; cmd_ls "$@" ;;
