@@ -37,7 +37,7 @@ teardown() {
   "$SAGE" create bot1 >/dev/null 2>&1
   "$SAGE" create bot2 >/dev/null 2>&1
   # Simulate bot1 running by creating a pid file with a live process
-  bash -c "sleep 60" &
+  bash -c "sleep 10" &
   local pid=$!
   echo "$pid" > "$SAGE_HOME/agents/bot1/.pid"
   # Now try to start bot2 — should fail
@@ -51,7 +51,7 @@ teardown() {
   "$SAGE" config set max-agents 1
   "$SAGE" create bot1 >/dev/null 2>&1
   "$SAGE" create bot2 >/dev/null 2>&1
-  bash -c "sleep 60" &
+  bash -c "sleep 10" &
   local pid=$!
   echo "$pid" > "$SAGE_HOME/agents/bot1/.pid"
   run "$SAGE" send bot2 "hello"
@@ -64,7 +64,7 @@ teardown() {
   "$SAGE" config set max-agents 2
   "$SAGE" create bot1 >/dev/null 2>&1
   "$SAGE" create bot2 >/dev/null 2>&1
-  bash -c "sleep 60" &
+  bash -c "sleep 10" &
   local pid=$!
   echo "$pid" > "$SAGE_HOME/agents/bot1/.pid"
   # bot2 start should NOT fail with concurrency limit (1 running, limit 2)

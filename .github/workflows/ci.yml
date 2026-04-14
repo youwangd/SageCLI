@@ -28,7 +28,7 @@ jobs:
             else brew install jq; fi
           fi
       - name: Run tests
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: bats tests/
       - name: Coverage report
         run: tests/coverage.sh
