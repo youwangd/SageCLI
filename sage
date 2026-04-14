@@ -5024,7 +5024,47 @@ cmd_dashboard() {
 }
 
 # ═══ Doctor ═══
+_doctor_security() {
+  ensure_init
+  local total=0 guarded=0 partial=0 none=0 fails=0
+  echo -e "${BOLD}sage doctor --security${NC}"
+  echo ""
+  for agent_dir in "$AGENTS_DIR"/*/; do
+    [[ -d "$agent_dir" ]] || continue
+    local name rt missing=""
+    name=$(basename "$agent_dir")
+    [[ "$name" == .* ]] && continue
+    rt="$agent_dir/runtime.json"
+    [[ -f "$rt" ]] || continue
+    total=$((total + 1))
+    local has_timeout=0 has_turns=0
+    local ts mt
+    ts=$(jq -r '.timeout_seconds // 0' "$rt" 2>/dev/null)
+    mt=$(jq -r '.max_turns // 0' "$rt" 2>/dev/null)
+    [[ "$ts" != "0" && "$ts" != "null" && -n "$ts" ]] && has_timeout=1
+    [[ "$mt" != "0" && "$mt" != "null" && -n "$mt" ]] && has_turns=1
+    if [[ "$has_timeout" -eq 1 && "$has_turns" -eq 1 ]]; then
+      echo -e "${GREEN}✓${NC} $name — guarded (timeout=${ts}s, max-turns=$mt)"
+      guarded=$((guarded + 1))
+    elif [[ "$has_timeout" -eq 1 || "$has_turns" -eq 1 ]]; then
+      [[ "$has_timeout" -eq 0 ]] && missing="timeout"
+      [[ "$has_turns" -eq 0 ]] && missing="max-turns"
+      echo -e "${YELLOW}⚠${NC} $name — missing $missing"
+      partial=$((partial + 1))
+    else
+      echo -e "${RED}✗${NC} $name — no guardrails"
+      none=$((none + 1))
+      fails=$((fails + 1))
+    fi
+  done
+  echo ""
+  echo "$total agent(s): $guarded guarded, $partial partial, $none none"
+  return "$fails"
+}
 cmd_doctor() {
+  if [[ "${1:-}" == "--security" ]]; then
+    _doctor_security; return $?
+  fi
   local fails=0
   _doc_check() {
     local label="$1" ok="$2" msg="$3"
@@ -6338,7 +6378,7 @@ case "${1:-}" in
   checkpoint) shift; cmd_checkpoint "$@" ;;
   restore) shift; cmd_restore "$@" ;;
   recover) shift; cmd_recover "$@" ;;
-  doctor) cmd_doctor ;;
+  doctor) shift; cmd_doctor "$@" ;;
   history) shift; cmd_history "$@" ;;
   stats)   shift; cmd_stats "$@" ;;
   info)    shift; cmd_info "$@" ;;
