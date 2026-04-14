@@ -1,6 +1,7 @@
 # SageCLI Capabilities (auto-updated)
 
 ## Commands
+- `sage alias`
 - `sage attach`
 - `sage call`
 - `sage checkpoint`
@@ -73,6 +74,7 @@
 - Agent export/import (export, create --from file/URL, diff)
 - Agent guardrails (--timeout, --max-turns, --retry, --allow-env, max-agents concurrency limit)
 - Dry-run mode (send --dry-run — preview assembled prompt with all injected context/memory/messages without executing)
+- Command aliases (alias set/ls/rm — reusable shortcuts for common workflows, like git aliases)
 - Security audit (doctor --security — report agents missing guardrails with exit code)
 - Runtime dependency check (doctor --agents — verify each agent's runtime binary is installed)
 - Unified health check (doctor --all — run basic + security + agents checks in one pass)
