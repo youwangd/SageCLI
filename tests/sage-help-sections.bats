@@ -26,12 +26,12 @@ teardown() {
 @test "sage help shows MEMORY section" {
   run "$SAGE" help
   [[ "$output" == *"MEMORY"* ]]
-  [[ "$output" == *"memory set"* ]]
+  [[ "$output" == *"memory"* ]]
 }
 
 @test "sage help shows CONTEXT section" {
   run "$SAGE" help
-  [[ "$output" == *"context set"* ]]
+  [[ "$output" == *"context"* ]]
 }
 
 @test "sage help shows ENVIRONMENT section" {

@@ -6000,6 +6000,39 @@ cmd_help() {
     tool add <name> <path>      Register a tool
     tool ls                     List tools
 
+  MCP SERVERS
+    mcp add <name> <cmd> [args] Register an MCP server
+    mcp ls                      List registered servers
+    mcp rm <name>               Remove a server
+    mcp tools [name]            List tools exposed by server(s)
+
+  SKILLS
+    skill install <url|path>    Install a skill from URL or local path
+    skill ls                    List installed skills
+    skill rm <name>             Remove a skill
+    skill show <name>           Show skill details
+    skill run <name> [args]     Execute a skill
+
+  MEMORY & CONTEXT
+    memory {set|get|ls|rm|clear} <agent> [key] [val]  Per-agent persistent memory
+    context {set|get|ls|rm} [key] [val]               Shared context store (auto-injected)
+
+  ENVIRONMENT
+    env set <agent> <key> <val> Set per-agent env var
+    env ls <agent>              List env vars
+    env rm <agent> <key>        Remove env var
+    env scope <agent>           Show effective env
+
+  OBSERVABILITY
+    stats [--json]              Aggregate statistics across agents
+    stats --cost                Cost estimation per runtime
+    stats --efficiency          Tasks completed per dollar
+
+  ALIASES
+    alias set <name> <command>  Create a reusable command shortcut
+    alias ls                    List aliases
+    alias rm <name>             Remove an alias
+
   RUNTIMES
     bash          Bash handler script (default)
     cline         Cline CLI code assistant
