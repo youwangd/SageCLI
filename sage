@@ -1621,7 +1621,8 @@ cmd_send() {
     message=$(cat)
   fi
 
-  [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file> [--force|--headless|--json|--then <agent>]"
+  [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file|-> [--force|--headless|--json|--then <agent>]
+  Reads from stdin when piped: echo 'msg' | sage send <agent> --headless"
 
   # --then requires --headless
   if [[ -n "$then_chain" && "$headless" != true ]]; then

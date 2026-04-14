@@ -63,6 +63,7 @@
 ## Features
 - Git worktree isolation (create --worktree, merge, merge --dry-run)
 - Headless/CI mode (send --headless, --json, action.yml)
+- Stdin pipe support (echo "msg" | sage send agent — Unix pipeline integration)
 - MCP server registry (mcp add/ls/rm, create --mcp, mcp tools)
 - Skills system (skill install/ls/rm/show/run, create --skill, registries)
 - Shared context store (context set/get/ls/rm, auto-inject)
