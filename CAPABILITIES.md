@@ -71,6 +71,7 @@
 - Per-agent persistent memory (memory set/get/ls/rm/clear, auto-inject into prompts)
 - Inter-agent messaging (msg send/ls/clear, auto-inject on send)
 - Agent chaining (send --then, multi-step pipelines)
+- Failure callback (send --on-fail <command> — run command on task failure with SAGE_FAIL_AGENT/TASK/OUTPUT env vars)
 - Agent export/import (export, create --from file/URL, diff)
 - Agent guardrails (--timeout, --max-turns, --retry, --allow-env, max-agents concurrency limit)
 - Dry-run mode (send --dry-run — preview assembled prompt with all injected context/memory/messages without executing)
