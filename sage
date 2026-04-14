@@ -5981,16 +5981,32 @@ cmd_info() {
   echo
 }
 # ═══ History ═══
+# Parse duration string (30m, 2h, 1d, 1w) → seconds
+_parse_duration() {
+  local d="$1"
+  local num="${d%[mhdw]}" unit="${d: -1}"
+  [[ "$num" =~ ^[0-9]+$ ]] || return 1
+  case "$unit" in
+    m) echo $((num * 60)) ;;
+    h) echo $((num * 3600)) ;;
+    d) echo $((num * 86400)) ;;
+    w) echo $((num * 604800)) ;;
+    *) return 1 ;;
+  esac
+}
+
 cmd_history() {
   ensure_init
-  local agent_filter="" limit=20 json_mode=false tag_filter=""
+  local agent_filter="" limit=20 json_mode=false tag_filter="" since_cutoff=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent) agent_filter="$2"; shift 2 ;;
       -n)      limit="$2"; shift 2 ;;
       --json)  json_mode=true; shift ;;
       --tag)   tag_filter="$2"; shift 2 ;;
-      *)       die "usage: sage history [--agent <name>] [--tag <label>] [-n <count>] [--json]" ;;
+      --since) local _dur; _dur=$(_parse_duration "$2") || die "invalid duration '$2' (use: 30m, 2h, 1d, 1w)"
+               since_cutoff=$(($(date +%s) - _dur)); shift 2 ;;
+      *)       die "usage: sage history [--agent <name>] [--tag <label>] [--since <duration>] [-n <count>] [--json]" ;;
     esac
   done
   local entries=""
@@ -6006,6 +6022,12 @@ cmd_history() {
         local _has_tag
         _has_tag=$(jq -r --arg t "$tag_filter" 'if (.tags // []) | index($t) then "yes" else "no" end' "$sf" 2>/dev/null) || continue
         [[ "$_has_tag" == "yes" ]] || continue
+      fi
+      # Filter by time if --since specified
+      if [[ "$since_cutoff" -gt 0 ]]; then
+        local _qt
+        _qt=$(jq -r '.queued_at // 0' "$sf" 2>/dev/null) || continue
+        [[ "$_qt" -ge "$since_cutoff" ]] || continue
       fi
       local line
       line=$(jq -r --arg a "$aname" '. + {agent:$a} | "\(.queued_at // 0)|\(.agent)|\(.id)|\(.status)|\(.started_at // "")|\(.finished_at // "")|\(.tags // [] | join(","))"' "$sf" 2>/dev/null) || continue
