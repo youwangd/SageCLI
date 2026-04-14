@@ -70,7 +70,7 @@
 - Inter-agent messaging (msg send/ls/clear, auto-inject on send)
 - Agent chaining (send --then, multi-step pipelines)
 - Agent export/import (export, create --from file/URL, diff)
-- Agent guardrails (--timeout, --max-turns, --retry, --allow-env)
+- Agent guardrails (--timeout, --max-turns, --retry, --allow-env, max-agents concurrency limit)
 - Per-agent environment (env set/ls/rm/scope, create --env, env var allowlist)
 - Observability (history, info, stats, ls -l/--json, token counting per agent, cost estimation per runtime, efficiency metrics)
 - Plan orchestrator (plan, wave-based dependency execution)

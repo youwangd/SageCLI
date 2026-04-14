@@ -21,6 +21,7 @@ SageCLI is a **6,179-line pure bash** AI agent orchestrator. 47 commands, 8 runt
 - Agent export/import (file + URL)
 - Per-agent environment variables
 - Per-agent persistent memory (auto-injected into prompts)
+- Agent concurrency limit (config set max-agents N)
 - Agent chaining (`--then` pipelines)
 
 ---
@@ -80,7 +81,7 @@ All shipped. Tests for each. CI green.
 | 5 | Memory & context sharing | `context set/get/ls/rm` |
 | 6 | Sharing & portability | `export`, `create --from` (file + URL) |
 | 7 | Observability | `history`, `info`, `stats`, `ls -l/--json` |
-| 8 | Agent guardrails | `--timeout`, `--max-turns`, `--retry` |
+| 8 | Agent guardrails | `--timeout`, `--max-turns`, `--retry`, `max-agents` |
 | 9 | Per-agent environment | `env set/ls/rm`, `create --env` |
 | 10 | Aggregate statistics | `stats`, `stats --json` |
 | 11 | New runtimes | gemini-cli, codex (6 total) |
