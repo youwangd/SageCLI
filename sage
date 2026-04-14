@@ -123,6 +123,17 @@ send_msg() {
     '{id:$id, from:$from, status:$status, queued_at:($ts|tonumber), started_at:null, finished_at:null}' \
     > "$results_dir/${task_id}.status.json"
 
+  # Add tags if set via _SAGE_TASK_TAGS
+  if [[ -n "${_SAGE_TASK_TAGS:-}" ]]; then
+    local _tags_json="[]"
+    while IFS= read -r _t; do
+      [[ -n "$_t" ]] || continue
+      _tags_json=$(echo "$_tags_json" | jq --arg t "$_t" '. + [$t]')
+    done <<< "$_SAGE_TASK_TAGS"
+    jq --argjson tags "$_tags_json" '.tags=$tags' "$results_dir/${task_id}.status.json" > "${results_dir}/${task_id}.status.json.tmp" \
+      && mv "${results_dir}/${task_id}.status.json.tmp" "$results_dir/${task_id}.status.json"
+  fi
+
   # Write message to inbox
   cat > "$inbox/${task_id}.json" <<MSGEOF
 {"id":"$task_id","from":"$me","payload":$payload,"ts":$(date +%s)}
@@ -1592,7 +1603,7 @@ cmd_status() {
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
-  local attach_files=""
+  local attach_files="" task_tags=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1605,6 +1616,7 @@ cmd_send() {
       --strict)      strict=true; shift ;;
       --dry-run)     dry_run=true; shift ;;
       --attach)      attach_files="${attach_files:+$attach_files$'\n'}$2"; shift 2 ;;
+      --tag)         task_tags="${task_tags:+$task_tags$'\n'}$2"; shift 2 ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1827,8 +1839,15 @@ $message"
     # Write result files so `sage result <task_id>` works
     local _rstatus="done"; [[ $rc -ne 0 ]] && _rstatus="failed"
     local results_dir="$agent_dir/results"; mkdir -p "$results_dir"
-    jq -n --arg s "$_rstatus" --arg id "$task_id" --argjson rc "$rc" \
-      '{id:$id,status:$s,exit_code:$rc}' > "$results_dir/${task_id}.status.json"
+    local _htags="[]"
+    if [[ -n "$task_tags" ]]; then
+      while IFS= read -r _t; do
+        [[ -n "$_t" ]] || continue
+        _htags=$(echo "$_htags" | jq --arg t "$_t" '. + [$t]')
+      done <<< "$task_tags"
+    fi
+    jq -n --arg s "$_rstatus" --arg id "$task_id" --argjson rc "$rc" --argjson tags "$_htags" \
+      '{id:$id,status:$s,exit_code:$rc,tags:$tags}' > "$results_dir/${task_id}.status.json"
     jq -n --arg out "$task_output" '{output:$out}' > "$results_dir/${task_id}.result.json"
 
     # Chain to next agent if --then specified
@@ -1871,7 +1890,7 @@ $message"
   payload="$(jq -n --arg t "$message" '{text:$t}')"
 
   local task_id
-  task_id=$(send_msg "$to" "$payload")
+  _SAGE_TASK_TAGS="$task_tags" task_id=$(send_msg "$to" "$payload")
   ok "task ${BOLD}${task_id}${NC} → $to"
   info "track: sage tasks $to | sage result $task_id"
 }
@@ -5964,13 +5983,14 @@ cmd_info() {
 # ═══ History ═══
 cmd_history() {
   ensure_init
-  local agent_filter="" limit=20 json_mode=false
+  local agent_filter="" limit=20 json_mode=false tag_filter=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent) agent_filter="$2"; shift 2 ;;
       -n)      limit="$2"; shift 2 ;;
       --json)  json_mode=true; shift ;;
-      *)       die "usage: sage history [--agent <name>] [-n <count>] [--json]" ;;
+      --tag)   tag_filter="$2"; shift 2 ;;
+      *)       die "usage: sage history [--agent <name>] [--tag <label>] [-n <count>] [--json]" ;;
     esac
   done
   local entries=""
@@ -5981,8 +6001,14 @@ cmd_history() {
     [[ -n "$agent_filter" && "$aname" != "$agent_filter" ]] && continue
     for sf in "$agent_dir"results/*.status.json; do
       [[ -f "$sf" ]] || continue
+      # Filter by tag if requested
+      if [[ -n "$tag_filter" ]]; then
+        local _has_tag
+        _has_tag=$(jq -r --arg t "$tag_filter" 'if (.tags // []) | index($t) then "yes" else "no" end' "$sf" 2>/dev/null) || continue
+        [[ "$_has_tag" == "yes" ]] || continue
+      fi
       local line
-      line=$(jq -r --arg a "$aname" '. + {agent:$a} | "\(.queued_at // 0)|\(.agent)|\(.id)|\(.status)|\(.started_at // "")|\(.finished_at // "")"' "$sf" 2>/dev/null) || continue
+      line=$(jq -r --arg a "$aname" '. + {agent:$a} | "\(.queued_at // 0)|\(.agent)|\(.id)|\(.status)|\(.started_at // "")|\(.finished_at // "")|\(.tags // [] | join(","))"' "$sf" 2>/dev/null) || continue
       entries="$entries$line
 "
     done
@@ -5995,25 +6021,32 @@ cmd_history() {
   if $json_mode; then
     local jarr="["
     local first=true
-    while IFS='|' read -r ts agent tid st started finished; do
+    while IFS='|' read -r ts agent tid st started finished tags; do
       local dur="null"
       if [[ "$st" == "done" && -n "$finished" && "$finished" != "null" && -n "$started" && "$started" != "null" ]]; then
         dur=$((finished - started))
       fi
+      local _tj="[]"
+      if [[ -n "$tags" ]]; then
+        IFS=',' read -ra _ta <<< "$tags"
+        for _tv in "${_ta[@]}"; do
+          _tj=$(echo "$_tj" | jq --arg t "$_tv" '. + [$t]')
+        done
+      fi
       $first || jarr="$jarr,"
       first=false
-      jarr="$jarr{\"agent\":\"$agent\",\"id\":\"$tid\",\"status\":\"$st\",\"queued_at\":$ts,\"duration\":$dur}"
+      jarr="$jarr{\"agent\":\"$agent\",\"id\":\"$tid\",\"status\":\"$st\",\"queued_at\":$ts,\"duration\":$dur,\"tags\":$_tj}"
     done <<< "$entries"
     echo "${jarr}]"
     return 0
   fi
-  printf "  %-12s %-10s %-8s %s\n" "AGENT" "TASK" "STATUS" "DURATION"
-  while IFS='|' read -r ts agent tid st started finished; do
+  printf "  %-12s %-10s %-8s %-8s %s\n" "AGENT" "TASK" "STATUS" "DURATION" "TAGS"
+  while IFS='|' read -r ts agent tid st started finished tags; do
     local dur="-"
     if [[ "$st" == "done" && -n "$finished" && "$finished" != "null" && -n "$started" && "$started" != "null" ]]; then
       dur="$((finished - started))s"
     fi
-    printf "  %-12s %-10s %-8s %s\n" "$agent" "$tid" "$st" "$dur"
+    printf "  %-12s %-10s %-8s %-8s %s\n" "$agent" "$tid" "$st" "$dur" "${tags:--}"
   done <<< "$entries"
 }
 
