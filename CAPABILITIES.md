@@ -72,6 +72,7 @@
 - Agent export/import (export, create --from file/URL, diff)
 - Agent guardrails (--timeout, --max-turns, --retry, --allow-env, max-agents concurrency limit)
 - Security audit (doctor --security — report agents missing guardrails with exit code)
+- Runtime dependency check (doctor --agents — verify each agent's runtime binary is installed)
 - Per-agent environment (env set/ls/rm/scope, create --env, env var allowlist)
 - Observability (history, info, stats, ls -l/--json, token counting per agent, cost estimation per runtime, efficiency metrics)
 - Plan orchestrator (plan, wave-based dependency execution)
