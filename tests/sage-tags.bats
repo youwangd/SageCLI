@@ -1,0 +1,60 @@
+#!/usr/bin/env bats
+# tests/sage-tags.bats — tests for task tagging (send --tag, history --tag)
+
+setup() {
+  export SAGE_HOME="$BATS_TEST_TMPDIR/sage-tags-$$"
+  mkdir -p "$SAGE_HOME"
+  printf '{"version":"1.0"}\n' > "$SAGE_HOME/config.json"
+  # Create a bash agent
+  mkdir -p "$SAGE_HOME/agents/tagger"
+  printf '{"runtime":"bash","model":"","created":"2026-01-01"}\n' > "$SAGE_HOME/agents/tagger/runtime.json"
+}
+
+@test "send --tag stores tag in status.json" {
+  run ./sage send tagger "echo hello" --headless --tag bugfix
+  [ "$status" -eq 0 ]
+  # Find the status file and check for tag
+  local sf
+  sf=$(ls "$SAGE_HOME/agents/tagger/results/"*.status.json 2>/dev/null | head -1)
+  [ -n "$sf" ]
+  run jq -r '.tags[0]' "$sf"
+  [ "$output" = "bugfix" ]
+}
+
+@test "send --tag multiple tags stored as array" {
+  run ./sage send tagger "echo hello" --headless --tag bugfix --tag auth
+  [ "$status" -eq 0 ]
+  local sf
+  sf=$(ls "$SAGE_HOME/agents/tagger/results/"*.status.json 2>/dev/null | head -1)
+  [ -n "$sf" ]
+  run jq -r '.tags | length' "$sf"
+  [ "$output" = "2" ]
+}
+
+@test "history --tag filters by tag" {
+  # Send two tasks with different tags
+  ./sage send tagger "echo one" --headless --tag review
+  ./sage send tagger "echo two" --headless --tag deploy
+  run ./sage history --tag review
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"tagger"* ]]
+  # Should only show 1 entry (the review-tagged one)
+  local count
+  count=$(echo "$output" | grep -c 'tagger' || true)
+  [ "$count" -eq 1 ]
+}
+
+@test "history --tag no matches shows info" {
+  ./sage send tagger "echo one" --headless --tag review
+  run ./sage history --tag nonexistent
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no task history"* ]]
+}
+
+@test "history --json includes tags field" {
+  ./sage send tagger "echo hello" --headless --tag bugfix
+  run ./sage history --json
+  [ "$status" -eq 0 ]
+  run echo "$output" | jq -r '.[0].tags[0]'
+  [ "$output" = "bugfix" ]
+}
