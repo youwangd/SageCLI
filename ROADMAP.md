@@ -202,7 +202,7 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 ### Action Items from Intel (2026-04-13)
 - [ ] **P0**: Follow up on awesome-cli-coding-agents PR #47
 - [ ] **P0**: Post to r/LocalLLaMA "open source agent stack" thread with sage's ollama/llama-cpp story
-- [ ] **P1**: Implement `--strict` execution flag (retry-on-incomplete pattern)
+- [x] **P1**: Implement `--strict` execution flag (retry-on-incomplete pattern)
 - [x] **P1**: Add API key scoping/sandboxing for agent security
 - [ ] **P2**: Consider `sage proxy` mode (claude-code-router proves 32K-star demand)
 - [ ] **P2**: Persistent Kanban view in `dashboard --live`
