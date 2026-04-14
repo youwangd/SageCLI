@@ -1592,6 +1592,7 @@ cmd_status() {
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
+  local attach_files=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1603,6 +1604,7 @@ cmd_send() {
       --retry)       retry_max="$2"; shift 2 ;;
       --strict)      strict=true; shift ;;
       --dry-run)     dry_run=true; shift ;;
+      --attach)      attach_files="${attach_files:+$attach_files$'\n'}$2"; shift 2 ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1657,6 +1659,23 @@ cmd_send() {
     filepath="${filepath/#\~/$HOME}"
     [[ -f "$filepath" ]] || die "file not found: $filepath"
     message=$(cat "$filepath")
+  fi
+
+  # Process --attach files: validate and append contents to message
+  if [[ -n "$attach_files" ]]; then
+    while IFS= read -r _af; do
+      [[ -n "$_af" ]] || continue
+      _af="${_af/#\~/$HOME}"
+      [[ -f "$_af" ]] || die "attached file not found: $_af"
+      local _sz
+      _sz=$(wc -c < "$_af")
+      [[ $_sz -le 102400 ]] || die "attached file too large (${_sz}B > 100KB): $_af"
+      message="$message
+
+--- $(basename "$_af") ---
+$(cat "$_af")
+--- end ---"
+    done <<< "$attach_files"
   fi
 
   # Inject skill system_prompt if agent has a skill attached
