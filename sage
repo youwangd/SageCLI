@@ -3497,6 +3497,7 @@ cmd_plan() {
       --yes|-y)   auto_approve=true; shift ;;
       --list|-l)  _plan_list; return 0 ;;
       --show)     [[ -n "${2:-}" ]] || die "usage: sage plan --show <plan-file>"; _plan_show "$2"; return 0 ;;
+      --validate) [[ -n "${2:-}" ]] || die "usage: sage plan --validate <plan-file>"; _plan_validate "$2"; return $? ;;
       --recover)  _plan_recover "$auto_approve"; return $? ;;
       --pattern)  pattern="$2"; shift 2 ;;
       --task)     task_template="$2"; shift 2 ;;
@@ -4502,6 +4503,64 @@ _plan_list() {
 
   [[ $found -eq 0 ]] && printf "  ${DIM}no plans${NC}\n"
   echo ""
+}
+
+_plan_validate() {
+  local file="$1" errors=0
+  [[ -f "$file" ]] || die "file not found: $file"
+
+  if [[ "$file" == *.yaml || "$file" == *.yml ]]; then
+    local p t
+    p=$(grep -E '^pattern:' "$file" | head -1 | sed 's/^pattern:[[:space:]]*//' | sed 's/^["'"'"']//;s/["'"'"']$//' || true)
+    t=$(grep -E '^task:' "$file" | head -1 || true)
+    if [[ -z "$p" ]]; then
+      echo "error: missing 'pattern' field"; errors=$((errors + 1))
+    fi
+    if [[ -z "$t" ]]; then
+      echo "error: missing 'task' field"; errors=$((errors + 1))
+    fi
+  else
+    # JSON plan
+    if ! jq empty "$file" 2>/dev/null; then
+      echo "error: invalid JSON"; return 1
+    fi
+    local tc
+    tc=$(jq '.tasks | length' "$file" 2>/dev/null || echo 0)
+    if [[ "$tc" -eq 0 ]]; then
+      echo "error: missing or empty 'tasks' array"; errors=$((errors + 1))
+    fi
+    # Check each task has id and description
+    local bad
+    bad=$(jq '[.tasks[]? | select(.id == null or .description == null)] | length' "$file" 2>/dev/null || echo 0)
+    if [[ "$bad" -gt 0 ]]; then
+      echo "error: $bad task(s) missing id or description"; errors=$((errors + 1))
+    fi
+    # Cycle detection: topological sort via Kahn's algorithm in jq
+    local has_cycle
+    has_cycle=$(jq '
+      def detect_cycle:
+        .tasks as $tasks |
+        [.tasks[].id] as $ids |
+        [.tasks[] | {id, deps: [.depends[]? | select(. != null)]}] |
+        {nodes: ., removed: []} |
+        until(
+          (.nodes | map(select(.deps | length == 0)) | length == 0) or (.nodes | length == 0);
+          (.nodes | map(select(.deps | length == 0)) | [.[].id]) as $free |
+          .removed += $free |
+          .nodes = [.nodes[] | select(.deps | length > 0) | .deps -= $free]
+        ) |
+        if (.nodes | length) > 0 then "cycle" else "ok" end;
+      detect_cycle
+    ' "$file" 2>/dev/null || echo "ok")
+    if [[ "$has_cycle" == '"cycle"' ]]; then
+      echo "error: dependency cycle detected"; errors=$((errors + 1))
+    fi
+  fi
+
+  if [[ "$errors" -eq 0 ]]; then
+    echo "valid"; return 0
+  fi
+  return 1
 }
 
 _plan_show() {
