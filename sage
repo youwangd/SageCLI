@@ -5024,6 +5024,44 @@ cmd_dashboard() {
 }
 
 # ═══ Doctor ═══
+_runtime_binary() {
+  case "$1" in
+    claude-code) echo "claude" ;;
+    gemini-cli)  echo "gemini" ;;
+    llama-cpp)   echo "llama-server" ;;
+    acp)         echo "claude" ;;
+    *)           echo "$1" ;;
+  esac
+}
+
+_doctor_agents() {
+  ensure_init
+  local total=0 ok=0 fails=0
+  echo -e "${BOLD}sage doctor --agents${NC}"
+  echo ""
+  for agent_dir in "$AGENTS_DIR"/*/; do
+    [[ -d "$agent_dir" ]] || continue
+    local name rt_file runtime bin
+    name=$(basename "$agent_dir")
+    [[ "$name" == .* ]] && continue
+    rt_file="$agent_dir/runtime.json"
+    [[ -f "$rt_file" ]] || continue
+    total=$((total + 1))
+    runtime=$(jq -r '.runtime // "bash"' "$rt_file" 2>/dev/null)
+    bin=$(_runtime_binary "$runtime")
+    if command -v "$bin" >/dev/null 2>&1; then
+      echo -e "${GREEN}✓${NC} $name — $runtime ($bin found)"
+      ok=$((ok + 1))
+    else
+      echo -e "${RED}✗${NC} $name — $runtime ($bin not found)"
+      fails=$((fails + 1))
+    fi
+  done
+  echo ""
+  echo "$total agent(s): $ok ok, $fails missing"
+  return "$fails"
+}
+
 _doctor_security() {
   ensure_init
   local total=0 guarded=0 partial=0 none=0 fails=0
@@ -5064,6 +5102,9 @@ _doctor_security() {
 cmd_doctor() {
   if [[ "${1:-}" == "--security" ]]; then
     _doctor_security; return $?
+  fi
+  if [[ "${1:-}" == "--agents" ]]; then
+    _doctor_agents; return $?
   fi
   local fails=0
   _doc_check() {
