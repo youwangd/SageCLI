@@ -1575,7 +1575,8 @@ cmd_status() {
     fi
 
     local logfile="$LOGS_DIR/$name.log"
-    last_active=$(tail -1 "$logfile" 2>/dev/null | grep -oP '^\[\K[0-9:]+' || echo "—")
+    last_active=$(tail -1 "$logfile" 2>/dev/null | sed -n 's/^\[\([0-9:]*\).*/\1/p')
+    [[ -z "$last_active" ]] && last_active="—"
 
     local parent=$(jq -r '.parent // ""' "$agent_dir/runtime.json" 2>/dev/null)
     local display_name="$name"
@@ -4119,8 +4120,9 @@ _plan_edit() {
         local tmpl="" desc="" deps=""
         # Parse: add <template> "description" [--depends N,M]
         tmpl=$(echo "$args" | awk '{print $1}')
-        desc=$(echo "$args" | grep -oP '"[^"]*"' | tr -d '"' | head -1)
-        deps=$(echo "$args" | grep -oP '\-\-depends\s+\K[0-9,]+' || echo "")
+        desc=$(echo "$args" | sed -n 's/.*"\([^"]*\)".*/\1/p' | head -1)
+        deps=$(echo "$args" | sed -n 's/.*--depends[[:space:]]*\([0-9,]*\).*/\1/p')
+        [[ -z "$deps" ]] && deps=""
 
         if [[ -z "$tmpl" || -z "$desc" ]]; then
           warn "usage: add <template> \"description\" [--depends N,M]"
@@ -4149,7 +4151,7 @@ _plan_edit() {
 
       edit)
         local edit_id=$(echo "$args" | awk '{print $1}')
-        local new_desc=$(echo "$args" | grep -oP '"[^"]*"' | tr -d '"' | head -1)
+        local new_desc=$(echo "$args" | sed -n 's/.*"\([^"]*\)".*/\1/p' | head -1)
         if [[ -z "$edit_id" || -z "$new_desc" ]]; then
           warn "usage: edit <id> \"new description\""
           continue
