@@ -72,6 +72,7 @@
 - Agent chaining (send --then, multi-step pipelines)
 - Agent export/import (export, create --from file/URL, diff)
 - Agent guardrails (--timeout, --max-turns, --retry, --allow-env, max-agents concurrency limit)
+- Dry-run mode (send --dry-run — preview assembled prompt with all injected context/memory/messages without executing)
 - Security audit (doctor --security — report agents missing guardrails with exit code)
 - Runtime dependency check (doctor --agents — verify each agent's runtime binary is installed)
 - Unified health check (doctor --all — run basic + security + agents checks in one pass)
