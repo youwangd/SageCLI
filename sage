@@ -1603,7 +1603,7 @@ cmd_status() {
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
-  local attach_files="" task_tags=""
+  local attach_files="" task_tags="" on_fail_cmd=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1612,6 +1612,7 @@ cmd_send() {
       --json)        json_output=true; shift ;;
       --no-context)  no_context=true; shift ;;
       --then)        then_chain="${then_chain:+$then_chain }$2"; shift 2 ;;
+      --on-fail)     on_fail_cmd="$2"; shift 2 ;;
       --retry)       retry_max="$2"; shift 2 ;;
       --strict)      strict=true; shift ;;
       --dry-run)     dry_run=true; shift ;;
@@ -1642,6 +1643,10 @@ cmd_send() {
   # --then requires --headless
   if [[ -n "$then_chain" && "$headless" != true ]]; then
     die "--then requires --headless (chaining needs synchronous execution)"
+  fi
+  # --on-fail requires --headless
+  if [[ -n "$on_fail_cmd" && "$headless" != true ]]; then
+    die "--on-fail requires --headless (callback needs synchronous execution)"
   fi
   if [[ "$retry_max" -gt 0 && "$headless" != true ]]; then
     die "--retry requires --headless"
@@ -1865,6 +1870,12 @@ $message"
         done
       fi
       "${_chain_cmd[@]}"
+    fi
+
+    # Run failure callback if --on-fail specified and task failed
+    if [[ -n "$on_fail_cmd" && "$_rstatus" != "done" ]]; then
+      SAGE_FAIL_AGENT="$to" SAGE_FAIL_TASK="$task_id" SAGE_FAIL_OUTPUT="$task_output" \
+        eval "$on_fail_cmd" || true
     fi
 
     if [[ "$json_output" == true ]]; then
