@@ -101,3 +101,4 @@
 - Plan validation (sage plan --validate — check plan YAML/JSON structure, fields, and dependency cycles without executing)
 - Local model support (ollama + llama-cpp runtimes — run agents with local models, no cloud API needed)
 - Default result lookup (sage result with no args shows most recent task result by timestamp, no task-id needed)
+- Context from file (sage context set <key> --file <path> — load persistent shared context from file, 100KB limit, multiline preserved)
