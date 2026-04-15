@@ -6014,12 +6014,14 @@ HELP
     --agent <name>  Filter by agent
     --tag <label>   Filter by task tag
     --since <dur>   Filter by age (30m, 2h, 1d, 1w)
+    --grep <pat>    Search task text (case-insensitive)
     --json          Output as JSON
     -n N            Limit to N entries
 
   EXAMPLES
     sage history --agent worker --since 1d
     sage history --tag deploy --json
+    sage history --grep "auth migration"
     sage history -n 5
 HELP
       ;;
