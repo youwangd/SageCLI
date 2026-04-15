@@ -5813,6 +5813,7 @@ _sage() {
     'rename:Rename an agent'
     'restart:Restart agent'
     'result:Get task result'
+    'replay:Re-send a previous task'
     'rm:Remove agent'
     'runs:List task runs'
     'send:Send task to agent'
@@ -6022,6 +6023,23 @@ HELP
     sage history -n 5
 HELP
       ;;
+    replay)
+      cat << 'HELP'
+  sage replay [task-id] [flags]
+
+  Re-send a previous task to the same agent.
+
+  FLAGS
+    --agent <name>  Override target agent
+    --dry-run       Preview without sending
+
+  EXAMPLES
+    sage replay                          # replay most recent task
+    sage replay task-abc123              # replay specific task
+    sage replay task-abc123 --agent dev  # replay to different agent
+    sage replay --dry-run                # preview what would be sent
+HELP
+      ;;
     *)
       echo "  No detailed help for '$1'. Showing full help:"
       echo
@@ -6074,6 +6092,7 @@ cmd_help() {
     call <to> <message|@file> [s]  Send and wait for response (default: 60s)
     tasks [name]                List tasks with status
     result <task-id>            Get task result
+    replay [task-id]            Re-send a previous task
     wait <name> [--timeout N]   Wait for agent to finish (long-running tasks)
     watch <dir> --agent <name>  Watch directory, trigger agent on file changes
     peek <name> [--lines N]     See what agent is doing (tmux pane + workspace)
