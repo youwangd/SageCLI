@@ -93,7 +93,7 @@
 - Dashboard (sage dashboard — agent overview with status, runtime, --json for scripting, --live interactive mode with keyboard shortcuts)
 - File watcher (sage watch — poll-based dir watcher with debounce, triggers agent, runs command, or re-runs plan YAML on file changes)
 - Plan progress visualization (sage plan --show — wave-by-wave task status with color-coded icons)
-- Multi-agent log tailing (sage logs --all — color-coded interleaved output from all agents)
+- Multi-agent log tailing (sage logs --all [-f] — color-coded interleaved output from all agents, live tail with -f)
 - Log search (sage logs --grep <pattern> — case-insensitive search with color highlighting, works with --all)
 - Agent checkpoint/restore (sage checkpoint/restore — save and resume agent state across reboots)
 - Session recovery (sage recover — detect and fix orphaned/dead agent sessions after crash or reboot)
