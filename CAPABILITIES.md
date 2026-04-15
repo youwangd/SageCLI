@@ -105,3 +105,4 @@
 - Context listing (sage context ls — truncated values >80 chars, byte size per key; sage context ls --json for scripting)
 - Trace export (sage trace --json — output filtered trace events as JSON array for scripting, observability, and CI analysis)
 - History task text (sage history shows MESSAGE column with task text preview; task_text stored in status.json for debugging multi-agent workflows)
+- Status active task (sage status shows TASK column with current task text preview for agents with queued/running tasks)
