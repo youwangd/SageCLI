@@ -47,3 +47,26 @@ teardown() {
   result="$(ls "$SAGE_HOME/agents/testbot/memory/" 2>/dev/null | wc -l)"
   [ "$result" -eq 0 ]
 }
+
+@test "memory ls --json outputs valid JSON" {
+  "$SAGE" memory set testbot greeting hello
+  "$SAGE" memory set testbot lang bash
+  run "$SAGE" memory ls testbot --json
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.greeting' >/dev/null
+  echo "$output" | jq -e '.lang' >/dev/null
+}
+
+@test "memory ls --json with empty memory outputs {}" {
+  run "$SAGE" memory ls testbot --json
+  [ "$status" -eq 0 ]
+  [ "$(echo "$output" | jq -r 'keys | length')" -eq 0 ]
+}
+
+@test "help memory shows per-command help" {
+  run "$SAGE" help memory
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"memory set"* ]]
+  [[ "$output" == *"memory ls"* ]]
+  [[ "$output" == *"--json"* ]]
+}
