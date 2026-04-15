@@ -6731,14 +6731,36 @@ cmd_context() {
       cat "$CONTEXT_DIR/$2"
       ;;
     ls)
+      local _ctx_json=false
+      [[ "${2:-}" == "--json" ]] && _ctx_json=true
       local keys
       keys=$(ls "$CONTEXT_DIR/" 2>/dev/null)
       if [[ -z "$keys" ]]; then
-        info "no context keys stored"
+        if [[ "$_ctx_json" == true ]]; then printf '[]\n'; else info "no context keys stored"; fi
       else
-        for k in $keys; do
-          printf "  %s = %s\n" "$k" "$(cat "$CONTEXT_DIR/$k")"
-        done
+        if [[ "$_ctx_json" == true ]]; then
+          printf '['
+          local _first=true
+          for k in $keys; do
+            local _sz; _sz=$(wc -c < "$CONTEXT_DIR/$k")
+            local _val; _val=$(cat "$CONTEXT_DIR/$k")
+            _val=$(printf '%s' "$_val" | jq -Rs .)
+            [[ "$_first" == true ]] && _first=false || printf ','
+            printf '{"key":"%s","value":%s,"size":%d}' "$k" "$_val" "$_sz"
+          done
+          printf ']\n'
+        else
+          for k in $keys; do
+            local _sz; _sz=$(wc -c < "$CONTEXT_DIR/$k")
+            local _val; _val=$(cat "$CONTEXT_DIR/$k")
+            if [[ ${#_val} -gt 80 ]]; then
+              _val="${_val:0:80}..."
+            fi
+            # Replace newlines with spaces for display
+            _val=$(printf '%s' "$_val" | tr '\n' ' ')
+            printf "  %s = %s (%dB)\n" "$k" "$_val" "$_sz"
+          done
+        fi
       fi
       ;;
     rm)
