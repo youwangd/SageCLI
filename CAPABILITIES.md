@@ -104,3 +104,4 @@
 - Context from file (sage context set <key> --file <path> — load persistent shared context from file, 100KB limit, multiline preserved)
 - Context listing (sage context ls — truncated values >80 chars, byte size per key; sage context ls --json for scripting)
 - Trace export (sage trace --json — output filtered trace events as JSON array for scripting, observability, and CI analysis)
+- History task text (sage history shows MESSAGE column with task text preview; task_text stored in status.json for debugging multi-agent workflows)
