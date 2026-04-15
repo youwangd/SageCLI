@@ -2961,7 +2961,11 @@ cmd_tool() {
     show) [[ -n "${2:-}" ]] || die "usage: sage tool show <name>"
           [[ -f "$TOOLS_DIR/$2.sh" ]] || die "tool '$2' not found"
           cat "$TOOLS_DIR/$2.sh" ;;
-    *)   die "usage: sage tool {add|ls|rm|show}" ;;
+    run)  [[ -n "${2:-}" ]] || die "usage: sage tool run <name> [args...]"
+          [[ -f "$TOOLS_DIR/$2.sh" ]] || die "tool '$2' not found"
+          local tool_name="$2"; shift 2
+          bash "$TOOLS_DIR/$tool_name.sh" "$@" ;;
+    *)   die "usage: sage tool {add|ls|rm|run|show}" ;;
   esac
 }
 
@@ -6135,6 +6139,9 @@ cmd_help() {
   TOOLS
     tool add <name> <path>      Register a tool
     tool ls                     List tools
+    tool rm <name>              Remove a tool
+    tool run <name> [args]      Execute a tool
+    tool show <name>            Show tool source
 
   MCP SERVERS
     mcp add <name> <cmd> [args] Register an MCP server
