@@ -2588,8 +2588,23 @@ cmd_tasks() {
 # ═══════════════════════════════════════════════
 cmd_result() {
   local task_id="${1:-}"
-  [[ -n "$task_id" ]] || die "usage: sage result <task-id>"
   ensure_init
+
+  # No task-id: find most recent task by file modification time
+  if [[ -z "$task_id" ]]; then
+    local newest="" newest_time=0
+    for f in "$AGENTS_DIR"/*/results/*.status.json; do
+      [[ -f "$f" ]] || continue
+      local mtime
+      mtime=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || continue
+      if [[ "$mtime" -gt "$newest_time" ]]; then
+        newest_time=$mtime
+        newest=$f
+      fi
+    done
+    [[ -n "$newest" ]] || die "No tasks found — run a task first with sage send"
+    task_id=$(basename "$newest" .status.json)
+  fi
 
   # Search all agents for this task
   for results_dir in "$AGENTS_DIR"/*/results; do
