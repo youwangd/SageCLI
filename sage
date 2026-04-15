@@ -6164,6 +6164,66 @@ HELP
     sage tool rm lint
 HELP
       ;;
+    mcp)
+      cat << 'HELP'
+  sage mcp <subcommand> [args]
+
+  Manage MCP (Model Context Protocol) servers for agents.
+
+  SUBCOMMANDS
+    add <name> --command <cmd> [--args <a,b>]  Register an MCP server
+    ls                                          List registered servers
+    rm <name>                                   Remove a server
+    tools <agent>                               List tools exposed by agent's MCP servers
+    start-servers <agent>                       Start MCP servers for an agent
+    stop-servers <agent>                        Stop MCP servers for an agent
+    status <agent>                              Check MCP server status
+
+  EXAMPLES
+    sage mcp add github --command npx --args -y,@modelcontextprotocol/server-github
+    sage mcp ls
+    sage mcp tools worker
+    sage create worker --mcp github
+HELP
+      ;;
+    skill)
+      cat << 'HELP'
+  sage skill <subcommand> [args]
+
+  Install, manage, and run reusable skill packages.
+
+  SUBCOMMANDS
+    install <path|url|registry:name>  Install a skill from path, URL, or registry
+    ls                                List installed skills
+    rm <name>                         Remove a skill
+    show <name>                       Show skill metadata and files
+    run <name> [args...]              Execute a skill's run script
+
+  EXAMPLES
+    sage skill install ./my-skill
+    sage skill install registry:code-review
+    sage skill ls
+    sage skill run code-review --file src/main.py
+    sage create worker --skill code-review
+HELP
+      ;;
+    msg)
+      cat << 'HELP'
+  sage msg <subcommand> [args]
+
+  Inter-agent messaging (auto-injected on next send).
+
+  SUBCOMMANDS
+    send <from> <to> <text>  Send a message between agents
+    ls <agent>               List pending messages for an agent
+    clear <agent>            Clear all messages for an agent
+
+  EXAMPLES
+    sage msg send reviewer worker "Found 3 issues in auth.py"
+    sage msg ls worker
+    sage msg clear worker
+HELP
+      ;;
     *)
       echo "  No detailed help for '$1'. Showing full help:"
       echo
