@@ -6707,10 +6707,20 @@ cmd_context() {
   local sub="${1:-}"
   case "$sub" in
     set)
-      [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: sage context set <key> <value>"
-      local key="$2"; shift 2; local val="$*"
+      [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: sage context set <key> <value|--file <path>>"
+      local key="$2"; shift 2
       [[ "$key" =~ ^[a-zA-Z0-9._-]+$ ]] || die "invalid key '$key' — use alphanumeric, dash, underscore, dot"
-      printf '%s' "$val" > "$CONTEXT_DIR/$key"
+      if [[ "$1" == "--file" ]]; then
+        local fpath="${2:-}"
+        [[ -n "$fpath" ]] || die "usage: sage context set <key> --file <path>"
+        [[ -f "$fpath" ]] || die "file does not exist: $fpath"
+        local sz; sz=$(wc -c < "$fpath")
+        [[ $sz -le 102400 ]] || die "file too large (${sz}B > 100KB): $fpath"
+        cp "$fpath" "$CONTEXT_DIR/$key"
+      else
+        local val="$*"
+        printf '%s' "$val" > "$CONTEXT_DIR/$key"
+      fi
       info "set $key"
       ;;
     get)
