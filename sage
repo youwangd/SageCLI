@@ -1604,7 +1604,7 @@ cmd_status() {
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
-  local attach_files="" task_tags="" on_fail_cmd=""
+  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1614,6 +1614,7 @@ cmd_send() {
       --no-context)  no_context=true; shift ;;
       --then)        then_chain="${then_chain:+$then_chain }$2"; shift 2 ;;
       --on-fail)     on_fail_cmd="$2"; shift 2 ;;
+      --on-done)     on_done_cmd="$2"; shift 2 ;;
       --retry)       retry_max="$2"; shift 2 ;;
       --strict)      strict=true; shift ;;
       --dry-run)     dry_run=true; shift ;;
@@ -1648,6 +1649,10 @@ cmd_send() {
   # --on-fail requires --headless
   if [[ -n "$on_fail_cmd" && "$headless" != true ]]; then
     die "--on-fail requires --headless (callback needs synchronous execution)"
+  fi
+  # --on-done requires --headless
+  if [[ -n "$on_done_cmd" && "$headless" != true ]]; then
+    die "--on-done requires --headless (callback needs synchronous execution)"
   fi
   if [[ "$retry_max" -gt 0 && "$headless" != true ]]; then
     die "--retry requires --headless"
@@ -1877,6 +1882,12 @@ $message"
     if [[ -n "$on_fail_cmd" && "$_rstatus" != "done" ]]; then
       SAGE_FAIL_AGENT="$to" SAGE_FAIL_TASK="$task_id" SAGE_FAIL_OUTPUT="$task_output" \
         eval "$on_fail_cmd" || true
+    fi
+
+    # Run completion callback if --on-done specified (fires on success AND failure)
+    if [[ -n "$on_done_cmd" ]]; then
+      SAGE_DONE_AGENT="$to" SAGE_DONE_TASK="$task_id" SAGE_DONE_STATUS="$_rstatus" SAGE_DONE_OUTPUT="$task_output" \
+        eval "$on_done_cmd" || true
     fi
 
     if [[ "$json_output" == true ]]; then
@@ -5812,6 +5823,7 @@ _help_command() {
     --force         Cancel current task and send new one
     --then <agent>  Chain: on success, forward output to next agent
     --on-fail <cmd> Run command on failure (env: SAGE_FAIL_AGENT, SAGE_FAIL_TASK, SAGE_FAIL_OUTPUT)
+    --on-done <cmd> Run command on completion (env: SAGE_DONE_AGENT, SAGE_DONE_TASK, SAGE_DONE_STATUS, SAGE_DONE_OUTPUT)
     --retry N       Retry N times on failure
     --strict        Retry if output looks incomplete (max 3 retries)
     --dry-run       Preview assembled prompt without executing
