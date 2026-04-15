@@ -1978,20 +1978,22 @@ cmd_call() {
 # sage logs <name> [-f] [--clear] | sage logs --all [-f]
 # ═══════════════════════════════════════════════
 cmd_logs() {
-  local name="" flag="" grep_pat=""
+  local name="" flag="" grep_pat="" all=false follow=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --grep) grep_pat="${2:-}"; [[ -n "$grep_pat" ]] || die "usage: sage logs <name> --grep <pattern>"; shift 2 ;;
-      -f|--clear|--all) flag="$1"; shift ;;
+      --all) all=true; shift ;;
+      -f) follow=true; shift ;;
+      --clear) flag="--clear"; shift ;;
       -*) die "unknown flag: $1" ;;
-      *) [[ -z "$name" ]] && name="$1" || flag="$1"; shift ;;
+      *) [[ -z "$name" ]] && name="$1" || true; shift ;;
     esac
   done
-  [[ -n "$name" || "$flag" == "--all" ]] || die "usage: sage logs <name> [-f|--clear|--all|--grep <pattern>]"
+  [[ -n "$name" || "$all" == true ]] || die "usage: sage logs <name> [-f|--clear|--all|--grep <pattern>]"
   ensure_init
 
-  if [[ "$flag" == "--all" ]]; then
-    _logs_all "" "$grep_pat"
+  if [[ "$all" == true ]]; then
+    _logs_all "$($follow && echo "-f" || true)" "$grep_pat"
     return
   fi
 
@@ -2008,7 +2010,7 @@ cmd_logs() {
 
   if [[ -n "$grep_pat" ]]; then
     grep -i --color=always "$grep_pat" "$logfile" || true
-  elif [[ "$flag" == "-f" ]]; then
+  elif [[ "$follow" == true ]]; then
     tail -f "$logfile"
   else
     tail -50 "$logfile"
@@ -2026,7 +2028,7 @@ _logs_all() {
     local c="${colors[$((ci % ${#colors[@]}))]}"
     ci=$((ci + 1))
     if [[ -n "$grep_pat" ]]; then
-      grep -i "$grep_pat" "$logfile" 2>/dev/null | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /"
+      grep -i "$grep_pat" "$logfile" 2>/dev/null | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /" || true
     elif [[ "$follow" == "-f" ]]; then
       tail -f "$logfile" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /" &
       pids+=($!)
