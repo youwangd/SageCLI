@@ -6060,6 +6060,30 @@ HELP
     sage replay --dry-run                # preview what would be sent
 HELP
       ;;
+    config)
+      cat << 'HELP'
+  sage config <subcommand> [args]
+
+  Manage global configuration key-value store.
+
+  SUBCOMMANDS
+    set <key> <value>   Set a config value (alphanumeric/dash/underscore/dot keys)
+    get <key>           Get a config value
+    ls [--json]         List all config (--json for machine-readable output)
+    rm <key>            Remove a config key
+
+  BUILT-IN KEYS
+    default.runtime     Default runtime for new agents
+    default.model       Default model for new agents
+    max-agents          Max concurrent agents
+
+  EXAMPLES
+    sage config set default.runtime claude-code
+    sage config get default.runtime
+    sage config ls --json
+    sage config rm default.model
+HELP
+      ;;
     tool)
       cat << 'HELP'
   sage tool <subcommand> [args]
@@ -6689,6 +6713,7 @@ cmd_config() {
       echo "$v"
       ;;
     ls)
+      if [[ "${2:-}" == "--json" ]]; then cat "$cf"; return; fi
       local keys; keys=$(jq -r 'keys[]' "$cf" 2>/dev/null)
       if [[ -z "$keys" ]]; then info "no config keys set"; else
         while IFS= read -r k; do printf "  %s = %s\n" "$k" "$(jq -r --arg k "$k" '.[$k]' "$cf")"; done <<< "$keys"
