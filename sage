@@ -5364,12 +5364,41 @@ _doctor_security() {
   echo "$total agent(s): $guarded guarded, $partial partial, $none none"
   return "$fails"
 }
+_doctor_mcp() {
+  local total=0 ok=0 fails=0
+  echo -e "${BOLD}sage doctor --mcp${NC}"
+  echo ""
+  for f in "$SAGE_HOME/mcp"/*.json; do
+    [[ -f "$f" ]] || { echo "no MCP servers registered"; return 0; }
+    local name cmd
+    name=$(basename "$f" .json)
+    cmd=$(jq -r '.command // ""' "$f" 2>/dev/null)
+    total=$((total + 1))
+    if [[ -z "$cmd" ]]; then
+      echo -e "${RED}✗${NC} $name — no command defined"
+      fails=$((fails + 1))
+    elif command -v "$cmd" >/dev/null 2>&1; then
+      echo -e "${GREEN}✓${NC} $name — $cmd found"
+      ok=$((ok + 1))
+    else
+      echo -e "${RED}✗${NC} $name — $cmd not found"
+      fails=$((fails + 1))
+    fi
+  done
+  echo ""
+  echo "$total server(s): $ok ok, $fails missing"
+  return "$fails"
+}
+
 cmd_doctor() {
   if [[ "${1:-}" == "--security" ]]; then
     _doctor_security; return $?
   fi
   if [[ "${1:-}" == "--agents" ]]; then
     _doctor_agents; return $?
+  fi
+  if [[ "${1:-}" == "--mcp" ]]; then
+    _doctor_mcp; return $?
   fi
   if [[ "${1:-}" == "--all" ]]; then
     local total_fails=0 r=0
@@ -5379,8 +5408,10 @@ cmd_doctor() {
     echo ""
     _doctor_agents; r=$?; total_fails=$((total_fails + r))
     echo ""
+    _doctor_mcp; r=$?; total_fails=$((total_fails + r))
+    echo ""
     if [[ "$total_fails" -eq 0 ]]; then
-      echo -e "${GREEN}All checks passed (basic + security + agents).${NC}"
+      echo -e "${GREEN}All checks passed (basic + security + agents + mcp).${NC}"
     else
       echo -e "${RED}$total_fails total issue(s) across all checks.${NC}"
     fi
