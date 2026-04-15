@@ -43,3 +43,27 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"sage <command>"* ]]
 }
+
+@test "help mcp shows per-command help" {
+  run sage help mcp
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SUBCOMMANDS"* ]]
+  [[ "$output" == *"mcp add"* ]]
+  [[ "$output" == *"mcp tools"* ]]
+}
+
+@test "help skill shows per-command help" {
+  run sage help skill
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SUBCOMMANDS"* ]]
+  [[ "$output" == *"skill install"* ]]
+  [[ "$output" == *"skill run"* ]]
+}
+
+@test "help msg shows per-command help" {
+  run sage help msg
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SUBCOMMANDS"* ]]
+  [[ "$output" == *"msg send"* ]]
+  [[ "$output" == *"msg ls"* ]]
+}
