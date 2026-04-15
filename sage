@@ -6298,16 +6298,17 @@ _parse_duration() {
 
 cmd_history() {
   ensure_init
-  local agent_filter="" limit=20 json_mode=false tag_filter="" since_cutoff=0
+  local agent_filter="" limit=20 json_mode=false tag_filter="" since_cutoff=0 grep_pattern=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent) agent_filter="$2"; shift 2 ;;
       -n)      limit="$2"; shift 2 ;;
       --json)  json_mode=true; shift ;;
       --tag)   tag_filter="$2"; shift 2 ;;
+      --grep)  grep_pattern="$2"; shift 2 ;;
       --since) local _dur; _dur=$(_parse_duration "$2") || die "invalid duration '$2' (use: 30m, 2h, 1d, 1w)"
                since_cutoff=$(($(date +%s) - _dur)); shift 2 ;;
-      *)       die "usage: sage history [--agent <name>] [--tag <label>] [--since <duration>] [-n <count>] [--json]" ;;
+      *)       die "usage: sage history [--agent <name>] [--tag <label>] [--since <duration>] [--grep <pattern>] [-n <count>] [--json]" ;;
     esac
   done
   local entries=""
@@ -6329,6 +6330,12 @@ cmd_history() {
         local _qt
         _qt=$(jq -r '.queued_at // 0' "$sf" 2>/dev/null) || continue
         [[ "$_qt" -ge "$since_cutoff" ]] || continue
+      fi
+      # Filter by grep pattern on task_text
+      if [[ -n "$grep_pattern" ]]; then
+        local _tt
+        _tt=$(jq -r '.task_text // ""' "$sf" 2>/dev/null) || continue
+        echo "$_tt" | grep -qi "$grep_pattern" || continue
       fi
       local line
       line=$(jq -r --arg a "$aname" '. + {agent:$a} | "\(.queued_at // 0)|\(.agent)|\(.id)|\(.status)|\(.started_at // "")|\(.finished_at // "")|\(.tags // [] | join(","))|\(.task_text // "")"' "$sf" 2>/dev/null) || continue

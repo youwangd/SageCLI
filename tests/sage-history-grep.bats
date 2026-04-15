@@ -4,7 +4,7 @@
 setup() {
   export SAGE_HOME=$(mktemp -d)
   export PATH="$BATS_TEST_DIRNAME/..:$PATH"
-  sage init --quiet 2>/dev/null || true
+  sage init --force 2>/dev/null || sage init 2>/dev/null || true
   # Create two agents with task history
   sage create alpha --runtime bash --quiet 2>/dev/null || true
   sage create beta --runtime bash --quiet 2>/dev/null || true
