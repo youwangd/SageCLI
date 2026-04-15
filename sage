@@ -115,12 +115,15 @@ send_msg() {
   # Create task tracking
   local results_dir="$AGENTS_DIR/$to/results"
   mkdir -p "$results_dir"
+  local _task_text
+  _task_text=$(echo "$payload" | jq -r '.text // (.task // "")' 2>/dev/null | head -c 120)
   jq -n \
     --arg id "$task_id" \
     --arg from "$me" \
     --arg status "queued" \
     --arg ts "$(date +%s)" \
-    '{id:$id, from:$from, status:$status, queued_at:($ts|tonumber), started_at:null, finished_at:null}' \
+    --arg tt "$_task_text" \
+    '{id:$id, from:$from, status:$status, queued_at:($ts|tonumber), started_at:null, finished_at:null, task_text:$tt}' \
     > "$results_dir/${task_id}.status.json"
 
   # Add tags if set via _SAGE_TASK_TAGS
@@ -163,12 +166,15 @@ call_agent() {
   # Create task tracking
   local results_dir="$AGENTS_DIR/$to/results"
   mkdir -p "$results_dir"
+  local _task_text
+  _task_text=$(echo "$payload" | jq -r '.text // (.task // "")' 2>/dev/null | head -c 120)
   jq -n \
     --arg id "$task_id" \
     --arg from "$me" \
     --arg status "queued" \
     --arg ts "$(date +%s)" \
-    '{id:$id, from:$from, status:$status, queued_at:($ts|tonumber), started_at:null, finished_at:null}' \
+    --arg tt "$_task_text" \
+    '{id:$id, from:$from, status:$status, queued_at:($ts|tonumber), started_at:null, finished_at:null, task_text:$tt}' \
     > "$results_dir/${task_id}.status.json"
 
   cat > "$inbox/${task_id}.json" <<MSGEOF
@@ -6238,7 +6244,7 @@ cmd_history() {
         [[ "$_qt" -ge "$since_cutoff" ]] || continue
       fi
       local line
-      line=$(jq -r --arg a "$aname" '. + {agent:$a} | "\(.queued_at // 0)|\(.agent)|\(.id)|\(.status)|\(.started_at // "")|\(.finished_at // "")|\(.tags // [] | join(","))"' "$sf" 2>/dev/null) || continue
+      line=$(jq -r --arg a "$aname" '. + {agent:$a} | "\(.queued_at // 0)|\(.agent)|\(.id)|\(.status)|\(.started_at // "")|\(.finished_at // "")|\(.tags // [] | join(","))|\(.task_text // "")"' "$sf" 2>/dev/null) || continue
       entries="$entries$line
 "
     done
@@ -6251,7 +6257,7 @@ cmd_history() {
   if $json_mode; then
     local jarr="["
     local first=true
-    while IFS='|' read -r ts agent tid st started finished tags; do
+    while IFS='|' read -r ts agent tid st started finished tags ttxt; do
       local dur="null"
       if [[ "$st" == "done" && -n "$finished" && "$finished" != "null" && -n "$started" && "$started" != "null" ]]; then
         dur=$((finished - started))
@@ -6265,18 +6271,22 @@ cmd_history() {
       fi
       $first || jarr="$jarr,"
       first=false
-      jarr="$jarr{\"agent\":\"$agent\",\"id\":\"$tid\",\"status\":\"$st\",\"queued_at\":$ts,\"duration\":$dur,\"tags\":$_tj}"
+      local _ttj
+      _ttj=$(printf '%s' "${ttxt:-}" | jq -Rs .)
+      jarr="$jarr{\"agent\":\"$agent\",\"id\":\"$tid\",\"status\":\"$st\",\"queued_at\":$ts,\"duration\":$dur,\"tags\":$_tj,\"task_text\":$_ttj}"
     done <<< "$entries"
     echo "${jarr}]"
     return 0
   fi
-  printf "  %-12s %-10s %-8s %-8s %s\n" "AGENT" "TASK" "STATUS" "DURATION" "TAGS"
-  while IFS='|' read -r ts agent tid st started finished tags; do
+  printf "  %-12s %-10s %-8s %-8s %-30s %s\n" "AGENT" "TASK" "STATUS" "DURATION" "MESSAGE" "TAGS"
+  while IFS='|' read -r ts agent tid st started finished tags ttxt; do
     local dur="-"
     if [[ "$st" == "done" && -n "$finished" && "$finished" != "null" && -n "$started" && "$started" != "null" ]]; then
       dur="$((finished - started))s"
     fi
-    printf "  %-12s %-10s %-8s %-8s %s\n" "$agent" "$tid" "$st" "$dur" "${tags:--}"
+    local _tdisp="${ttxt:--}"
+    [[ ${#_tdisp} -gt 30 ]] && _tdisp="${_tdisp:0:27}..."
+    printf "  %-12s %-10s %-8s %-8s %-30s %s\n" "$agent" "$tid" "$st" "$dur" "$_tdisp" "${tags:--}"
   done <<< "$entries"
 }
 
