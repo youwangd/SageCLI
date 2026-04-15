@@ -2955,7 +2955,13 @@ cmd_tool() {
     add) [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: sage tool add <name> <path>"
          cp "$3" "$TOOLS_DIR/$2.sh"; chmod +x "$TOOLS_DIR/$2.sh"; ok "tool '$2' registered" ;;
     ls)  for t in "$TOOLS_DIR"/*.sh; do [[ -f "$t" ]] && basename "$t" .sh; done ;;
-    *)   die "usage: sage tool {add|ls}" ;;
+    rm)  [[ -n "${2:-}" ]] || die "usage: sage tool rm <name>"
+         [[ -f "$TOOLS_DIR/$2.sh" ]] || die "tool '$2' not found"
+         rm -f "$TOOLS_DIR/$2.sh"; ok "tool '$2' removed" ;;
+    show) [[ -n "${2:-}" ]] || die "usage: sage tool show <name>"
+          [[ -f "$TOOLS_DIR/$2.sh" ]] || die "tool '$2' not found"
+          cat "$TOOLS_DIR/$2.sh" ;;
+    *)   die "usage: sage tool {add|ls|rm|show}" ;;
   esac
 }
 
