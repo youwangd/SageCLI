@@ -2750,11 +2750,12 @@ cmd_inbox() {
 # sage trace [--tree] [--clear] [-n N]
 # ═══════════════════════════════════════════════
 cmd_trace() {
-  local mode="timeline" limit=50 do_clear=false agent_filter=""
+  local mode="timeline" limit=50 do_clear=false agent_filter="" json_out=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --tree)  mode="tree"; shift ;;
+      --json)  json_out=true; shift ;;
       --clear) do_clear=true; shift ;;
       -n)      limit="$2"; shift 2 ;;
       -*)      die "unknown flag: $1" ;;
@@ -2771,7 +2772,7 @@ cmd_trace() {
     return
   fi
 
-  [[ -f "$tracefile" ]] || { printf "\n  ${DIM}no trace data — run some tasks first${NC}\n\n"; return; }
+  [[ -f "$tracefile" ]] || { if [[ "$json_out" == true ]]; then printf '[]\n'; else printf "\n  ${DIM}no trace data — run some tasks first${NC}\n\n"; fi; return; }
 
   # Filter trace to specific agent (matches from, to, or agent fields)
   local trace_data
@@ -2781,7 +2782,12 @@ cmd_trace() {
     trace_data=$(tail -"$limit" "$tracefile")
   fi
 
-  [[ -n "$trace_data" ]] || { printf "\n  ${DIM}no trace data for '$agent_filter'${NC}\n\n"; return; }
+  [[ -n "$trace_data" ]] || { if [[ "$json_out" == true ]]; then printf '[]\n'; else printf "\n  ${DIM}no trace data for '$agent_filter'${NC}\n\n"; fi; return; }
+
+  if [[ "$json_out" == true ]]; then
+    printf '[%s]\n' "$(echo "$trace_data" | sed '/^$/d' | paste -sd ',' -)"
+    return
+  fi
 
   if [[ "$mode" == "tree" ]]; then
     # Build task tree: group by root task
