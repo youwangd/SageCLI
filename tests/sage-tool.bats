@@ -50,3 +50,23 @@ teardown() {
   run ./sage tool show nonexistent
   [ "$status" -ne 0 ]
 }
+
+@test "tool run executes a registered tool" {
+  run ./sage tool run hello
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "hello"
+}
+
+@test "tool run forwards arguments to tool" {
+  echo '#!/bin/bash' > "$SAGE_HOME/tools/greet.sh"
+  echo 'echo "hi $1"' >> "$SAGE_HOME/tools/greet.sh"
+  chmod +x "$SAGE_HOME/tools/greet.sh"
+  run ./sage tool run greet world
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "hi world"
+}
+
+@test "tool run fails for nonexistent tool" {
+  run ./sage tool run nonexistent
+  [ "$status" -ne 0 ]
+}
