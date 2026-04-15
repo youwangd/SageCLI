@@ -71,3 +71,26 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"config"* ]]
 }
+
+@test "config ls --json outputs valid JSON" {
+  "$SAGE" config set default.runtime bash
+  "$SAGE" config set default.model sonnet
+  run "$SAGE" config ls --json
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.["default.runtime"]' >/dev/null
+  echo "$output" | jq -e '.["default.model"]' >/dev/null
+}
+
+@test "config ls --json with empty config outputs {}" {
+  run "$SAGE" config ls --json
+  [ "$status" -eq 0 ]
+  [ "$(echo "$output" | jq -r 'keys | length')" -eq 0 ]
+}
+
+@test "help config shows per-command help" {
+  run "$SAGE" help config
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"config set"* ]]
+  [[ "$output" == *"config ls"* ]]
+  [[ "$output" == *"--json"* ]]
+}
