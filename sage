@@ -1559,7 +1559,7 @@ cmd_status() {
   printf "  ${DIM}%s${NC}\n\n" "$SAGE_HOME"
 
   local count=0
-  printf "  ${DIM}%-16s %-12s %-10s %-8s %-6s %s${NC}\n" "AGENT" "RUNTIME" "STATUS" "PID" "INBOX" "LAST"
+  printf "  ${DIM}%-16s %-12s %-10s %-8s %-6s %-24s %s${NC}\n" "AGENT" "RUNTIME" "STATUS" "PID" "INBOX" "TASK" "LAST"
 
   for agent_dir in "$AGENTS_DIR"/*/; do
     [[ -d "$agent_dir" ]] || continue
@@ -1588,8 +1588,21 @@ cmd_status() {
     local display_name="$name"
     [[ -n "$parent" ]] && display_name="  └─ $name"
 
-    printf "  %-16s %-12s ${status_color}%-10s${NC} %-8s %-6s %s\n" \
-      "$display_name" "$runtime" "$status_text" "$pid_text" "$inbox_count" "$last_active"
+    # Find active task text from latest queued/running status.json
+    local task_disp="—"
+    local latest_active
+    latest_active=$(ls -t "$agent_dir/results/"*.status.json 2>/dev/null | while IFS= read -r sf; do
+      local s; s=$(jq -r '.status // ""' "$sf" 2>/dev/null)
+      if [[ "$s" == "queued" || "$s" == "running" ]]; then echo "$sf"; break; fi
+    done)
+    if [[ -n "$latest_active" ]]; then
+      task_disp=$(jq -r '.task_text // "—"' "$latest_active" 2>/dev/null)
+      [[ -z "$task_disp" || "$task_disp" == "null" ]] && task_disp="—"
+      [[ ${#task_disp} -gt 22 ]] && task_disp="${task_disp:0:19}..."
+    fi
+
+    printf "  %-16s %-12s ${status_color}%-10s${NC} %-8s %-6s %-24s %s\n" \
+      "$display_name" "$runtime" "$status_text" "$pid_text" "$inbox_count" "$task_disp" "$last_active"
     ((count++)) || true
   done
 
