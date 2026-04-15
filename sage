@@ -2655,6 +2655,61 @@ cmd_result() {
 }
 
 # ═══════════════════════════════════════════════
+# sage replay [task-id] [--agent <name>] [--dry-run]
+# ═══════════════════════════════════════════════
+cmd_replay() {
+  local task_id="" override_agent="" dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent)   override_agent="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      -*)        die "unknown flag: $1" ;;
+      *)         task_id="$1"; shift ;;
+    esac
+  done
+  ensure_init
+
+  # No task-id: find most recent by mtime
+  if [[ -z "$task_id" ]]; then
+    local newest="" newest_time=0
+    for f in "$AGENTS_DIR"/*/results/*.status.json; do
+      [[ -f "$f" ]] || continue
+      local mtime
+      mtime=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || continue
+      if [[ "$mtime" -gt "$newest_time" ]]; then
+        newest_time=$mtime; newest=$f
+      fi
+    done
+    [[ -n "$newest" ]] || die "No tasks found"
+    task_id=$(basename "$newest" .status.json)
+  fi
+
+  # Find the status.json
+  local found_file="" found_agent=""
+  for results_dir in "$AGENTS_DIR"/*/results; do
+    [[ -f "$results_dir/${task_id}.status.json" ]] || continue
+    found_file="$results_dir/${task_id}.status.json"
+    found_agent=$(basename "$(dirname "$results_dir")")
+    break
+  done
+  [[ -n "$found_file" ]] || die "task '$task_id' not found"
+
+  local task_text
+  task_text=$(jq -r '.task_text // ""' "$found_file" 2>/dev/null)
+  [[ -n "$task_text" && "$task_text" != "null" ]] || die "no task text stored for '$task_id'"
+
+  local target="${override_agent:-$found_agent}"
+
+  if [[ "$dry_run" == true ]]; then
+    echo "replay → agent=$target task=$task_text"
+    return 0
+  fi
+
+  info "replaying task to $target: $task_text"
+  cmd_send "$target" "$task_text"
+}
+
+# ═══════════════════════════════════════════════
 # sage peek <name> [--lines N]
 # ═══════════════════════════════════════════════
 cmd_peek() {
@@ -6864,6 +6919,7 @@ case "${1:-}" in
   call)    shift; cmd_call "$@" ;;
   tasks)   cmd_tasks "${2:-}" ;;
   result)  cmd_result "${2:-}" ;;
+  replay)  shift; cmd_replay "$@" ;;
   steer)   shift; cmd_steer "$@" ;;
   wait)    shift; cmd_wait "$@" ;;
   watch)   shift; cmd_watch "$@" ;;
