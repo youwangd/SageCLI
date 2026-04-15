@@ -67,7 +67,7 @@
 - Headless/CI mode (send --headless, --json, action.yml)
 - Stdin pipe support (echo "msg" | sage send agent — Unix pipeline integration)
 - MCP server registry (mcp add/ls/rm, create --mcp, mcp tools)
-- Custom tool scripts (tool add/ls/rm/run/show — register, list, remove, execute, and inspect custom tool scripts)
+- Custom tool scripts (tool add/ls/rm/run/show — register with descriptions, list with metadata, remove, execute, and inspect custom tool scripts)
 - Skills system (skill install/ls/rm/show/run, create --skill, registries)
 - Shared context store (context set/get/ls/rm, auto-inject)
 - Per-agent persistent memory (memory set/get/ls/rm/clear, auto-inject into prompts)
