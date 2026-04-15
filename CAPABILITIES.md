@@ -91,7 +91,7 @@
 - Plan orchestrator (plan, wave-based dependency execution)
 - ACP protocol support (persistent sessions)
 - Shell completions (bash/zsh tab-completion for commands, agents, runtimes)
-- Per-command help (sage help <command> — focused usage, flags, and examples for send, create, plan, logs, history, config, memory, context, env)
+- Per-command help (sage help <command> — focused usage, flags, and examples for send, create, plan, logs, history, config, memory, context, env, tool, mcp, skill, msg)
 - Swarm patterns (plan --pattern fan-out, pipeline, debate, map-reduce + composable YAML pattern files via plan --run)
 - Dashboard (sage dashboard — agent overview with status, runtime, --json for scripting, --live interactive mode with keyboard shortcuts)
 - File watcher (sage watch — poll-based dir watcher with debounce, triggers agent, runs command, or re-runs plan YAML on file changes)
