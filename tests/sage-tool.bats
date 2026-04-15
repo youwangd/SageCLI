@@ -70,3 +70,37 @@ teardown() {
   run ./sage tool run nonexistent
   [ "$status" -ne 0 ]
 }
+
+@test "tool add with --desc stores description" {
+  local tmp=$(mktemp)
+  echo '#!/bin/bash' > "$tmp"
+  echo 'echo hi' >> "$tmp"
+  run ./sage tool add greeter "$tmp" --desc "Says hello"
+  [ "$status" -eq 0 ]
+  [ -f "$SAGE_HOME/tools/greeter.desc" ]
+  grep -q "Says hello" "$SAGE_HOME/tools/greeter.desc"
+  rm -f "$tmp"
+}
+
+@test "tool ls shows description when available" {
+  echo "A greeting tool" > "$SAGE_HOME/tools/hello.desc"
+  run ./sage tool ls
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "hello"
+  echo "$output" | grep -q "A greeting tool"
+}
+
+@test "tool rm also removes desc file" {
+  echo "desc" > "$SAGE_HOME/tools/hello.desc"
+  run ./sage tool rm hello
+  [ "$status" -eq 0 ]
+  [ ! -f "$SAGE_HOME/tools/hello.desc" ]
+}
+
+@test "help tool shows per-command help" {
+  run ./sage help tool
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "tool add"
+  echo "$output" | grep -q "tool run"
+  echo "$output" | grep -q "\-\-desc"
+}
