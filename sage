@@ -6084,6 +6084,26 @@ HELP
     sage config rm default.model
 HELP
       ;;
+    memory)
+      cat << 'HELP'
+  sage memory <subcommand> <agent> [key] [value]
+
+  Per-agent persistent memory (auto-injected into prompts).
+
+  SUBCOMMANDS
+    set <agent> <key> <value>   Store a key-value pair
+    get <agent> <key>           Retrieve a value
+    ls <agent> [--json]         List all keys (--json for machine-readable output)
+    rm <agent> <key>            Remove a key
+    clear <agent>               Remove all keys
+
+  EXAMPLES
+    sage memory set worker api_url https://api.example.com
+    sage memory get worker api_url
+    sage memory ls worker --json
+    sage memory clear worker
+HELP
+      ;;
     tool)
       cat << 'HELP'
   sage tool <subcommand> [args]
@@ -6976,6 +6996,14 @@ cmd_memory() {
       cat "$mem_dir/$3"
       ;;
     ls)
+      if [[ "${3:-}" == "--json" ]]; then
+        local json="{}" k
+        for k in $(ls "$mem_dir/" 2>/dev/null); do
+          json=$(printf '%s' "$json" | jq --arg k "$k" --arg v "$(cat "$mem_dir/$k")" '. + {($k): $v}')
+        done
+        printf '%s\n' "$json"
+        return
+      fi
       local keys
       keys=$(ls "$mem_dir/" 2>/dev/null)
       if [[ -z "$keys" ]]; then
