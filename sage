@@ -6998,8 +6998,9 @@ cmd_memory() {
     ls)
       if [[ "${3:-}" == "--json" ]]; then
         local json="{}" k
-        for k in $(ls "$mem_dir/" 2>/dev/null); do
-          json=$(printf '%s' "$json" | jq --arg k "$k" --arg v "$(cat "$mem_dir/$k")" '. + {($k): $v}')
+        for k in "$mem_dir"/*; do
+          [[ -f "$k" ]] || continue
+          json=$(printf '%s' "$json" | jq --arg k "$(basename "$k")" --arg v "$(cat "$k")" '. + {($k): $v}')
         done
         printf '%s\n' "$json"
         return
