@@ -2952,12 +2952,20 @@ cmd_trace() {
 # ═══════════════════════════════════════════════
 cmd_tool() {
   case "${1:-}" in
-    add) [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: sage tool add <name> <path>"
-         cp "$3" "$TOOLS_DIR/$2.sh"; chmod +x "$TOOLS_DIR/$2.sh"; ok "tool '$2' registered" ;;
-    ls)  for t in "$TOOLS_DIR"/*.sh; do [[ -f "$t" ]] && basename "$t" .sh; done ;;
+    add) [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: sage tool add <name> <path> [--desc text]"
+         local tname="$2" tpath="$3"; shift 3
+         cp "$tpath" "$TOOLS_DIR/$tname.sh"; chmod +x "$TOOLS_DIR/$tname.sh"
+         if [[ "${1:-}" == "--desc" ]]; then shift; echo "$*" > "$TOOLS_DIR/$tname.desc"; fi
+         ok "tool '$tname' registered" ;;
+    ls)  for t in "$TOOLS_DIR"/*.sh; do
+           [[ -f "$t" ]] || continue
+           local n; n=$(basename "$t" .sh)
+           local d=""; [[ -f "$TOOLS_DIR/$n.desc" ]] && d=$(cat "$TOOLS_DIR/$n.desc")
+           if [[ -n "$d" ]]; then printf "%-20s %s\n" "$n" "$d"; else echo "$n"; fi
+         done ;;
     rm)  [[ -n "${2:-}" ]] || die "usage: sage tool rm <name>"
          [[ -f "$TOOLS_DIR/$2.sh" ]] || die "tool '$2' not found"
-         rm -f "$TOOLS_DIR/$2.sh"; ok "tool '$2' removed" ;;
+         rm -f "$TOOLS_DIR/$2.sh" "$TOOLS_DIR/$2.desc"; ok "tool '$2' removed" ;;
     show) [[ -n "${2:-}" ]] || die "usage: sage tool show <name>"
           [[ -f "$TOOLS_DIR/$2.sh" ]] || die "tool '$2' not found"
           cat "$TOOLS_DIR/$2.sh" ;;
@@ -6050,6 +6058,26 @@ HELP
     sage replay task-abc123              # replay specific task
     sage replay task-abc123 --agent dev  # replay to different agent
     sage replay --dry-run                # preview what would be sent
+HELP
+      ;;
+    tool)
+      cat << 'HELP'
+  sage tool <subcommand> [args]
+
+  Register, inspect, execute, and manage custom tool scripts.
+
+  SUBCOMMANDS
+    add <name> <path> [--desc "text"]  Register a tool (optional description)
+    ls                                 List tools with descriptions
+    rm <name>                          Remove a tool
+    run <name> [args...]               Execute a tool
+    show <name>                        Show tool source
+
+  EXAMPLES
+    sage tool add lint ./scripts/lint.sh --desc "Run project linter"
+    sage tool ls
+    sage tool run lint src/
+    sage tool rm lint
 HELP
       ;;
     *)
