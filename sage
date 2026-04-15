@@ -6084,6 +6084,46 @@ HELP
     sage config rm default.model
 HELP
       ;;
+    context)
+      cat << 'HELP'
+  sage context <subcommand> [key] [value]
+
+  Shared context store (auto-injected into all agent prompts).
+
+  SUBCOMMANDS
+    set <key> <value>       Store a key-value pair
+    set <key> --file <path> Load value from file (max 100KB)
+    get <key>               Retrieve a value
+    ls [--json]             List all keys (--json for machine-readable output)
+    rm <key>                Remove a key
+    clear                   Remove all keys
+
+  EXAMPLES
+    sage context set repo_url https://github.com/org/repo
+    sage context set spec --file design.md
+    sage context ls --json
+    sage context rm repo_url
+HELP
+      ;;
+    env)
+      cat << 'HELP'
+  sage env <subcommand> <agent> [args]
+
+  Per-agent environment variables (injected at runtime, values masked in ls).
+
+  SUBCOMMANDS
+    set <agent> KEY=VALUE [...]  Store env vars (multiple allowed)
+    ls <agent> [--json]          List vars with masked values (--json for scripting)
+    rm <agent> KEY               Remove a var
+    scope <agent> [KEY1,KEY2]    Restrict which vars are allowed (--clear to reset)
+
+  EXAMPLES
+    sage env set worker API_KEY=sk-abc123 MODEL=gpt4
+    sage env ls worker --json
+    sage env rm worker API_KEY
+    sage env scope worker API_KEY,MODEL
+HELP
+      ;;
     memory)
       cat << 'HELP'
   sage memory <subcommand> <agent> [key] [value]
@@ -6777,22 +6817,35 @@ cmd_env() {
       ok "set env for $name"
       ;;
     ls)
-      local name="${1:-}"
-      [[ -n "$name" ]] || die "usage: sage env ls <agent>"
+      local name="${1:-}" _env_json=false
+      [[ -n "$name" ]] || die "usage: sage env ls <agent> [--json]"
+      [[ "${2:-}" == "--json" ]] && _env_json=true
       ensure_init; agent_exists "$name"
       local env_file="$AGENTS_DIR/$name/env"
       if [[ ! -f "$env_file" ]] || [[ ! -s "$env_file" ]]; then
-        echo "  (no env vars)"; return
+        if [[ "$_env_json" == true ]]; then printf '{}\n'; else echo "  (no env vars)"; fi
+        return
       fi
-      while IFS= read -r line || [[ -n "$line" ]]; do
-        [[ -z "$line" ]] && continue
-        local k="${line%%=*}" v="${line#*=}"
-        local masked
-        if [[ ${#v} -le 4 ]]; then masked="****"
-        else masked="${v:0:2}***${v: -1}"
-        fi
-        echo "  $k=$masked"
-      done < "$env_file"
+      if [[ "$_env_json" == true ]]; then
+        local json="{}"
+        while IFS= read -r line || [[ -n "$line" ]]; do
+          [[ -z "$line" ]] && continue
+          local k="${line%%=*}" v="${line#*=}" masked
+          if [[ ${#v} -le 4 ]]; then masked="****"; else masked="${v:0:2}***${v: -1}"; fi
+          json=$(printf '%s' "$json" | jq --arg k "$k" --arg v "$masked" '. + {($k): $v}')
+        done < "$env_file"
+        printf '%s\n' "$json"
+      else
+        while IFS= read -r line || [[ -n "$line" ]]; do
+          [[ -z "$line" ]] && continue
+          local k="${line%%=*}" v="${line#*=}"
+          local masked
+          if [[ ${#v} -le 4 ]]; then masked="****"
+          else masked="${v:0:2}***${v: -1}"
+          fi
+          echo "  $k=$masked"
+        done < "$env_file"
+      fi
       ;;
     rm)
       local name="${1:-}"; shift 2>/dev/null || true
