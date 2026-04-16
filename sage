@@ -6590,7 +6590,7 @@ _parse_duration() {
 
 cmd_history() {
   ensure_init
-  local agent_filter="" limit=20 json_mode=false tag_filter="" since_cutoff=0 grep_pattern=""
+  local agent_filter="" limit=20 json_mode=false tag_filter="" since_cutoff=0 grep_pattern="" prune_dur=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent) agent_filter="$2"; shift 2 ;;
@@ -6598,11 +6598,39 @@ cmd_history() {
       --json)  json_mode=true; shift ;;
       --tag)   tag_filter="$2"; shift 2 ;;
       --grep)  grep_pattern="$2"; shift 2 ;;
+      --prune) prune_dur="$2"; shift 2 ;;
       --since) local _dur; _dur=$(_parse_duration "$2") || die "invalid duration '$2' (use: 30m, 2h, 1d, 1w)"
                since_cutoff=$(($(date +%s) - _dur)); shift 2 ;;
-      *)       die "usage: sage history [--agent <name>] [--tag <label>] [--since <duration>] [--grep <pattern>] [-n <count>] [--json]" ;;
+      *)       die "usage: sage history [--agent <name>] [--tag <label>] [--since <duration>] [--grep <pattern>] [--prune <duration>] [-n <count>] [--json]" ;;
     esac
   done
+
+  # --prune: delete old task history
+  if [[ -n "$prune_dur" ]]; then
+    local _pd
+    _pd=$(_parse_duration "$prune_dur") || die "invalid duration '$prune_dur' (use: 30m, 2h, 1d, 1w)"
+    local cutoff=$(($(date +%s) - _pd)) pruned=0
+    for agent_dir in "$AGENTS_DIR"/*/; do
+      [[ -d "$agent_dir" ]] || continue
+      local aname
+      aname=$(basename "$agent_dir")
+      [[ "$aname" == ".cli" ]] && continue
+      [[ -n "$agent_filter" && "$aname" != "$agent_filter" ]] && continue
+      for sf in "$agent_dir"results/*.status.json; do
+        [[ -f "$sf" ]] || continue
+        local qt
+        qt=$(jq -r '.queued_at // 0' "$sf" 2>/dev/null) || continue
+        if [[ "$qt" -lt "$cutoff" ]]; then
+          local base="${sf%.status.json}"
+          rm -f "$sf" "${base}.result"
+          pruned=$((pruned + 1))
+        fi
+      done
+    done
+    ok "pruned $pruned task(s)"
+    return 0
+  fi
+
   local entries=""
   for agent_dir in "$AGENTS_DIR"/*/; do
     [[ -d "$agent_dir" ]] || continue
