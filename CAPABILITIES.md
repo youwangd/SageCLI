@@ -79,6 +79,7 @@
 - Agent export/import (export, create --from file/URL, diff)
 - Agent guardrails (--timeout, --max-turns, --retry, --allow-env, max-agents concurrency limit)
 - Dry-run mode (send --dry-run — preview assembled prompt with all injected context/memory/messages without executing)
+- Per-task timeout (send --headless --timeout <duration> — kill task after Nm/Nh/Ns, exit 124 on timeout, works with --json/--on-fail/--on-done)
 - Command aliases (alias set/ls/rm — reusable shortcuts for common workflows, like git aliases)
 - File attachment (send --attach <file> — append file contents as context alongside message, multiple files supported, 100KB limit)
 - Task tagging (send --tag <label> — tag tasks for filtering, history --tag <label> filters by tag, multiple tags supported, shown in history output)
