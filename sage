@@ -6379,7 +6379,7 @@ cmd_help() {
     env scope <agent>           Show effective env
 
   OBSERVABILITY
-    stats [--json]              Aggregate statistics across agents
+    stats [--json] [--agent <n>] Aggregate or per-agent statistics
     stats --cost                Cost estimation per runtime
     stats --efficiency          Tasks completed per dollar
 
