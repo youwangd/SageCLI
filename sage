@@ -1997,10 +1997,11 @@ cmd_call() {
 # sage logs <name> [-f] [--clear] | sage logs --all [-f]
 # ═══════════════════════════════════════════════
 cmd_logs() {
-  local name="" flag="" grep_pat="" all=false follow=false
+  local name="" flag="" grep_pat="" all=false follow=false tail_n=50
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --grep) grep_pat="${2:-}"; [[ -n "$grep_pat" ]] || die "usage: sage logs <name> --grep <pattern>"; shift 2 ;;
+      --tail) tail_n="${2:-}"; [[ "$tail_n" =~ ^[0-9]+$ ]] || die "--tail requires a number"; shift 2 ;;
       --all) all=true; shift ;;
       -f) follow=true; shift ;;
       --clear) flag="--clear"; shift ;;
@@ -2008,11 +2009,11 @@ cmd_logs() {
       *) [[ -z "$name" ]] && name="$1" || true; shift ;;
     esac
   done
-  [[ -n "$name" || "$all" == true ]] || die "usage: sage logs <name> [-f|--clear|--all|--grep <pattern>]"
+  [[ -n "$name" || "$all" == true ]] || die "usage: sage logs <name> [-f|--clear|--all|--grep <pattern>|--tail <N>]"
   ensure_init
 
   if [[ "$all" == true ]]; then
-    _logs_all "$($follow && echo "-f" || true)" "$grep_pat"
+    _logs_all "$($follow && echo "-f" || true)" "$grep_pat" "$tail_n"
     return
   fi
 
@@ -2028,16 +2029,16 @@ cmd_logs() {
   [[ -f "$logfile" ]] || die "no logs for '$name'"
 
   if [[ -n "$grep_pat" ]]; then
-    grep -i --color=always "$grep_pat" "$logfile" || true
+    grep -i --color=always "$grep_pat" "$logfile" | tail -"$tail_n"
   elif [[ "$follow" == true ]]; then
     tail -f "$logfile"
   else
-    tail -50 "$logfile"
+    tail -"$tail_n" "$logfile"
   fi
 }
 
 _logs_all() {
-  local follow="${1:-}" grep_pat="${2:-}" colors=("31" "32" "33" "34" "35" "36") ci=0 found=false
+  local follow="${1:-}" grep_pat="${2:-}" tail_n="${3:-50}" colors=("31" "32" "33" "34" "35" "36") ci=0 found=false
   local pids=()
   for logfile in "$LOGS_DIR"/*.log; do
     [[ -f "$logfile" ]] || continue
@@ -2047,12 +2048,12 @@ _logs_all() {
     local c="${colors[$((ci % ${#colors[@]}))]}"
     ci=$((ci + 1))
     if [[ -n "$grep_pat" ]]; then
-      grep -i "$grep_pat" "$logfile" 2>/dev/null | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /" || true
+      grep -i "$grep_pat" "$logfile" 2>/dev/null | tail -"$tail_n" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /" || true
     elif [[ "$follow" == "-f" ]]; then
       tail -f "$logfile" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /" &
       pids+=($!)
     else
-      tail -50 "$logfile" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /"
+      tail -"$tail_n" "$logfile" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /"
     fi
   done
   $found || die "no agent logs found"
