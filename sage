@@ -6776,16 +6776,20 @@ _stats_efficiency() {
 
 cmd_stats() {
   ensure_init
-  local json_mode=false tokens_mode=false cost_mode=false efficiency_mode=false
+  local json_mode=false tokens_mode=false cost_mode=false efficiency_mode=false agent_filter=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json_mode=true; shift ;;
       --tokens) tokens_mode=true; shift ;;
       --cost) cost_mode=true; shift ;;
       --efficiency) efficiency_mode=true; shift ;;
-      *) die "usage: sage stats [--json] [--tokens] [--cost] [--efficiency]" ;;
+      --agent) agent_filter="${2:-}"; [[ -n "$agent_filter" ]] || die "usage: sage stats --agent <name>"; shift 2 ;;
+      *) die "usage: sage stats [--json] [--tokens] [--cost] [--efficiency] [--agent <name>]" ;;
     esac
   done
+  if [[ -n "$agent_filter" ]]; then
+    [[ -d "$AGENTS_DIR/$agent_filter" ]] || die "agent '$agent_filter' not found"
+  fi
 
   if $tokens_mode; then _stats_tokens "$json_mode"; return; fi
   if $cost_mode; then _stats_cost "$json_mode"; return; fi
@@ -6799,6 +6803,7 @@ cmd_stats() {
     [[ -d "$agent_dir" ]] || continue
     local aname; aname=$(basename "$agent_dir")
     [[ "$aname" == ".cli" ]] && continue
+    [[ -n "$agent_filter" && "$aname" != "$agent_filter" ]] && continue
     total_agents=$((total_agents + 1))
     if agent_pid "$aname" >/dev/null 2>&1; then
       running=$((running + 1))
@@ -6837,10 +6842,17 @@ cmd_stats() {
   fi
 
   if $json_mode; then
-    jq -n --argjson ta "$total_agents" --argjson r "$running" --argjson s "$stopped" \
-      --argjson td "$tasks_done" --argjson tf "$tasks_failed" --argjson tp "$tasks_pending" \
-      --argjson ts "$total_secs" --arg ma "$most_active_agent" --argjson mc "$most_active_count" \
-      '{total_agents:$ta,running:$r,stopped:$s,tasks_done:$td,tasks_failed:$tf,tasks_pending:$tp,total_runtime_secs:$ts,most_active:{agent:$ma,tasks:$mc}}'
+    if [[ -n "$agent_filter" ]]; then
+      jq -n --arg ag "$agent_filter" --argjson r "$running" --argjson s "$stopped" \
+        --argjson td "$tasks_done" --argjson tf "$tasks_failed" --argjson tp "$tasks_pending" \
+        --argjson ts "$total_secs" \
+        '{agent:$ag,running:$r,stopped:$s,tasks_done:$td,tasks_failed:$tf,tasks_pending:$tp,total_runtime_secs:$ts}'
+    else
+      jq -n --argjson ta "$total_agents" --argjson r "$running" --argjson s "$stopped" \
+        --argjson td "$tasks_done" --argjson tf "$tasks_failed" --argjson tp "$tasks_pending" \
+        --argjson ts "$total_secs" --arg ma "$most_active_agent" --argjson mc "$most_active_count" \
+        '{total_agents:$ta,running:$r,stopped:$s,tasks_done:$td,tasks_failed:$tf,tasks_pending:$tp,total_runtime_secs:$ts,most_active:{agent:$ma,tasks:$mc}}'
+    fi
     return 0
   fi
 
