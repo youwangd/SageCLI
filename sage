@@ -6337,6 +6337,7 @@ cmd_help() {
     send <to> <message|@file> [--force] Fire-and-forget (--force cancels, --then <agent> chains)
     call <to> <message|@file> [s]  Send and wait for response (default: 60s)
     tasks [name]                List tasks with status
+      [--json] [--status <s>]   Filter by status (done, failed, running, queued)
     result <task-id>            Get task result
     replay [task-id]            Re-send a previous task
     wait <name> [--timeout N]   Wait for agent to finish (long-running tasks)

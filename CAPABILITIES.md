@@ -89,7 +89,7 @@
 - MCP server health check (doctor --mcp — verify registered MCP server command binaries exist)
 - Per-agent environment (env set/ls/rm/scope, create --env, env var allowlist, ls --json for scripting)
 - Agent status filter (ls --running/--stopped — filter agents by status, works with -l/--json, enables scripting: sage ls --running | xargs sage stop)
-- Observability (history, info, stats, ls -l/--json, token counting per agent, cost estimation per runtime, efficiency metrics, stats --agent for per-agent stats, stats --since for time-windowed stats)
+- Observability (history, info, stats, ls -l/--json, token counting per agent, cost estimation per runtime, efficiency metrics, stats --agent for per-agent stats, stats --since for time-windowed stats, tasks --json for scripting, tasks --status for filtering)
 - Plan orchestrator (plan, wave-based dependency execution)
 - ACP protocol support (persistent sessions)
 - Shell completions (bash/zsh tab-completion for commands, agents, runtimes)
@@ -113,3 +113,4 @@
 - History task text (sage history shows MESSAGE column with task text preview; task_text stored in status.json for debugging multi-agent workflows)
 - Status active task (sage status shows TASK column with current task text preview for agents with queued/running tasks)
 - Task replay (sage replay [task-id] — re-send a previous task to the same agent; --agent to override target; --dry-run to preview; no args replays most recent task)
+- Task JSON output (sage tasks --json — machine-readable task list for scripting; --status <filter> to show only done/failed/running/queued tasks)
