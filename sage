@@ -2199,17 +2199,29 @@ cmd_merge() {
 # ═══════════════════════════════════════════════
 cmd_clean() {
   ensure_init
-  # Clean up stale pid files (where process is no longer running)
+  local dry_run=false count=0
+  [[ "${1:-}" == "--dry-run" ]] && dry_run=true
+  # Stale pid files
   while IFS= read -r -d '' pidfile; do
     local pid_val
     pid_val=$(cat "$pidfile" 2>/dev/null)
     if [[ "$pid_val" =~ ^[0-9]+$ ]] && ! kill -0 "$pid_val" 2>/dev/null; then
-      rm -f "$pidfile"
+      if $dry_run; then echo "  would remove stale pid: $pidfile"; else rm -f "$pidfile"; fi
+      count=$((count + 1))
     fi
   done < <(find "$AGENTS_DIR" -name ".pid" -print0 2>/dev/null)
-  find /tmp -name "sage-*" -mmin +60 -delete 2>/dev/null || true
-  find "$AGENTS_DIR" -path "*/replies/*.json" -mmin +60 -delete 2>/dev/null || true
-  ok "cleaned up stale files"
+  # Old temp files
+  while IFS= read -r f; do
+    if $dry_run; then echo "  would remove temp: $f"; else rm -f "$f"; fi
+    count=$((count + 1))
+  done < <(find /tmp -name "sage-*" -type f -mmin +60 2>/dev/null || true)
+  # Old reply files
+  while IFS= read -r f; do
+    if $dry_run; then echo "  would remove reply: $f"; else rm -f "$f"; fi
+    count=$((count + 1))
+  done < <(find "$AGENTS_DIR" -path "*/replies/*.json" -mmin +60 2>/dev/null || true)
+  if $dry_run; then ok "dry-run: $count file(s) would be cleaned"
+  else ok "cleaned $count stale file(s)"; fi
 }
 
 # ═══════════════════════════════════════════════
@@ -7325,7 +7337,7 @@ case "${1:-}" in
   diff)    shift; cmd_diff "$@" ;;
   export)  shift; cmd_export "$@" ;;
   merge)   shift; cmd_merge "$@" ;;
-  clean)   cmd_clean ;;
+  clean)   shift; cmd_clean "$@" ;;
   tool)    shift; cmd_tool "$@" ;;
   mcp)     shift; cmd_mcp "$@" ;;
   skill)   shift; cmd_skill "$@" ;;
