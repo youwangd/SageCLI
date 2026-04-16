@@ -2125,13 +2125,14 @@ cmd_attach() {
 # ═══════════════════════════════════════════════
 cmd_ls() {
   ensure_init
-  local long=false json=false filter=""
+  local long=false json=false filter="" rt_filter=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -l|--long) long=true; shift ;;
       --json) json=true; shift ;;
       --running) filter="running"; shift ;;
       --stopped) filter="stopped"; shift ;;
+      --runtime) rt_filter="$2"; shift 2 ;;
       *) die "unknown flag: $1" ;;
     esac
   done
@@ -2148,6 +2149,7 @@ cmd_ls() {
       local st="stopped"
       agent_pid "$n" >/dev/null 2>&1 && st="running"
       [[ -n "$filter" && "$filter" != "$st" ]] && continue
+      [[ -n "$rt_filter" && "$rt" != "$rt_filter" ]] && continue
       local la="never"
       if ls "$d"results/*.status.json >/dev/null 2>&1; then
         la=$(jq -r '.finished_at // .queued_at // empty' "$d"results/*.status.json 2>/dev/null | sort | tail -1)
@@ -2172,6 +2174,7 @@ cmd_ls() {
       local st="stopped"
       agent_pid "$n" >/dev/null 2>&1 && st="running"
       [[ -n "$filter" && "$filter" != "$st" ]] && continue
+      [[ -n "$rt_filter" && "$rt" != "$rt_filter" ]] && continue
       local la="never"
       if ls "$d"results/*.status.json >/dev/null 2>&1; then
         la=$(jq -r '.finished_at // .queued_at // empty' "$d"results/*.status.json 2>/dev/null | sort | tail -1)
@@ -2191,6 +2194,10 @@ cmd_ls() {
       local st="stopped"
       agent_pid "$n" >/dev/null 2>&1 && st="running"
       [[ "$filter" != "$st" ]] && continue
+    fi
+    if [[ -n "$rt_filter" ]]; then
+      local rt=$(jq -r '.runtime // "bash"' "$d/runtime.json" 2>/dev/null || echo "bash")
+      [[ "$rt" != "$rt_filter" ]] && continue
     fi
     echo "$n"
   done
