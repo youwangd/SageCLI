@@ -1623,7 +1623,7 @@ cmd_status() {
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
-  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd=""
+  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1639,6 +1639,7 @@ cmd_send() {
       --dry-run)     dry_run=true; shift ;;
       --attach)      attach_files="${attach_files:+$attach_files$'\n'}$2"; shift 2 ;;
       --tag)         task_tags="${task_tags:+$task_tags$'\n'}$2"; shift 2 ;;
+      --timeout)     task_timeout="$2"; shift 2 ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1678,6 +1679,19 @@ cmd_send() {
   fi
   if [[ "$strict" == true && "$headless" != true ]]; then
     die "--strict requires --headless"
+  fi
+  # --timeout requires --headless
+  local _timeout_seconds=""
+  if [[ -n "$task_timeout" ]]; then
+    [[ "$headless" == true ]] || die "--timeout requires --headless"
+    case "$task_timeout" in
+      *m) _timeout_seconds=$(( ${task_timeout%m} * 60 )) ;;
+      *h) _timeout_seconds=$(( ${task_timeout%h} * 3600 )) ;;
+      *s) _timeout_seconds="${task_timeout%s}" ;;
+      *[0-9]) _timeout_seconds="$task_timeout" ;;
+      *)  die "invalid timeout '$task_timeout' — use Nm, Nh, Ns, or bare seconds" ;;
+    esac
+    [[ "$_timeout_seconds" =~ ^[0-9]+$ ]] || die "invalid timeout '$task_timeout'"
   fi
   if [[ -n "$then_chain" ]]; then
     local _ta
@@ -1824,7 +1838,16 @@ $message"
     start_ts=$(date +%s)
 
     local task_output
-    task_output=$(runtime_inject "$to" "$msg" 2>&1) || rc=$?
+    if [[ -n "$_timeout_seconds" ]]; then
+      task_output=$( (runtime_inject "$to" "$msg" 2>&1) & _tpid=$!; (sleep "$_timeout_seconds"; kill $_tpid 2>/dev/null) & _wpid=$!; wait $_tpid 2>/dev/null; _trc=$?; kill $_wpid 2>/dev/null; wait $_wpid 2>/dev/null; exit $_trc ) || rc=$?
+      # If killed by our timer, normalize to 124
+      if [[ $rc -ne 0 && $rc -ne 124 ]]; then
+        # Check if it was our kill (143=SIGTERM)
+        [[ $rc -eq 143 || $rc -gt 128 ]] && rc=124
+      fi
+    else
+      task_output=$(runtime_inject "$to" "$msg" 2>&1) || rc=$?
+    fi
 
     # Retry on failure
     local _retry_i=0
@@ -6097,6 +6120,7 @@ _help_command() {
     --attach <file> Append file contents as context (max 100KB, repeatable)
     --tag <label>   Tag the task for filtering (repeatable)
     --no-context    Skip injecting shared context
+    --timeout <dur> Kill task after duration (requires --headless; Nm/Nh/Ns/seconds, exit 124)
 
   EXAMPLES
     sage send worker "Fix the login bug"
