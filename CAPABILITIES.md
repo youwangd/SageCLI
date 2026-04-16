@@ -88,6 +88,7 @@
 - Unified health check (doctor --all — run basic + security + agents + mcp checks in one pass)
 - MCP server health check (doctor --mcp — verify registered MCP server command binaries exist)
 - Per-agent environment (env set/ls/rm/scope, create --env, env var allowlist, ls --json for scripting)
+- Agent status filter (ls --running/--stopped — filter agents by status, works with -l/--json, enables scripting: sage ls --running | xargs sage stop)
 - Observability (history, info, stats, ls -l/--json, token counting per agent, cost estimation per runtime, efficiency metrics)
 - Plan orchestrator (plan, wave-based dependency execution)
 - ACP protocol support (persistent sessions)
