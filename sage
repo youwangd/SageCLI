@@ -6368,6 +6368,7 @@ cmd_help() {
     restore [name|--all]        Restore agents from checkpoints after reboot
     recover [--yes]             Detect and fix orphaned/dead agent sessions
     doctor                      Check dependencies and environment health
+      [--all|--security|--agents|--mcp] [--json]
     history [--agent a] [-n N]  Show agent activity timeline (--json for JSON)
     info <name>                 Show full agent configuration and status (--json)
     upgrade [--check]           Self-update from GitHub (--check: compare only)

@@ -86,6 +86,7 @@
 - Security audit (doctor --security — report agents missing guardrails with exit code)
 - Runtime dependency check (doctor --agents — verify each agent's runtime binary is installed)
 - Unified health check (doctor --all — run basic + security + agents + mcp checks in one pass)
+- Doctor JSON output (doctor --json — machine-readable health check output for CI/monitoring; works with --all, --security, --agents, --mcp)
 - MCP server health check (doctor --mcp — verify registered MCP server command binaries exist)
 - Per-agent environment (env set/ls/rm/scope, create --env, env var allowlist, ls --json for scripting)
 - Agent status filter (ls --running/--stopped — filter agents by status, works with -l/--json, enables scripting: sage ls --running | xargs sage stop)
