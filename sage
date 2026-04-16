@@ -6380,6 +6380,7 @@ cmd_help() {
 
   OBSERVABILITY
     stats [--json] [--agent <n>] Aggregate or per-agent statistics
+      [--since <dur>]           Filter by time window (30m, 2h, 1d, 1w)
     stats --cost                Cost estimation per runtime
     stats --efficiency          Tasks completed per dollar
 
