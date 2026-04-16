@@ -6370,6 +6370,7 @@ cmd_help() {
     doctor                      Check dependencies and environment health
       [--all|--security|--agents|--mcp] [--json]
     history [--agent a] [-n N]  Show agent activity timeline (--json for JSON)
+      [--prune <duration>]      Delete tasks older than duration (30m, 2h, 1d, 1w)
     info <name>                 Show full agent configuration and status (--json)
     upgrade [--check]           Self-update from GitHub (--check: compare only)
     config {set|get|ls|rm}      Persistent user defaults (e.g. default.runtime)
