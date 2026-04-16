@@ -2552,15 +2552,25 @@ MSGEOF
 # sage tasks [name]
 # ═══════════════════════════════════════════════
 cmd_tasks() {
-  local name="${1:-}"
+  local name="" json_mode=false status_filter=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json_mode=true; shift ;;
+      --status) status_filter="${2:-}"; [[ -n "$status_filter" ]] || die "usage: sage tasks --status <done|failed|running|queued>"
+               case "$status_filter" in done|failed|running|queued) ;; *) die "invalid status '$status_filter' (use: done, failed, running, queued)" ;; esac
+               shift 2 ;;
+      -*) die "usage: sage tasks [name] [--json] [--status <done|failed|running|queued>]" ;;
+      *) name="$1"; shift ;;
+    esac
+  done
   ensure_init
   set +e
 
   local now=$(date +%s)
-  local found=0
+  local found=0 json_arr="["
 
-  printf "\n${BOLD}  ⚡ Tasks${NC}\n\n"
-  printf "  ${DIM}%-20s %-12s %-10s %-10s %s${NC}\n" "TASK" "AGENT" "STATUS" "ELAPSED" "FROM"
+  $json_mode || printf "\n${BOLD}  ⚡ Tasks${NC}\n\n"
+  $json_mode || printf "  ${DIM}%-20s %-12s %-10s %-10s %s${NC}\n" "TASK" "AGENT" "STATUS" "ELAPSED" "FROM"
 
   # Search specific agent or all agents
   local search_dirs=()
@@ -2580,37 +2590,49 @@ cmd_tasks() {
 
     for status_file in $(ls -t "$results_dir"/*.status.json 2>/dev/null | head -20); do
       [[ -f "$status_file" ]] || continue
-      ((found++)) || true
 
       local task_id=$(jq -r '.id' "$status_file")
       local status=$(jq -r '.status' "$status_file")
+      [[ -n "$status_filter" && "$status" != "$status_filter" ]] && continue
       local from=$(jq -r '.from' "$status_file")
       local queued_at=$(jq -r '.queued_at // 0' "$status_file")
       local finished_at=$(jq -r '.finished_at // 0' "$status_file")
+      local task_text=$(jq -r '.task_text // ""' "$status_file")
 
-      local elapsed
+      local elapsed_secs
       if [[ "$finished_at" != "null" && "$finished_at" != "0" ]]; then
-        elapsed="$(( finished_at - queued_at ))s"
+        elapsed_secs=$(( finished_at - queued_at ))
       else
-        elapsed="$(( now - queued_at ))s"
+        elapsed_secs=$(( now - queued_at ))
       fi
+      ((found++)) || true
 
-      local status_color
-      case "$status" in
-        done)    status_color="$GREEN" ;;
-        running) status_color="$YELLOW" ;;
-        queued)  status_color="$DIM" ;;
-        failed)  status_color="$RED" ;;
-        *)       status_color="$NC" ;;
-      esac
-
-      printf "  %-20s %-12s ${status_color}%-10s${NC} %-10s %s\n" \
-        "$task_id" "$agent_name" "$status" "$elapsed" "$from"
+      if $json_mode; then
+        [[ "$found" -gt 1 ]] && json_arr="$json_arr,"
+        json_arr="$json_arr$(jq -nc --arg i "$task_id" --arg a "$agent_name" --arg s "$status" \
+          --argjson e "$elapsed_secs" --arg f "$from" --arg t "$task_text" \
+          '{id:$i,agent:$a,status:$s,elapsed_secs:$e,from:$f,task_text:$t}')"
+      else
+        local status_color
+        case "$status" in
+          done)    status_color="$GREEN" ;;
+          running) status_color="$YELLOW" ;;
+          queued)  status_color="$DIM" ;;
+          failed)  status_color="$RED" ;;
+          *)       status_color="$NC" ;;
+        esac
+        printf "  %-20s %-12s ${status_color}%-10s${NC} %-10s %s\n" \
+          "$task_id" "$agent_name" "$status" "${elapsed_secs}s" "$from"
+      fi
     done
   done
 
-  [[ $found -eq 0 ]] && printf "  ${DIM}no tasks${NC}\n"
-  printf "\n"
+  if $json_mode; then
+    printf '%s]\n' "$json_arr"
+  else
+    [[ $found -eq 0 ]] && printf "  ${DIM}no tasks${NC}\n"
+    printf "\n"
+  fi
 }
 
 # ═══════════════════════════════════════════════
@@ -7212,7 +7234,7 @@ case "${1:-}" in
   status)  cmd_status ;;
   send)    shift; cmd_send "$@" ;;
   call)    shift; cmd_call "$@" ;;
-  tasks)   cmd_tasks "${2:-}" ;;
+  tasks)   shift; cmd_tasks "$@" ;;
   result)  cmd_result "${2:-}" ;;
   replay)  shift; cmd_replay "$@" ;;
   steer)   shift; cmd_steer "$@" ;;
