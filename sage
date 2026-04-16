@@ -2936,13 +2936,15 @@ cmd_inbox() {
 # sage trace [--tree] [--clear] [-n N]
 # ═══════════════════════════════════════════════
 cmd_trace() {
-  local mode="timeline" limit=50 do_clear=false agent_filter="" json_out=false
+  local mode="timeline" limit=50 do_clear=false agent_filter="" json_out=false since_cutoff=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --tree)  mode="tree"; shift ;;
       --json)  json_out=true; shift ;;
       --clear) do_clear=true; shift ;;
+      --since) local _dur; _dur=$(_parse_duration "$2") || die "invalid duration '$2' (use: 30m, 2h, 1d, 1w)"
+               since_cutoff=$(( $(date +%s) - _dur )); shift 2 ;;
       -n)      limit="$2"; shift 2 ;;
       -*)      die "unknown flag: $1" ;;
       *)       agent_filter="$1"; shift ;;
@@ -2969,6 +2971,16 @@ cmd_trace() {
   fi
 
   [[ -n "$trace_data" ]] || { if [[ "$json_out" == true ]]; then printf '[]\n'; else printf "\n  ${DIM}no trace data for '$agent_filter'${NC}\n\n"; fi; return; }
+
+  # Apply --since time filter
+  if [[ "$since_cutoff" -gt 0 ]]; then
+    trace_data=$(echo "$trace_data" | while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      local ts; ts=$(echo "$line" | jq -r '.ts' 2>/dev/null) || continue
+      [[ "$ts" -ge "$since_cutoff" ]] && printf '%s\n' "$line"
+    done)
+    [[ -n "$trace_data" ]] || { if [[ "$json_out" == true ]]; then printf '[]\n'; else printf "\n  ${DIM}no trace data in time window${NC}\n\n"; fi; return; }
+  fi
 
   if [[ "$json_out" == true ]]; then
     printf '[%s]\n' "$(echo "$trace_data" | sed '/^$/d' | paste -sd ',' -)"
