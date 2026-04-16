@@ -5962,23 +5962,36 @@ cmd_upgrade() {
 }
 
 cmd_diff() {
-  local name="" git_args=()
+  local name="" git_args=() branch_mode=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --branch) branch_mode=true; shift ;;
       --stat)   git_args+=("--stat"); shift ;;
       --cached) git_args+=("--cached"); shift ;;
       -*) die "unknown flag: $1" ;;
       *)  name="$1"; shift ;;
     esac
   done
-  [[ -n "$name" ]] || die "usage: sage diff <name> [--stat] [--cached]"
+  [[ -n "$name" ]] || die "usage: sage diff <name> [--stat] [--cached] [--branch]"
   ensure_init
   local agent_dir="$AGENTS_DIR/$name"
   [[ -d "$agent_dir" ]] || die "agent '$name' not found"
   local is_wt
   is_wt=$(jq -r '.worktree // false' "$agent_dir/runtime.json" 2>/dev/null)
   [[ "$is_wt" == "true" ]] || die "agent '$name' is not a worktree agent"
-  git -C "$agent_dir/workspace" diff ${git_args[@]+"${git_args[@]}"}
+  local ws="$agent_dir/workspace"
+  if $branch_mode; then
+    local base
+    base=$(git -C "$ws" merge-base HEAD "$(git -C "$ws" rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null || echo main)" 2>/dev/null || git -C "$ws" rev-list --max-parents=0 HEAD 2>/dev/null | head -1)
+    local log_out
+    log_out=$(git -C "$ws" log --oneline "$base..HEAD" 2>/dev/null)
+    if [[ -n "$log_out" ]]; then
+      printf "${BOLD:-}Commits:${NC:-}\n%s\n\n" "$log_out"
+    fi
+    git -C "$ws" diff "$base..HEAD" ${git_args[@]+"${git_args[@]}"}
+  else
+    git -C "$ws" diff ${git_args[@]+"${git_args[@]}"}
+  fi
 }
 
 cmd_completions() {
