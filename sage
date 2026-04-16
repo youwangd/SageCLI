@@ -2144,28 +2144,41 @@ cmd_ls() {
       local n=$(basename "$d")
       [[ "$n" == .* ]] && continue
       local rt=$(jq -r '.runtime // "bash"' "$d/runtime.json" 2>/dev/null || echo "bash")
+      local md=$(jq -r '.model // "default"' "$d/runtime.json" 2>/dev/null || echo "default")
       local st="stopped"
       agent_pid "$n" >/dev/null 2>&1 && st="running"
       [[ -n "$filter" && "$filter" != "$st" ]] && continue
+      local la="never"
+      if ls "$d"results/*.status.json >/dev/null 2>&1; then
+        la=$(jq -r '.finished_at // .queued_at // empty' "$d"results/*.status.json 2>/dev/null | sort | tail -1)
+        [[ -z "$la" ]] && la="never"
+      fi
       $first || printf ','
       first=false
-      printf '{"name":"%s","runtime":"%s","status":"%s"}' "$n" "$rt" "$st"
+      printf '{"name":"%s","runtime":"%s","model":"%s","status":"%s","last_active":"%s"}' "$n" "$rt" "$md" "$st" "$la"
     done
     printf ']\n'
     return 0
   fi
 
   if $long; then
-    printf "%-16s %-12s %s\n" "NAME" "RUNTIME" "STATUS"
+    printf "%-16s %-12s %-14s %-10s %s\n" "NAME" "RUNTIME" "MODEL" "STATUS" "LAST_ACTIVE"
     for d in "$AGENTS_DIR"/*/; do
       [[ -d "$d" ]] || continue
       local n=$(basename "$d")
       [[ "$n" == .* ]] && continue
       local rt=$(jq -r '.runtime // "bash"' "$d/runtime.json" 2>/dev/null || echo "bash")
+      local md=$(jq -r '.model // "default"' "$d/runtime.json" 2>/dev/null || echo "default")
       local st="stopped"
       agent_pid "$n" >/dev/null 2>&1 && st="running"
       [[ -n "$filter" && "$filter" != "$st" ]] && continue
-      printf "%-16s %-12s %s\n" "$n" "$rt" "$st"
+      local la="never"
+      if ls "$d"results/*.status.json >/dev/null 2>&1; then
+        la=$(jq -r '.finished_at // .queued_at // empty' "$d"results/*.status.json 2>/dev/null | sort | tail -1)
+        [[ -z "$la" ]] && la="never"
+        [[ "$la" != "never" ]] && la="${la%%T*}"
+      fi
+      printf "%-16s %-12s %-14s %-10s %s\n" "$n" "$rt" "$md" "$st" "$la"
     done
     return 0
   fi
