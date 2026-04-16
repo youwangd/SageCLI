@@ -119,6 +119,7 @@
 - Context listing (sage context ls — truncated values >80 chars, byte size per key; sage context ls --json for scripting)
 - Config JSON output (sage config ls --json — machine-readable config for scripting and CI)
 - Trace export (sage trace --json — output filtered trace events as JSON array for scripting, observability, and CI analysis)
+- Trace time filter (sage trace --since <duration> — filter trace events by age: 30m, 2h, 1d, 1w; works with --json, --tree, agent filter, and -n)
 - History task text (sage history shows MESSAGE column with task text preview; task_text stored in status.json for debugging multi-agent workflows)
 - Status active task (sage status shows TASK column with current task text preview for agents with queued/running tasks)
 - Task replay (sage replay [task-id] — re-send a previous task to the same agent; --agent to override target; --dry-run to preview; no args replays most recent task)
