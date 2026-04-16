@@ -6696,7 +6696,7 @@ _parse_duration() {
 
 cmd_history() {
   ensure_init
-  local agent_filter="" limit=20 json_mode=false tag_filter="" since_cutoff=0 grep_pattern="" prune_dur=""
+  local agent_filter="" limit=20 json_mode=false tag_filter="" since_cutoff=0 grep_pattern="" prune_dur="" status_filter=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent) agent_filter="$2"; shift 2 ;;
@@ -6705,9 +6705,12 @@ cmd_history() {
       --tag)   tag_filter="$2"; shift 2 ;;
       --grep)  grep_pattern="$2"; shift 2 ;;
       --prune) prune_dur="$2"; shift 2 ;;
+      --status) status_filter="${2:-}"; [[ -n "$status_filter" ]] || die "usage: sage history --status <done|failed>"
+                case "$status_filter" in done|failed) ;; *) die "invalid status '$status_filter' (use: done, failed)" ;; esac
+                shift 2 ;;
       --since) local _dur; _dur=$(_parse_duration "$2") || die "invalid duration '$2' (use: 30m, 2h, 1d, 1w)"
                since_cutoff=$(($(date +%s) - _dur)); shift 2 ;;
-      *)       die "usage: sage history [--agent <name>] [--tag <label>] [--since <duration>] [--grep <pattern>] [--prune <duration>] [-n <count>] [--json]" ;;
+      *)       die "usage: sage history [--agent <name>] [--tag <label>] [--status <done|failed>] [--since <duration>] [--grep <pattern>] [--prune <duration>] [-n <count>] [--json]" ;;
     esac
   done
 
@@ -6762,6 +6765,12 @@ cmd_history() {
         local _tt
         _tt=$(jq -r '.task_text // ""' "$sf" 2>/dev/null) || continue
         echo "$_tt" | grep -qi "$grep_pattern" || continue
+      fi
+      # Filter by status if --status specified
+      if [[ -n "$status_filter" ]]; then
+        local _st
+        _st=$(jq -r '.status // ""' "$sf" 2>/dev/null) || continue
+        [[ "$_st" == "$status_filter" ]] || continue
       fi
       local line
       line=$(jq -r --arg a "$aname" '. + {agent:$a} | "\(.queued_at // 0)|\(.agent)|\(.id)|\(.status)|\(.started_at // "")|\(.finished_at // "")|\(.tags // [] | join(","))|\(.task_text // "")"' "$sf" 2>/dev/null) || continue
