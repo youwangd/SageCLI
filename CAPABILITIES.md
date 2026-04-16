@@ -103,6 +103,7 @@
 - Multi-agent log tailing (sage logs --all [-f] — color-coded interleaved output from all agents, live tail with -f)
 - Log search (sage logs --grep <pattern> — case-insensitive search with color highlighting, works with --all)
 - Log tail control (sage logs --tail <N> — show last N lines instead of default 50, works with --all and --grep)
+- Cleanup preview (sage clean --dry-run — preview what would be cleaned with item count, without deleting)
 - Agent checkpoint/restore (sage checkpoint/restore — save and resume agent state across reboots)
 - Session recovery (sage recover — detect and fix orphaned/dead agent sessions after crash or reboot)
 - Plan recovery (sage plan --recover — detect and resume interrupted plans after reboot)
