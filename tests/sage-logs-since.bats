@@ -39,7 +39,8 @@ teardown() {
 @test "logs --since combines with --grep" {
   run sage logs worker --since 30m --grep "now"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"now line"* ]]
+  # grep --color adds ANSI codes; check for the keyword
+  [[ "$output" == *"now"* ]]
   [[ "$output" != *"old line"* ]]
 }
 

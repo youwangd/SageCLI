@@ -1996,12 +1996,23 @@ cmd_call() {
 # ═══════════════════════════════════════════════
 # sage logs <name> [-f] [--clear] | sage logs --all [-f]
 # ═══════════════════════════════════════════════
+_filter_since() {
+  local cutoff="$1"
+  awk -v cutoff="$cutoff" '{
+    if (match($0, /^\[[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]\]/)) {
+      ts = substr($0, 2, 19)
+      if (ts >= cutoff) print
+    } else print
+  }'
+}
+
 cmd_logs() {
-  local name="" flag="" grep_pat="" all=false follow=false tail_n=50
+  local name="" flag="" grep_pat="" all=false follow=false tail_n=50 since_secs=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --grep) grep_pat="${2:-}"; [[ -n "$grep_pat" ]] || die "usage: sage logs <name> --grep <pattern>"; shift 2 ;;
       --tail) tail_n="${2:-}"; [[ "$tail_n" =~ ^[0-9]+$ ]] || die "--tail requires a number"; shift 2 ;;
+      --since) since_secs=$(_parse_duration "${2:-}") || die "invalid duration '${2:-}' (use: 30m, 2h, 1d, 1w)"; shift 2 ;;
       --all) all=true; shift ;;
       -f) follow=true; shift ;;
       --clear) flag="--clear"; shift ;;
@@ -2009,11 +2020,11 @@ cmd_logs() {
       *) [[ -z "$name" ]] && name="$1" || true; shift ;;
     esac
   done
-  [[ -n "$name" || "$all" == true ]] || die "usage: sage logs <name> [-f|--clear|--all|--grep <pattern>|--tail <N>]"
+  [[ -n "$name" || "$all" == true ]] || die "usage: sage logs <name> [-f|--clear|--all|--grep <pattern>|--tail <N>|--since <duration>]"
   ensure_init
 
   if [[ "$all" == true ]]; then
-    _logs_all "$($follow && echo "-f" || true)" "$grep_pat" "$tail_n"
+    _logs_all "$($follow && echo "-f" || true)" "$grep_pat" "$tail_n" "$since_secs"
     return
   fi
 
@@ -2028,7 +2039,14 @@ cmd_logs() {
 
   [[ -f "$logfile" ]] || die "no logs for '$name'"
 
-  if [[ -n "$grep_pat" ]]; then
+  if [[ "$since_secs" -gt 0 ]]; then
+    local cutoff; cutoff=$(date -d "@$(($(date +%s) - since_secs))" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r "$(($(date +%s) - since_secs))" '+%Y-%m-%d %H:%M:%S')
+    if [[ -n "$grep_pat" ]]; then
+      _filter_since "$cutoff" < "$logfile" | grep -i --color=always "$grep_pat" | tail -"$tail_n" || true
+    else
+      _filter_since "$cutoff" < "$logfile" | tail -"$tail_n"
+    fi
+  elif [[ -n "$grep_pat" ]]; then
     grep -i --color=always "$grep_pat" "$logfile" | tail -"$tail_n" || true
   elif [[ "$follow" == true ]]; then
     tail -f "$logfile"
@@ -2038,8 +2056,11 @@ cmd_logs() {
 }
 
 _logs_all() {
-  local follow="${1:-}" grep_pat="${2:-}" tail_n="${3:-50}" colors=("31" "32" "33" "34" "35" "36") ci=0 found=false
-  local pids=()
+  local follow="${1:-}" grep_pat="${2:-}" tail_n="${3:-50}" since_secs="${4:-0}" colors=("31" "32" "33" "34" "35" "36") ci=0 found=false
+  local pids=() cutoff=""
+  if [[ "$since_secs" -gt 0 ]]; then
+    cutoff=$(date -d "@$(($(date +%s) - since_secs))" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r "$(($(date +%s) - since_secs))" '+%Y-%m-%d %H:%M:%S')
+  fi
   for logfile in "$LOGS_DIR"/*.log; do
     [[ -f "$logfile" ]] || continue
     local agent
@@ -2047,7 +2068,11 @@ _logs_all() {
     found=true
     local c="${colors[$((ci % ${#colors[@]}))]}"
     ci=$((ci + 1))
-    if [[ -n "$grep_pat" ]]; then
+    if [[ -n "$cutoff" && -n "$grep_pat" ]]; then
+      _filter_since "$cutoff" < "$logfile" | grep -i "$grep_pat" 2>/dev/null | tail -"$tail_n" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /" || true
+    elif [[ -n "$cutoff" ]]; then
+      _filter_since "$cutoff" < "$logfile" | tail -"$tail_n" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /"
+    elif [[ -n "$grep_pat" ]]; then
       grep -i "$grep_pat" "$logfile" 2>/dev/null | tail -"$tail_n" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /" || true
     elif [[ "$follow" == "-f" ]]; then
       tail -f "$logfile" | sed "s/^/\\x1b[${c}m[${agent}]\\x1b[0m /" &
