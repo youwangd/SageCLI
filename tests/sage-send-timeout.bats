@@ -39,12 +39,12 @@ teardown() {
 }
 
 @test "send --headless --timeout kills slow task with exit 124" {
-  run timeout 8 ./sage send tester "slow task" --headless --timeout 2
+  run ./sage send tester "slow task" --headless --timeout 2
   [ "$status" -eq 124 ]
 }
 
 @test "send --headless --timeout accepts duration format (Ns)" {
-  run timeout 8 ./sage send tester "slow task" --headless --timeout 2s
+  run ./sage send tester "slow task" --headless --timeout 2s
   [ "$status" -eq 124 ]
 }
 
