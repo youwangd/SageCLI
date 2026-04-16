@@ -63,7 +63,7 @@
 - llama-cpp
 
 ## Features
-- Git worktree isolation (create --worktree, merge, merge --dry-run)
+- Git worktree isolation (create --worktree, merge, merge --dry-run, diff --branch for full branch review)
 - Headless/CI mode (send --headless, --json, action.yml)
 - Stdin pipe support (echo "msg" | sage send agent — Unix pipeline integration)
 - MCP server registry (mcp add/ls/rm, create --mcp, mcp tools)
@@ -117,6 +117,7 @@
 - Local model support (ollama + llama-cpp runtimes — run agents with local models, no cloud API needed)
 - Default result lookup (sage result with no args shows most recent task result by timestamp, no task-id needed)
 - Agent-scoped result (sage result --agent <name> — show most recent result for a specific agent, scopes task-id search to that agent)
+- Branch diff (sage diff <agent> --branch — show all commits and changes on agent's worktree branch vs base, works with --stat for summary)
 - Context from file (sage context set <key> --file <path> — load persistent shared context from file, 100KB limit, multiline preserved)
 - Context listing (sage context ls — truncated values >80 chars, byte size per key; sage context ls --json for scripting)
 - Config JSON output (sage config ls --json — machine-readable config for scripting and CI)
