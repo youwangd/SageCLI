@@ -2720,13 +2720,29 @@ cmd_tasks() {
 # sage result <task-id>
 # ═══════════════════════════════════════════════
 cmd_result() {
-  local task_id="${1:-}"
+  local task_id="" agent_filter=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent_filter="${2:-}"; [[ -n "$agent_filter" ]] || die "usage: sage result [task-id] [--agent <name>]"; shift 2 ;;
+      -*)      die "usage: sage result [task-id] [--agent <name>]" ;;
+      *)       task_id="$1"; shift ;;
+    esac
+  done
   ensure_init
+  [[ -n "$agent_filter" ]] && agent_exists "$agent_filter"
+
+  # Build glob pattern based on agent filter
+  local search_glob
+  if [[ -n "$agent_filter" ]]; then
+    search_glob="$AGENTS_DIR/$agent_filter/results/*.status.json"
+  else
+    search_glob="$AGENTS_DIR/*/results/*.status.json"
+  fi
 
   # No task-id: find most recent task by file modification time
   if [[ -z "$task_id" ]]; then
     local newest="" newest_time=0
-    for f in "$AGENTS_DIR"/*/results/*.status.json; do
+    for f in $search_glob; do
       [[ -f "$f" ]] || continue
       local mtime
       mtime=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || continue
@@ -2735,12 +2751,19 @@ cmd_result() {
         newest=$f
       fi
     done
-    [[ -n "$newest" ]] || die "No tasks found — run a task first with sage send"
+    [[ -n "$newest" ]] || die "No tasks found${agent_filter:+ for agent '$agent_filter'} — run a task first with sage send"
     task_id=$(basename "$newest" .status.json)
   fi
 
-  # Search all agents for this task
-  for results_dir in "$AGENTS_DIR"/*/results; do
+  # Search agents for this task
+  local search_dirs
+  if [[ -n "$agent_filter" ]]; then
+    search_dirs="$AGENTS_DIR/$agent_filter/results"
+  else
+    search_dirs="$AGENTS_DIR/*/results"
+  fi
+
+  for results_dir in $search_dirs; do
     [[ -d "$results_dir" ]] || continue
     local status_file="$results_dir/${task_id}.status.json"
     local result_file="$results_dir/${task_id}.result.json"
@@ -2752,7 +2775,6 @@ cmd_result() {
       if [[ "$status" == "done" && -f "$result_file" ]]; then
         cat "$result_file"
       elif [[ "$status" == "done" ]]; then
-        # No result file — check logs for the output
         echo "{\"status\":\"done\",\"agent\":\"$agent_name\",\"note\":\"task completed — check sage logs $agent_name for output\"}"
       elif [[ "$status" == "running" ]]; then
         echo "{\"status\":\"running\",\"agent\":\"$agent_name\",\"hint\":\"use sage peek $agent_name to see progress\"}"
@@ -2763,7 +2785,7 @@ cmd_result() {
     fi
   done
 
-  die "task '$task_id' not found"
+  die "task '$task_id' not found${agent_filter:+ in agent '$agent_filter'}"
 }
 
 # ═══════════════════════════════════════════════
@@ -7420,7 +7442,7 @@ case "${1:-}" in
   send)    shift; cmd_send "$@" ;;
   call)    shift; cmd_call "$@" ;;
   tasks)   shift; cmd_tasks "$@" ;;
-  result)  cmd_result "${2:-}" ;;
+  result)  shift; cmd_result "$@" ;;
   replay)  shift; cmd_replay "$@" ;;
   steer)   shift; cmd_steer "$@" ;;
   wait)    shift; cmd_wait "$@" ;;
