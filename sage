@@ -6776,7 +6776,7 @@ _stats_efficiency() {
 
 cmd_stats() {
   ensure_init
-  local json_mode=false tokens_mode=false cost_mode=false efficiency_mode=false agent_filter=""
+  local json_mode=false tokens_mode=false cost_mode=false efficiency_mode=false agent_filter="" since_cutoff=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json_mode=true; shift ;;
@@ -6784,7 +6784,9 @@ cmd_stats() {
       --cost) cost_mode=true; shift ;;
       --efficiency) efficiency_mode=true; shift ;;
       --agent) agent_filter="${2:-}"; [[ -n "$agent_filter" ]] || die "usage: sage stats --agent <name>"; shift 2 ;;
-      *) die "usage: sage stats [--json] [--tokens] [--cost] [--efficiency] [--agent <name>]" ;;
+      --since) local _dur; _dur=$(_parse_duration "${2:-}") || die "invalid duration '${2:-}' (use: 30m, 2h, 1d, 1w)"
+               since_cutoff=$(($(date +%s) - _dur)); shift 2 ;;
+      *) die "usage: sage stats [--json] [--tokens] [--cost] [--efficiency] [--agent <name>] [--since <duration>]" ;;
     esac
   done
   if [[ -n "$agent_filter" ]]; then
@@ -6813,6 +6815,10 @@ cmd_stats() {
     local agent_tasks=0
     for sf in "$agent_dir"results/*.status.json; do
       [[ -f "$sf" ]] || continue
+      if [[ "$since_cutoff" -gt 0 ]]; then
+        local _sa; _sa=$(jq -r '.started_at // 0' "$sf" 2>/dev/null)
+        [[ "$_sa" -ge "$since_cutoff" ]] || continue
+      fi
       local st; st=$(jq -r '.status // ""' "$sf" 2>/dev/null) || continue
       case "$st" in
         done)    tasks_done=$((tasks_done + 1)); agent_tasks=$((agent_tasks + 1))
