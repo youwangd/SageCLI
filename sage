@@ -2076,11 +2076,13 @@ cmd_attach() {
 # ═══════════════════════════════════════════════
 cmd_ls() {
   ensure_init
-  local long=false json=false
+  local long=false json=false filter=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -l|--long) long=true; shift ;;
       --json) json=true; shift ;;
+      --running) filter="running"; shift ;;
+      --stopped) filter="stopped"; shift ;;
       *) die "unknown flag: $1" ;;
     esac
   done
@@ -2095,6 +2097,7 @@ cmd_ls() {
       local rt=$(jq -r '.runtime // "bash"' "$d/runtime.json" 2>/dev/null || echo "bash")
       local st="stopped"
       agent_pid "$n" >/dev/null 2>&1 && st="running"
+      [[ -n "$filter" && "$filter" != "$st" ]] && continue
       $first || printf ','
       first=false
       printf '{"name":"%s","runtime":"%s","status":"%s"}' "$n" "$rt" "$st"
@@ -2112,6 +2115,7 @@ cmd_ls() {
       local rt=$(jq -r '.runtime // "bash"' "$d/runtime.json" 2>/dev/null || echo "bash")
       local st="stopped"
       agent_pid "$n" >/dev/null 2>&1 && st="running"
+      [[ -n "$filter" && "$filter" != "$st" ]] && continue
       printf "%-16s %-12s %s\n" "$n" "$rt" "$st"
     done
     return 0
@@ -2121,6 +2125,11 @@ cmd_ls() {
     [[ -d "$d" ]] || continue
     local n=$(basename "$d")
     [[ "$n" == .* ]] && continue
+    if [[ -n "$filter" ]]; then
+      local st="stopped"
+      agent_pid "$n" >/dev/null 2>&1 && st="running"
+      [[ "$filter" != "$st" ]] && continue
+    fi
     echo "$n"
   done
 }
