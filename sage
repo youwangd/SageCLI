@@ -5330,11 +5330,41 @@ _runtime_binary() {
   esac
 }
 
+_doctor_emit_json() {
+  local jf="$1" fails="$2"
+  local pass=0 warn=0 fail=0 total=0
+  if [[ -s "$jf" ]]; then
+    pass=$(grep -c '"status":"pass"' "$jf" || true)
+    warn=$(grep -c '"status":"warn"' "$jf" || true)
+    fail=$(grep -c '"status":"fail"' "$jf" || true)
+  fi
+  total=$((pass + warn + fail))
+  printf '{"checks":['
+  local first=true
+  if [[ -s "$jf" ]]; then
+    while IFS= read -r line; do
+      $first || printf ','
+      first=false
+      printf '%s' "$line"
+    done < "$jf"
+  fi
+  printf '],"summary":{"pass":%d,"warn":%d,"fail":%d,"total":%d}}\n' "$pass" "$warn" "$fail" "$total"
+}
+
+_doctor_json_check() {
+  local label="$1" ok="$2" msg="$3"
+  local st="pass"
+  [[ "$ok" == "w" ]] && st="warn"
+  [[ "$ok" == "0" ]] && st="fail"
+  if [[ -n "${_DOCTOR_JSON_FILE:-}" ]]; then
+    printf '%s\n' "{\"label\":$(printf '%s' "$label" | jq -Rs .),\"status\":\"$st\",\"message\":$(printf '%s' "$msg" | jq -Rs .)}" >> "$_DOCTOR_JSON_FILE"
+  fi
+}
+
 _doctor_agents() {
   ensure_init
   local total=0 ok=0 fails=0
-  echo -e "${BOLD}sage doctor --agents${NC}"
-  echo ""
+  [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${BOLD}sage doctor --agents${NC}" && echo ""
   for agent_dir in "$AGENTS_DIR"/*/; do
     [[ -d "$agent_dir" ]] || continue
     local name rt_file runtime bin
@@ -5346,23 +5376,23 @@ _doctor_agents() {
     runtime=$(jq -r '.runtime // "bash"' "$rt_file" 2>/dev/null)
     bin=$(_runtime_binary "$runtime")
     if command -v "$bin" >/dev/null 2>&1; then
-      echo -e "${GREEN}✓${NC} $name — $runtime ($bin found)"
+      [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${GREEN}✓${NC} $name — $runtime ($bin found)"
+      _doctor_json_check "$name" 1 "$runtime ($bin found)"
       ok=$((ok + 1))
     else
-      echo -e "${RED}✗${NC} $name — $runtime ($bin not found)"
+      [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${RED}✗${NC} $name — $runtime ($bin not found)"
+      _doctor_json_check "$name" 0 "$runtime ($bin not found)"
       fails=$((fails + 1))
     fi
   done
-  echo ""
-  echo "$total agent(s): $ok ok, $fails missing"
+  [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo "" && echo "$total agent(s): $ok ok, $fails missing"
   return "$fails"
 }
 
 _doctor_security() {
   ensure_init
   local total=0 guarded=0 partial=0 none=0 fails=0
-  echo -e "${BOLD}sage doctor --security${NC}"
-  echo ""
+  [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${BOLD}sage doctor --security${NC}" && echo ""
   for agent_dir in "$AGENTS_DIR"/*/; do
     [[ -d "$agent_dir" ]] || continue
     local name rt missing=""
@@ -5378,79 +5408,121 @@ _doctor_security() {
     [[ "$ts" != "0" && "$ts" != "null" && -n "$ts" ]] && has_timeout=1
     [[ "$mt" != "0" && "$mt" != "null" && -n "$mt" ]] && has_turns=1
     if [[ "$has_timeout" -eq 1 && "$has_turns" -eq 1 ]]; then
-      echo -e "${GREEN}✓${NC} $name — guarded (timeout=${ts}s, max-turns=$mt)"
+      [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${GREEN}✓${NC} $name — guarded (timeout=${ts}s, max-turns=$mt)"
+      _doctor_json_check "$name" 1 "guarded (timeout=${ts}s, max-turns=$mt)"
       guarded=$((guarded + 1))
     elif [[ "$has_timeout" -eq 1 || "$has_turns" -eq 1 ]]; then
       [[ "$has_timeout" -eq 0 ]] && missing="timeout"
       [[ "$has_turns" -eq 0 ]] && missing="max-turns"
-      echo -e "${YELLOW}⚠${NC} $name — missing $missing"
+      [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${YELLOW}⚠${NC} $name — missing $missing"
+      _doctor_json_check "$name" "w" "missing $missing"
       partial=$((partial + 1))
     else
-      echo -e "${RED}✗${NC} $name — no guardrails"
+      [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${RED}✗${NC} $name — no guardrails"
+      _doctor_json_check "$name" 0 "no guardrails"
       none=$((none + 1))
       fails=$((fails + 1))
     fi
   done
-  echo ""
-  echo "$total agent(s): $guarded guarded, $partial partial, $none none"
+  [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo "" && echo "$total agent(s): $guarded guarded, $partial partial, $none none"
   return "$fails"
 }
 _doctor_mcp() {
   local total=0 ok=0 fails=0
-  echo -e "${BOLD}sage doctor --mcp${NC}"
-  echo ""
+  [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${BOLD}sage doctor --mcp${NC}" && echo ""
   for f in "$SAGE_HOME/mcp"/*.json; do
-    [[ -f "$f" ]] || { echo "no MCP servers registered"; return 0; }
+    [[ -f "$f" ]] || { [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo "no MCP servers registered"; return 0; }
     local name cmd
     name=$(basename "$f" .json)
     cmd=$(jq -r '.command // ""' "$f" 2>/dev/null)
     total=$((total + 1))
     if [[ -z "$cmd" ]]; then
-      echo -e "${RED}✗${NC} $name — no command defined"
+      [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${RED}✗${NC} $name — no command defined"
+      _doctor_json_check "$name" 0 "no command defined"
       fails=$((fails + 1))
     elif command -v "$cmd" >/dev/null 2>&1; then
-      echo -e "${GREEN}✓${NC} $name — $cmd found"
+      [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${GREEN}✓${NC} $name — $cmd found"
+      _doctor_json_check "$name" 1 "$cmd found"
       ok=$((ok + 1))
     else
-      echo -e "${RED}✗${NC} $name — $cmd not found"
+      [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${RED}✗${NC} $name — $cmd not found"
+      _doctor_json_check "$name" 0 "$cmd not found"
       fails=$((fails + 1))
     fi
   done
-  echo ""
-  echo "$total server(s): $ok ok, $fails missing"
+  [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo "" && echo "$total server(s): $ok ok, $fails missing"
   return "$fails"
 }
 
 cmd_doctor() {
-  if [[ "${1:-}" == "--security" ]]; then
-    _doctor_security; return $?
+  # Parse --json from any position
+  local json_mode=false subcmd=""
+  local args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json_mode=true; shift ;;
+      *) args+=("$1"); shift ;;
+    esac
+  done
+  set -- "${args[@]+"${args[@]}"}"
+
+  if $json_mode; then
+    _DOCTOR_JSON_FILE=$(mktemp)
+    trap 'rm -f "$_DOCTOR_JSON_FILE"' RETURN
   fi
-  if [[ "${1:-}" == "--agents" ]]; then
-    _doctor_agents; return $?
+
+  local _sub="${1:-}"
+  if [[ "$_sub" == "--security" ]]; then
+    _doctor_security; local rc=$?
+    if $json_mode; then _doctor_emit_json "$_DOCTOR_JSON_FILE" "$rc"; return $rc; fi
+    return $rc
   fi
-  if [[ "${1:-}" == "--mcp" ]]; then
-    _doctor_mcp; return $?
+  if [[ "$_sub" == "--agents" ]]; then
+    _doctor_agents; local rc=$?
+    if $json_mode; then _doctor_emit_json "$_DOCTOR_JSON_FILE" "$rc"; return $rc; fi
+    return $rc
   fi
-  if [[ "${1:-}" == "--all" ]]; then
+  if [[ "$_sub" == "--mcp" ]]; then
+    _doctor_mcp; local rc=$?
+    if $json_mode; then _doctor_emit_json "$_DOCTOR_JSON_FILE" "$rc"; return $rc; fi
+    return $rc
+  fi
+  if [[ "$_sub" == "--all" ]]; then
     local total_fails=0 r=0
-    cmd_doctor; total_fails=$?
-    echo ""
+    _doctor_basic; total_fails=$?
+    $json_mode || echo ""
     _doctor_security; r=$?; total_fails=$((total_fails + r))
-    echo ""
+    $json_mode || echo ""
     _doctor_agents; r=$?; total_fails=$((total_fails + r))
-    echo ""
+    $json_mode || echo ""
     _doctor_mcp; r=$?; total_fails=$((total_fails + r))
-    echo ""
-    if [[ "$total_fails" -eq 0 ]]; then
-      echo -e "${GREEN}All checks passed (basic + security + agents + mcp).${NC}"
+    if $json_mode; then
+      _doctor_emit_json "$_DOCTOR_JSON_FILE" "$total_fails"
     else
-      echo -e "${RED}$total_fails total issue(s) across all checks.${NC}"
+      echo ""
+      if [[ "$total_fails" -eq 0 ]]; then
+        echo -e "${GREEN}All checks passed (basic + security + agents + mcp).${NC}"
+      else
+        echo -e "${RED}$total_fails total issue(s) across all checks.${NC}"
+      fi
     fi
     return "$total_fails"
   fi
+
+  _doctor_basic; local rc=$?
+  if $json_mode; then _doctor_emit_json "$_DOCTOR_JSON_FILE" "$rc"; return $rc; fi
+  return $rc
+}
+
+_doctor_basic() {
   local fails=0
-  _doc_check() {
+  _dbc() {
     local label="$1" ok="$2" msg="$3"
+    _doctor_json_check "$label" "$ok" "$msg"
+    if [[ -n "${_DOCTOR_JSON_FILE:-}" ]]; then
+      if [[ "$ok" == "0" ]]; then fails=$((fails + 1)); fi
+      return
+    fi
     if [[ "$ok" == "1" ]]; then
       echo -e "${GREEN}✓${NC} $label — $msg"
     elif [[ "$ok" == "w" ]]; then
@@ -5461,88 +5533,56 @@ cmd_doctor() {
     fi
   }
 
-  echo -e "${BOLD}sage doctor${NC}"
-  echo ""
+  [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "${BOLD}sage doctor${NC}" && echo ""
 
-  # bash version
   local bv="${BASH_VERSINFO[0]}"
-  if [[ "$bv" -ge 4 ]]; then
-    _doc_check "bash" 1 "v${BASH_VERSION}"
-  else
-    _doc_check "bash" "w" "v${BASH_VERSION} (4+ recommended)"
-  fi
+  if [[ "$bv" -ge 4 ]]; then _dbc "bash" 1 "v${BASH_VERSION}"
+  else _dbc "bash" "w" "v${BASH_VERSION} (4+ recommended)"; fi
 
-  # jq
-  if command -v jq >/dev/null 2>&1; then
-    _doc_check "jq" 1 "$(jq --version 2>&1)"
-  else
-    _doc_check "jq" 0 "not found"
-  fi
+  if command -v jq >/dev/null 2>&1; then _dbc "jq" 1 "$(jq --version 2>&1)"
+  else _dbc "jq" 0 "not found"; fi
 
-  # tmux
-  if command -v tmux >/dev/null 2>&1; then
-    _doc_check "tmux" 1 "$(tmux -V 2>&1)"
-  else
-    _doc_check "tmux" "w" "not found (needed for interactive sessions)"
-  fi
+  if command -v tmux >/dev/null 2>&1; then _dbc "tmux" 1 "$(tmux -V 2>&1)"
+  else _dbc "tmux" "w" "not found (needed for interactive sessions)"; fi
 
-  # curl (optional)
-  if command -v curl >/dev/null 2>&1; then
-    _doc_check "curl" 1 "available"
-  else
-    _doc_check "curl" "w" "not found (needed for API calls)"
-  fi
+  if command -v curl >/dev/null 2>&1; then _dbc "curl" 1 "available"
+  else _dbc "curl" "w" "not found (needed for API calls)"; fi
 
-  # sage init
-  if [[ -d "$SAGE_HOME/agents" ]]; then
-    _doc_check "sage init" 1 "$SAGE_HOME"
-  else
-    _doc_check "sage init" "w" "not initialized — run: sage init"
-  fi
+  if [[ -d "$SAGE_HOME/agents" ]]; then _dbc "sage init" 1 "$SAGE_HOME"
+  else _dbc "sage init" "w" "not initialized — run: sage init"; fi
 
-  # stale agent pids
   local stale=0
   if [[ -d "$AGENTS_DIR" ]]; then
     for pidfile in "$AGENTS_DIR"/*/.pid; do
       [[ -f "$pidfile" ]] || continue
-      local pid
-      pid=$(cat "$pidfile")
+      local pid; pid=$(cat "$pidfile")
       if ! kill -0 "$pid" 2>/dev/null; then
-        local aname
-        aname=$(basename "$(dirname "$pidfile")")
-        echo -e "  ${YELLOW}⚠${NC} stale pid for agent '$aname' (pid $pid)"
+        local aname; aname=$(basename "$(dirname "$pidfile")")
+        [[ -z "${_DOCTOR_JSON_FILE:-}" ]] && echo -e "  ${YELLOW}⚠${NC} stale pid for agent '$aname' (pid $pid)"
         stale=$((stale + 1))
       fi
     done
   fi
-  if [[ "$stale" -gt 0 ]]; then
-    _doc_check "agents" "w" "$stale stale pid(s) — run: sage clean"
-  elif [[ -d "$AGENTS_DIR" ]]; then
-    _doc_check "agents" 1 "no stale pids"
-  fi
+  if [[ "$stale" -gt 0 ]]; then _dbc "agents" "w" "$stale stale pid(s) — run: sage clean"
+  elif [[ -d "$AGENTS_DIR" ]]; then _dbc "agents" 1 "no stale pids"; fi
 
-  # stale plans (status=running but no live agents)
   local stale_plans=0
   if [[ -d "$PLANS_DIR" ]]; then
     for pf in "$PLANS_DIR"/*.json; do
       [[ -f "$pf" ]] || continue
-      local pst
-      pst=$(jq -r '.status // "unknown"' "$pf" 2>/dev/null)
+      local pst; pst=$(jq -r '.status // "unknown"' "$pf" 2>/dev/null)
       [[ "$pst" == "running" ]] && stale_plans=$((stale_plans + 1))
     done
   fi
-  if [[ "$stale_plans" -gt 0 ]]; then
-    _doc_check "plans" "w" "$stale_plans interrupted plan(s) — run: sage plan --recover"
-  fi
+  [[ "$stale_plans" -gt 0 ]] && _dbc "plans" "w" "$stale_plans interrupted plan(s) — run: sage plan --recover"
 
-  echo ""
-  if [[ "$fails" -eq 0 ]]; then
-    echo -e "${GREEN}All checks passed.${NC}"
-  else
-    echo -e "${RED}$fails issue(s) found.${NC}"
+  if [[ -z "${_DOCTOR_JSON_FILE:-}" ]]; then
+    echo ""
+    if [[ "$fails" -eq 0 ]]; then echo -e "${GREEN}All checks passed.${NC}"
+    else echo -e "${RED}$fails issue(s) found.${NC}"; fi
+    echo ""
+    echo "Run --all for full check (basic + security + agents)"
   fi
-  echo ""
-  echo "Run --all for full check (basic + security + agents)"
   return "$fails"
 }
 
