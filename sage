@@ -6014,8 +6014,15 @@ cmd_rename() {
 }
 
 cmd_clone() {
-  local src="${1:-}" dest="${2:-}"
-  [[ -n "$src" && -n "$dest" ]] || die "usage: sage clone <source> <dest>"
+  local src="" dest="" full=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --full) full=true; shift ;;
+      -*) die "unknown flag: $1" ;;
+      *)  if [[ -z "$src" ]]; then src="$1"; else dest="$1"; fi; shift ;;
+    esac
+  done
+  [[ -n "$src" && -n "$dest" ]] || die "usage: sage clone <source> <dest> [--full]"
   ensure_init
   local src_dir="$AGENTS_DIR/$src" dest_dir="$AGENTS_DIR/$dest"
   [[ -d "$src_dir" ]] || die "agent '$src' not found"
@@ -6028,6 +6035,10 @@ cmd_clone() {
     [[ -f "$src_dir/$f" ]] && cp "$src_dir/$f" "$dest_dir/$f"
   done
   [[ -d "$src_dir/skills" ]] && cp -r "$src_dir/skills" "$dest_dir/skills"
+  if $full; then
+    [[ -d "$src_dir/memory" ]] && cp -r "$src_dir/memory" "$dest_dir/memory"
+    [[ -f "$src_dir/env" ]] && cp "$src_dir/env" "$dest_dir/env"
+  fi
   ok "cloned '$src' → '$dest'"
 }
 
