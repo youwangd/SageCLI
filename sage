@@ -2029,7 +2029,7 @@ cmd_logs() {
   [[ -f "$logfile" ]] || die "no logs for '$name'"
 
   if [[ -n "$grep_pat" ]]; then
-    grep -i --color=always "$grep_pat" "$logfile" | tail -"$tail_n"
+    grep -i --color=always "$grep_pat" "$logfile" | tail -"$tail_n" || true
   elif [[ "$follow" == true ]]; then
     tail -f "$logfile"
   else
