@@ -115,6 +115,7 @@
 - Time-filtered logs (sage logs --since <duration> — show only log lines within a time window: 30m, 2h, 1d, 1w; works with --all, --grep, --tail)
 - Follow + filter (sage logs -f --grep <pattern> --since <duration> — combine live tailing with grep and time filters for real-time filtered log watching)
 - Task completion notification (sage send --notify — ring terminal bell when task finishes, works with --headless/--json/--on-done for audible alerts on long-running tasks)
+- Agent tree view (sage ls --tree — show parent/child agent hierarchy as indented tree with Unicode box-drawing chars, works with --running/--stopped/--runtime filters)
 - Cleanup preview (sage clean --dry-run — preview what would be cleaned with item count, without deleting)
 - Agent checkpoint/restore (sage checkpoint/restore — save and resume agent state across reboots)
 - Session recovery (sage recover — detect and fix orphaned/dead agent sessions after crash or reboot)
