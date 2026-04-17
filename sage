@@ -2174,11 +2174,12 @@ cmd_attach() {
 # ═══════════════════════════════════════════════
 cmd_ls() {
   ensure_init
-  local long=false json=false filter="" rt_filter="" sort_field=""
+  local long=false json=false filter="" rt_filter="" sort_field="" tree=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -l|--long) long=true; shift ;;
       --json) json=true; shift ;;
+      --tree) tree=true; shift ;;
       --running) filter="running"; shift ;;
       --stopped) filter="stopped"; shift ;;
       --runtime) rt_filter="$2"; shift 2 ;;
@@ -2193,6 +2194,13 @@ cmd_ls() {
       name|runtime|status|last_active) ;;
       *) die "invalid sort field '$sort_field' (available: name, runtime, status, last_active)" ;;
     esac
+  fi
+
+  # --tree is incompatible with --json, --long, --sort
+  if $tree; then
+    $json && die "--tree cannot be combined with --json"
+    $long && die "--tree cannot be combined with -l/--long"
+    [[ -n "$sort_field" ]] && die "--tree cannot be combined with --sort"
   fi
 
   # Collect agent data: name\truntime\tmodel\tstatus\tlast_active
@@ -2246,6 +2254,45 @@ cmd_ls() {
       [[ "$la" != "never" ]] && la="${la%%T*}"
       printf "%-16s %-12s %-14s %-10s %s\n" "$n" "$rt" "$md" "$st" "$la"
     done <<< "$_ls_lines"
+    return 0
+  fi
+
+  if $tree; then
+    # Build list of agent names that passed filters
+    local _tree_names=""
+    while IFS='	' read -r n _rest; do
+      [[ -n "$n" ]] || continue
+      _tree_names="$_tree_names $n"
+    done <<< "$_ls_lines"
+    # Print tree: roots first, then children
+    _print_tree() {
+      local parent="$1" prefix="$2"
+      local children=""
+      for n in $_tree_names; do
+        local p=$(jq -r '.parent // ""' "$AGENTS_DIR/$n/runtime.json" 2>/dev/null)
+        [[ "$p" == "$parent" ]] && children="$children $n"
+      done
+      local count=0 total=0
+      for _ in $children; do total=$((total+1)); done
+      for c in $children; do
+        count=$((count+1))
+        if [[ $count -eq $total ]]; then
+          echo "${prefix}└── $c"
+          _print_tree "$c" "${prefix}    "
+        else
+          echo "${prefix}├── $c"
+          _print_tree "$c" "${prefix}│   "
+        fi
+      done
+    }
+    # Print root agents (no parent or parent not in list)
+    for n in $_tree_names; do
+      local p=$(jq -r '.parent // ""' "$AGENTS_DIR/$n/runtime.json" 2>/dev/null)
+      if [[ -z "$p" ]] || ! echo "$_tree_names" | grep -qw "$p"; then
+        echo "$n"
+        _print_tree "$n" ""
+      fi
+    done
     return 0
   fi
 
