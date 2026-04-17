@@ -6620,7 +6620,7 @@ cmd_help() {
     clone <src> <dest>          Duplicate agent config (no state)
     completions <bash|zsh>      Generate shell tab-completions
     rename <old> <new>         Rename an agent
-    diff <name> [--stat|--cached] Show git changes in agent worktree
+    diff <name|--all> [--stat|--cached] Show git changes in agent worktree(s)
     export <name> [--output f]  Export agent config as tar.gz archive
                   [--format json]  JSON export for programmatic use
     rm <name>                   Remove agent
