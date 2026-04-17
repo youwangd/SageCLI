@@ -2174,9 +2174,10 @@ cmd_attach() {
 # ═══════════════════════════════════════════════
 cmd_ls() {
   ensure_init
-  local long=false json=false filter="" rt_filter="" sort_field="" tree=false
+  local long=false json=false filter="" rt_filter="" sort_field="" tree=false quiet=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      -q|--quiet) quiet=true; shift ;;
       -l|--long) long=true; shift ;;
       --json) json=true; shift ;;
       --tree) tree=true; shift ;;
@@ -2201,6 +2202,13 @@ cmd_ls() {
     $json && die "--tree cannot be combined with --json"
     $long && die "--tree cannot be combined with -l/--long"
     [[ -n "$sort_field" ]] && die "--tree cannot be combined with --sort"
+  fi
+
+  # --quiet is incompatible with --json, --long, --tree
+  if $quiet; then
+    $json && die "-q cannot be combined with --json"
+    $long && die "-q cannot be combined with -l/--long"
+    $tree && die "-q cannot be combined with --tree"
   fi
 
   # Collect agent data: name\truntime\tmodel\tstatus\tlast_active
@@ -2232,6 +2240,14 @@ cmd_ls() {
       name) _sk=1 ;; runtime) _sk=2 ;; status) _sk=4 ;; last_active) _sk=5 ;;
     esac
     _ls_lines=$(printf '%s' "$_ls_lines" | sort -t'	' -k"$_sk","$_sk")
+  fi
+
+  if $quiet; then
+    while IFS='	' read -r n rt md st la; do
+      [[ -n "$n" ]] || continue
+      printf '%s\n' "$n"
+    done <<< "$_ls_lines"
+    return 0
   fi
 
   if $json; then
