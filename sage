@@ -1623,7 +1623,7 @@ cmd_status() {
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
-  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id="" output_file="" task_env_vars=""
+  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id="" output_file="" task_env_vars="" notify=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1643,6 +1643,7 @@ cmd_send() {
       --id)          custom_id="$2"; shift 2 ;;
       --output-file) output_file="$2"; shift 2 ;;
       --env)         [[ "$2" == *=* ]] || die "invalid --env format '$2' — use KEY=VAL"; task_env_vars="${task_env_vars:+$task_env_vars$'\n'}$2"; shift 2 ;;
+      --notify)      notify=true; shift ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1969,6 +1970,7 @@ $message"
     else
       [[ -n "$task_output" ]] && printf '%s\n' "$task_output"
     fi
+    [[ "$notify" == true ]] && printf '\a'
     return $rc
   fi
 
