@@ -1623,7 +1623,7 @@ cmd_status() {
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
-  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id="" output_file="" task_env_vars="" notify=false
+  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id="" output_file="" task_env_vars="" notify=false broadcast_all=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1644,6 +1644,7 @@ cmd_send() {
       --output-file) output_file="$2"; shift 2 ;;
       --env)         [[ "$2" == *=* ]] || die "invalid --env format '$2' — use KEY=VAL"; task_env_vars="${task_env_vars:+$task_env_vars$'\n'}$2"; shift 2 ;;
       --notify)      notify=true; shift ;;
+      --all)         broadcast_all=true; shift ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1661,6 +1662,36 @@ cmd_send() {
   # Read from stdin if piped and no message given
   if [[ -z "$message" && ! -t 0 ]]; then
     message=$(cat)
+  fi
+
+  # --all broadcast mode
+  if $broadcast_all; then
+    [[ "$headless" == true ]] || die "--all requires --headless (broadcast is async)"
+    [[ -z "$then_chain" ]] || die "--all cannot be combined with --then"
+    # In --all mode, first positional is the message (no agent name)
+    if [[ -z "$message" && -n "$to" ]]; then
+      message="$to"; to=""
+    fi
+    [[ -n "$message" ]] || die "usage: sage send --all --headless <message>"
+    local sent=0
+    for d in "$AGENTS_DIR"/*/; do
+      local n
+      n=$(basename "$d")
+      [[ "$n" == .* ]] && continue
+      agent_pid "$n" >/dev/null 2>&1 || continue
+      info "sending to $n"
+      local send_args=("$n" "$message" --headless)
+      $json_output && send_args+=(--json)
+      cmd_send "${send_args[@]}" &
+      sent=$((sent + 1))
+    done
+    if [[ $sent -eq 0 ]]; then
+      warn "no running agents to broadcast to"
+      return 0
+    fi
+    wait
+    ok "broadcast sent to $sent agent(s)"
+    return 0
   fi
 
   [[ -n "$to" && -n "$message" ]] || die "usage: sage send <agent> <message|@file|-> [--force|--headless|--json|--then <agent>]
