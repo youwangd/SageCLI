@@ -2395,18 +2395,59 @@ cmd_clean() {
 # sage wait <name> [--timeout <sec>]
 # ═══════════════════════════════════════════════
 cmd_wait() {
-  local name="" timeout=0 poll_interval=5
+  local name="" timeout=0 poll_interval=5 all_mode=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --all)        all_mode=true; shift ;;
       --timeout|-t) timeout="$2"; shift 2 ;;
       -*)           die "unknown flag: $1" ;;
       *)            name="$1"; shift ;;
     esac
   done
 
-  [[ -n "$name" ]] || die "usage: sage wait <name> [--timeout <sec>]"
-  ensure_init; agent_exists "$name"
+  ensure_init
+
+  if $all_mode; then
+    [[ -n "$name" ]] && die "--all cannot be combined with an agent name"
+    # Collect running agents
+    local running=()
+    for d in "$AGENTS_DIR"/*/; do
+      [[ -d "$d" ]] || continue
+      local n; n=$(basename "$d")
+      [[ "$n" == .* ]] && continue
+      agent_pid "$n" >/dev/null 2>&1 && running+=("$n")
+    done
+    if [[ ${#running[@]} -eq 0 ]]; then
+      ok "no running agents"
+      return 0
+    fi
+    info "waiting for ${#running[@]} agent(s): ${running[*]}"
+    [[ $timeout -gt 0 ]] && info "timeout: ${timeout}s"
+    local start_time=$SECONDS
+    while [[ ${#running[@]} -gt 0 ]]; do
+      local still=()
+      for n in "${running[@]}"; do
+        if agent_pid "$n" >/dev/null 2>&1; then
+          still+=("$n")
+        else
+          ok "$n completed"
+        fi
+      done
+      running=("${still[@]+"${still[@]}"}")
+      [[ ${#running[@]} -eq 0 ]] && break
+      if [[ $timeout -gt 0 && $((SECONDS - start_time)) -ge $timeout ]]; then
+        warn "timeout after ${timeout}s — still running: ${running[*]}"
+        return 124
+      fi
+      sleep "$poll_interval"
+    done
+    ok "all agents completed"
+    return 0
+  fi
+
+  [[ -n "$name" ]] || die "usage: sage wait <name|--all> [--timeout <sec>]"
+  agent_exists "$name"
 
   # Check agent is running
   agent_pid "$name" >/dev/null 2>&1 || die "$name is not running"

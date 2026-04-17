@@ -12,8 +12,17 @@ setup() {
 }
 
 teardown() {
-  "$SAGE" stop --all >/dev/null 2>&1 || true
+  # Kill any background sleeps
+  kill "$_bg_pid1" 2>/dev/null || true
+  kill "$_bg_pid2" 2>/dev/null || true
   rm -rf "$SAGE_HOME"
+}
+
+# Helper: fake a running agent by writing a real PID
+_fake_running() {
+  sleep 300 &
+  eval "_bg_pid${2:-1}=$!"
+  echo "${!}" > "$SAGE_HOME/agents/$1/.pid"
 }
 
 @test "wait --all rejects agent name argument" {
@@ -29,19 +38,17 @@ teardown() {
 }
 
 @test "wait --all with --timeout exits 124 on timeout" {
-  "$SAGE" start a1 >/dev/null 2>&1
-  # a1 runs indefinitely (bash), so timeout should trigger
+  _fake_running a1 1
   run "$SAGE" wait --all --timeout 2
   [ "$status" -eq 124 ]
   [[ "$output" == *"timeout"* ]]
 }
 
-@test "wait --all prints agent names as they complete" {
-  # Start a1 with a short-lived task, don't start a2
-  "$SAGE" start a1 >/dev/null 2>&1
-  # Immediately stop a1 to simulate completion
-  "$SAGE" stop a1 >/dev/null 2>&1
-  run "$SAGE" wait --all --timeout 3
-  # No running agents → should exit 0
+@test "wait --all detects completion when agent stops" {
+  _fake_running a1 1
+  # Kill the fake process after 1s so agent appears to complete
+  ( sleep 1; kill "$_bg_pid1" 2>/dev/null ) &
+  run "$SAGE" wait --all --timeout 10
   [ "$status" -eq 0 ]
+  [[ "$output" == *"a1 completed"* ]]
 }
