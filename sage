@@ -1623,7 +1623,7 @@ cmd_status() {
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
-  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id=""
+  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id="" output_file=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1641,6 +1641,7 @@ cmd_send() {
       --tag)         task_tags="${task_tags:+$task_tags$'\n'}$2"; shift 2 ;;
       --timeout)     task_timeout="$2"; shift 2 ;;
       --id)          custom_id="$2"; shift 2 ;;
+      --output-file) output_file="$2"; shift 2 ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1698,6 +1699,10 @@ cmd_send() {
   if [[ -n "$custom_id" ]]; then
     [[ ${#custom_id} -le 64 ]] || die "invalid --id: max 64 characters"
     [[ "$custom_id" =~ ^[a-zA-Z0-9_-]+$ ]] || die "invalid --id '$custom_id': only alphanumeric, hyphens, underscores allowed"
+  fi
+  # --output-file requires --headless
+  if [[ -n "$output_file" && "$headless" != true ]]; then
+    die "--output-file requires --headless"
   fi
   if [[ -n "$then_chain" ]]; then
     local _ta
@@ -1941,7 +1946,15 @@ $message"
         eval "$on_done_cmd" || true
     fi
 
-    if [[ "$json_output" == true ]]; then
+    if [[ -n "$output_file" ]]; then
+      mkdir -p "$(dirname "$output_file")"
+      if [[ "$json_output" == true ]]; then
+        jq -n --arg s "$_rstatus" --arg id "$task_id" --argjson rc "$rc" --argjson el "$elapsed" --arg out "$task_output" \
+          '{status:$s,task_id:$id,exit_code:$rc,elapsed:$el,output:$out}' > "$output_file"
+      else
+        printf '%s\n' "$task_output" > "$output_file"
+      fi
+    elif [[ "$json_output" == true ]]; then
       jq -n --arg s "$_rstatus" --arg id "$task_id" --argjson rc "$rc" --argjson el "$elapsed" --arg out "$task_output" \
         '{status:$s,task_id:$id,exit_code:$rc,elapsed:$el,output:$out}'
     else
