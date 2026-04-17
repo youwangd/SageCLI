@@ -97,6 +97,7 @@
 - Runtime filter (ls --runtime <name> — filter agents by runtime type, works with -l/--json/--running/--stopped, enables: sage ls --runtime ollama | xargs sage stop)
 - Sortable listing (ls --sort <field> — sort agents by name/runtime/status/last_active, works with -l/--json and all filters)
 - Quiet listing (ls -q/--quiet — output bare agent names one per line for Unix pipeline scripting, like docker ps -q; works with --running/--stopped/--runtime/--sort filters)
+- Broadcast send (send --all --headless "msg" — send same task to all running agents in parallel for ad-hoc fan-out without plan YAML; works with --json/--tag/--timeout)
 - Custom task ID (send --id <custom-id> — assign a user-chosen task ID for easy lookup with result <custom-id>, validated alphanumeric/hyphens/underscores, max 64 chars, rejects duplicates)
 - Output to file (send --output-file <path> — write task output directly to a file, creates parent dirs, works with --json for structured output, ideal for CI pipelines)
 - Ad-hoc task env vars (send --env KEY=VAL — pass environment variables to a single task without modifying agent's persistent env, repeatable, ideal for CI pipelines)
