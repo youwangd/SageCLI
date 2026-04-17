@@ -2093,7 +2093,25 @@ cmd_logs() {
 
   [[ -f "$logfile" ]] || die "no logs for '$name'"
 
-  if [[ "$since_secs" -gt 0 ]]; then
+  if [[ "$follow" == true ]]; then
+    # Show existing matches first, then follow with filters
+    local _cutoff=""
+    if [[ "$since_secs" -gt 0 ]]; then
+      _cutoff=$(date -d "@$(($(date +%s) - since_secs))" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r "$(($(date +%s) - since_secs))" '+%Y-%m-%d %H:%M:%S')
+    fi
+    if [[ -n "$_cutoff" && -n "$grep_pat" ]]; then
+      _filter_since "$_cutoff" < "$logfile" | grep -i --color=always "$grep_pat" || true
+      tail -n 0 -f "$logfile" | grep -i --line-buffered --color=always "$grep_pat"
+    elif [[ -n "$_cutoff" ]]; then
+      _filter_since "$_cutoff" < "$logfile"
+      tail -n 0 -f "$logfile"
+    elif [[ -n "$grep_pat" ]]; then
+      grep -i --color=always "$grep_pat" "$logfile" || true
+      tail -n 0 -f "$logfile" | grep -i --line-buffered --color=always "$grep_pat"
+    else
+      tail -f "$logfile"
+    fi
+  elif [[ "$since_secs" -gt 0 ]]; then
     local cutoff; cutoff=$(date -d "@$(($(date +%s) - since_secs))" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r "$(($(date +%s) - since_secs))" '+%Y-%m-%d %H:%M:%S')
     if [[ -n "$grep_pat" ]]; then
       _filter_since "$cutoff" < "$logfile" | grep -i --color=always "$grep_pat" | tail -"$tail_n" || true
@@ -2102,8 +2120,6 @@ cmd_logs() {
     fi
   elif [[ -n "$grep_pat" ]]; then
     grep -i --color=always "$grep_pat" "$logfile" | tail -"$tail_n" || true
-  elif [[ "$follow" == true ]]; then
-    tail -f "$logfile"
   else
     tail -"$tail_n" "$logfile"
   fi

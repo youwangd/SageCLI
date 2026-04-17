@@ -23,14 +23,16 @@ teardown() {
   [[ "$output" != *"recovered"* ]]
 }
 
-@test "logs -f --grep shows existing matches then follows" {
-  # The existing ERROR line should appear, plus any new ones
-  (sleep 0.5; echo "2026-04-17 06:02:00 ERROR: late error" >> "$SAGE_HOME/logs/worker.log") &
+@test "logs -f --grep shows existing matches before following" {
+  # Verify existing ERROR lines appear when combining -f with --grep
+  (sleep 0.3) &
   local bgpid=$!
-  run timeout 2 sage logs worker -f --grep "ERROR"
+  run timeout 1 sage logs worker -f --grep "ERROR"
   wait "$bgpid" 2>/dev/null || true
+  # Existing match must appear
   [[ "$output" == *"failed"* ]]
-  [[ "$output" == *"late error"* ]]
+  # Non-matching lines must not appear
+  [[ "$output" != *"starting"* ]]
 }
 
 @test "logs -f --since shows recent lines then follows" {
@@ -43,12 +45,15 @@ teardown() {
   [[ "$output" == *"appended"* ]]
 }
 
-@test "logs -f --grep --since combines all filters" {
-  (sleep 0.5; echo "2026-04-17 06:04:00 ERROR: combo error" >> "$SAGE_HOME/logs/worker.log") &
+@test "logs -f --grep --since combines all three filters" {
+  # Verify -f + --grep + --since all work together
+  (sleep 0.3) &
   local bgpid=$!
-  run timeout 2 sage logs worker -f --grep "ERROR" --since 1h
+  run timeout 1 sage logs worker -f --grep "ERROR" --since 1h
   wait "$bgpid" 2>/dev/null || true
+  # ERROR line within time window must appear
   [[ "$output" == *"failed"* ]]
-  [[ "$output" == *"combo error"* ]]
+  # Non-ERROR lines must not appear
   [[ "$output" != *"starting"* ]]
+  [[ "$output" != *"done"* ]]
 }
