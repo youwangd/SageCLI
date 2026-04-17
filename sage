@@ -2392,7 +2392,7 @@ cmd_clean() {
 }
 
 # ═══════════════════════════════════════════════
-# sage wait <name> [--timeout <sec>]
+# sage wait <name|--all> [--timeout <sec>]
 # ═══════════════════════════════════════════════
 cmd_wait() {
   local name="" timeout=0 poll_interval=5 all_mode=false
@@ -6685,7 +6685,7 @@ cmd_help() {
       [--json] [--status <s>]   Filter by status (done, failed, running, queued)
     result <task-id>            Get task result
     replay [task-id]            Re-send a previous task
-    wait <name> [--timeout N]   Wait for agent to finish (long-running tasks)
+    wait <name|--all> [--timeout N] Wait for agent(s) to finish (long-running tasks)
     watch <dir> --agent <name>  Watch directory, trigger agent on file changes
     peek <name> [--lines N]     See what agent is doing (tmux pane + workspace)
     steer <name> <msg> [--restart] Course-correct a running agent

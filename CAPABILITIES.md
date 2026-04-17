@@ -126,6 +126,7 @@
 - Agent-scoped result (sage result --agent <name> — show most recent result for a specific agent, scopes task-id search to that agent)
 - Branch diff (sage diff <agent> --branch — show all commits and changes on agent's worktree branch vs base, works with --stat for summary)
 - Aggregate diff (sage diff --all — show uncommitted changes across all worktree agents with agent name headers, works with --stat and --cached)
+- Wait all (sage wait --all — block until all running agents finish, prints each agent name on completion, exits 124 on --timeout)
 - Context from file (sage context set <key> --file <path> — load persistent shared context from file, 100KB limit, multiline preserved)
 - Context listing (sage context ls — truncated values >80 chars, byte size per key; sage context ls --json for scripting)
 - Config JSON output (sage config ls --json — machine-readable config for scripting and CI)
