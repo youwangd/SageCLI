@@ -2907,15 +2907,52 @@ cmd_tasks() {
 # sage result <task-id>
 # ═══════════════════════════════════════════════
 cmd_result() {
-  local task_id="" agent_filter=""
+  local task_id="" agent_filter="" all_mode=false json_output=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --all)   all_mode=true; shift ;;
+      --json)  json_output=true; shift ;;
       --agent) agent_filter="${2:-}"; [[ -n "$agent_filter" ]] || die "usage: sage result [task-id] [--agent <name>]"; shift 2 ;;
       -*)      die "usage: sage result [task-id] [--agent <name>]" ;;
       *)       task_id="$1"; shift ;;
     esac
   done
   ensure_init
+
+  if $all_mode; then
+    [[ -z "$task_id" ]] || die "--all cannot be combined with a task-id"
+    local json_arr="[" first=true found=0
+    for d in "$AGENTS_DIR"/*/; do
+      [[ -d "$d" ]] || continue
+      local n; n=$(basename "$d")
+      [[ "$n" == .* ]] && continue
+      local newest="" newest_time=0
+      for f in "$d"/results/*.status.json; do
+        [[ -f "$f" ]] || continue
+        local mt; mt=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || continue
+        [[ "$mt" -gt "$newest_time" ]] && { newest_time=$mt; newest=$f; }
+      done
+      [[ -n "$newest" ]] || continue
+      found=$((found + 1))
+      local tid; tid=$(basename "$newest" .status.json)
+      local st; st=$(jq -r '.status' "$newest")
+      local rf="$d/results/${tid}.result.json"
+      local out=""
+      [[ -f "$rf" ]] && out=$(cat "$rf")
+      if $json_output; then
+        $first || json_arr+=","
+        first=false
+        json_arr+=$(jq -nc --arg a "$n" --arg s "$st" --arg t "$tid" --arg o "$out" '{agent:$a,status:$s,task_id:$t,output:$o}')
+      else
+        printf "=== %s (task: %s, status: %s) ===\n" "$n" "$tid" "$st"
+        [[ -n "$out" ]] && echo "$out" || echo "(no output)"
+        echo
+      fi
+    done
+    if $json_output; then echo "${json_arr}]"; else [[ $found -gt 0 ]] || info "no results found"; fi
+    return 0
+  fi
+
   [[ -n "$agent_filter" ]] && agent_exists "$agent_filter"
 
   # Build glob pattern based on agent filter
