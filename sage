@@ -1623,7 +1623,7 @@ cmd_status() {
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
-  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout=""
+  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1640,6 +1640,7 @@ cmd_send() {
       --attach)      attach_files="${attach_files:+$attach_files$'\n'}$2"; shift 2 ;;
       --tag)         task_tags="${task_tags:+$task_tags$'\n'}$2"; shift 2 ;;
       --timeout)     task_timeout="$2"; shift 2 ;;
+      --id)          custom_id="$2"; shift 2 ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1692,6 +1693,11 @@ cmd_send() {
       *)  die "invalid timeout '$task_timeout' — use Nm, Nh, Ns, or bare seconds" ;;
     esac
     [[ "$_timeout_seconds" =~ ^[0-9]+$ ]] || die "invalid timeout '$task_timeout'"
+  fi
+  # Validate --id
+  if [[ -n "$custom_id" ]]; then
+    [[ ${#custom_id} -le 64 ]] || die "invalid --id: max 64 characters"
+    [[ "$custom_id" =~ ^[a-zA-Z0-9_-]+$ ]] || die "invalid --id '$custom_id': only alphanumeric, hyphens, underscores allowed"
   fi
   if [[ -n "$then_chain" ]]; then
     local _ta
@@ -1833,7 +1839,10 @@ $message"
     runtime_start "$agent_dir" "$to"
 
     local msg task_id start_ts rc=0
-    task_id="headless-$(date +%s)"
+    task_id="${custom_id:-headless-$(date +%s)}"
+    if [[ -n "$custom_id" && -f "$agent_dir/results/${task_id}.status.json" ]]; then
+      die "task ID '$custom_id' already exists — use a unique --id"
+    fi
     msg=$(jq -n --arg id "$task_id" --arg from "cli" --arg t "$message" '{id:$id,from:$from,payload:{text:$t}}')
     start_ts=$(date +%s)
 
