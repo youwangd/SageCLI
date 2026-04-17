@@ -6061,9 +6061,10 @@ cmd_upgrade() {
 }
 
 cmd_diff() {
-  local name="" git_args=() branch_mode=false
+  local name="" git_args=() branch_mode=false all_mode=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --all)    all_mode=true; shift ;;
       --branch) branch_mode=true; shift ;;
       --stat)   git_args+=("--stat"); shift ;;
       --cached) git_args+=("--cached"); shift ;;
@@ -6071,8 +6072,29 @@ cmd_diff() {
       *)  name="$1"; shift ;;
     esac
   done
-  [[ -n "$name" ]] || die "usage: sage diff <name> [--stat] [--cached] [--branch]"
   ensure_init
+  if $all_mode; then
+    [[ -n "$name" ]] && die "--all cannot be combined with an agent name"
+    $branch_mode && die "--all cannot be combined with --branch"
+    local found=false
+    for d in "$AGENTS_DIR"/*/; do
+      [[ -d "$d" ]] || continue
+      local n; n=$(basename "$d")
+      [[ "$n" == .* ]] && continue
+      local is_wt; is_wt=$(jq -r '.worktree // false' "$d/runtime.json" 2>/dev/null)
+      [[ "$is_wt" == "true" ]] || continue
+      local ws="$d/workspace"
+      [[ -d "$ws" ]] || continue
+      local diff_out; diff_out=$(git -C "$ws" diff ${git_args[@]+"${git_args[@]}"} 2>/dev/null) || continue
+      [[ -n "$diff_out" ]] || continue
+      found=true
+      printf "${BOLD:-}=== %s ===${NC:-}\n" "$n"
+      printf '%s\n\n' "$diff_out"
+    done
+    $found || info "no uncommitted changes in any worktree agent"
+    return 0
+  fi
+  [[ -n "$name" ]] || die "usage: sage diff <name|--all> [--stat] [--cached] [--branch]"
   local agent_dir="$AGENTS_DIR/$name"
   [[ -d "$agent_dir" ]] || die "agent '$name' not found"
   local is_wt
