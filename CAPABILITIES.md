@@ -113,6 +113,7 @@
 - Log search (sage logs --grep <pattern> — case-insensitive search with color highlighting, works with --all)
 - Log tail control (sage logs --tail <N> — show last N lines instead of default 50, works with --all and --grep)
 - Time-filtered logs (sage logs --since <duration> — show only log lines within a time window: 30m, 2h, 1d, 1w; works with --all, --grep, --tail)
+- Follow + filter (sage logs -f --grep <pattern> --since <duration> — combine live tailing with grep and time filters for real-time filtered log watching)
 - Cleanup preview (sage clean --dry-run — preview what would be cleaned with item count, without deleting)
 - Agent checkpoint/restore (sage checkpoint/restore — save and resume agent state across reboots)
 - Session recovery (sage recover — detect and fix orphaned/dead agent sessions after crash or reboot)
