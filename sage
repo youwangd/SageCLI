@@ -6200,6 +6200,7 @@ _help_command() {
     --tag <label>   Tag the task for filtering (repeatable)
     --no-context    Skip injecting shared context
     --timeout <dur> Kill task after duration (requires --headless; Nm/Nh/Ns/seconds, exit 124)
+    --id <custom-id> Assign a custom task ID (alphanumeric/hyphens/underscores, max 64 chars)
 
   EXAMPLES
     sage send worker "Fix the login bug"
