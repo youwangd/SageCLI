@@ -1623,7 +1623,7 @@ cmd_status() {
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
-  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id="" output_file=""
+  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id="" output_file="" task_env_vars=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1642,6 +1642,7 @@ cmd_send() {
       --timeout)     task_timeout="$2"; shift 2 ;;
       --id)          custom_id="$2"; shift 2 ;;
       --output-file) output_file="$2"; shift 2 ;;
+      --env)         [[ "$2" == *=* ]] || die "invalid --env format '$2' — use KEY=VAL"; task_env_vars="${task_env_vars:+$task_env_vars$'\n'}$2"; shift 2 ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1836,6 +1837,14 @@ $message"
         [[ -z "$_envline" || "$_envline" == \#* ]] && continue
         export "$_envline"
       done < "$agent_dir/env"
+    fi
+
+    # Inject ad-hoc --env vars (per-task, not persisted)
+    if [[ -n "$task_env_vars" ]]; then
+      while IFS= read -r _tev || [[ -n "$_tev" ]]; do
+        # shellcheck disable=SC2163
+        [[ -n "$_tev" ]] && export "$_tev"
+      done <<< "$task_env_vars"
     fi
 
     # Source tools and runtime

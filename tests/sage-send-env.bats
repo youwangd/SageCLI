@@ -8,6 +8,15 @@ setup() {
   rm -rf "$SAGE_HOME"
   "$SAGE" init >/dev/null 2>&1
   "$SAGE" create tester --runtime bash >/dev/null 2>&1
+  # Replace handler to print env vars
+  cat > "$SAGE_HOME/agents/tester/handler.sh" << 'EOF'
+#!/bin/bash
+handle_message() {
+  local msg="$1"
+  local text=$(echo "$msg" | jq -r '.payload.text')
+  eval "$text"
+}
+EOF
 }
 
 teardown() {
