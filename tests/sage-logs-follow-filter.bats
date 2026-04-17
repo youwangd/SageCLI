@@ -6,7 +6,10 @@ setup() {
   sage init --quiet 2>/dev/null || true
   sage create worker --runtime bash --quiet 2>/dev/null || true
   mkdir -p "$SAGE_HOME/logs"
-  printf '%s\n' "2026-04-17 06:00:00 INFO: starting" "2026-04-17 06:00:01 ERROR: failed" "2026-04-17 06:00:02 INFO: done" > "$SAGE_HOME/logs/worker.log"
+  # Use current timestamps so --since 1h always matches
+  local now
+  now=$(date '+%Y-%m-%d %H:%M:%S')
+  printf '%s\n' "$now INFO: starting" "$now ERROR: failed" "$now INFO: done" > "$SAGE_HOME/logs/worker.log"
 }
 
 teardown() {
@@ -15,7 +18,7 @@ teardown() {
 
 @test "logs -f --grep filters live output" {
   # Append a matching line after a delay, verify only it appears
-  (sleep 0.3; echo "2026-04-17 06:01:00 ERROR: new failure" >> "$SAGE_HOME/logs/worker.log"; sleep 0.3; echo "2026-04-17 06:01:01 INFO: recovered" >> "$SAGE_HOME/logs/worker.log") &
+  (sleep 0.3; echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: new failure" >> "$SAGE_HOME/logs/worker.log"; sleep 0.3; echo "$(date '+%Y-%m-%d %H:%M:%S') INFO: recovered" >> "$SAGE_HOME/logs/worker.log") &
   local bgpid=$!
   run timeout 2 sage logs worker -f --grep "ERROR"
   wait "$bgpid" 2>/dev/null || true
