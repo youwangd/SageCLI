@@ -95,6 +95,7 @@
 - Per-agent environment (env set/ls/rm/scope, create --env, env var allowlist, ls --json for scripting)
 - Agent status filter (ls --running/--stopped — filter agents by status, works with -l/--json, enables scripting: sage ls --running | xargs sage stop)
 - Runtime filter (ls --runtime <name> — filter agents by runtime type, works with -l/--json/--running/--stopped, enables: sage ls --runtime ollama | xargs sage stop)
+- Sortable listing (ls --sort <field> — sort agents by name/runtime/status/last_active, works with -l/--json and all filters)
 - Enhanced agent listing (ls -l shows MODEL and LAST_ACTIVE columns; ls --json includes model and last_active fields — see at a glance which agents are stale)
 - Observability (history, info, stats, ls -l/--json, token counting per agent, cost estimation per runtime, efficiency metrics, stats --agent for per-agent stats, stats --since for time-windowed stats, tasks --json for scripting, tasks --status for filtering)
 - Plan orchestrator (plan, wave-based dependency execution)
