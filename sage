@@ -2358,6 +2358,7 @@ cmd_rm() {
     case "$1" in
       --stopped) stopped=true; shift ;;
       --dry-run) dry_run=true; shift ;;
+      --force) shift ;;  # accepted for compat, no-op
       -*) die "usage: sage rm <name> | sage rm --stopped [--dry-run]" ;;
       *) name="$1"; shift ;;
     esac
