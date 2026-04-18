@@ -99,6 +99,7 @@
 - Quiet listing (ls -q/--quiet — output bare agent names one per line for Unix pipeline scripting, like docker ps -q; works with --running/--stopped/--runtime/--sort filters)
 - Broadcast send (send --all --headless "msg" — send same task to all running agents in parallel for ad-hoc fan-out without plan YAML; works with --json/--tag/--timeout)
 - Aggregate results (result --all — show most recent task result from every agent in one view; --json outputs array of {agent, status, task_id, output}; skips agents with no tasks)
+- Bulk remove (rm --stopped — remove all stopped agents in one command with --dry-run preview; skips running agents; cleans up worktrees)
 - Custom task ID (send --id <custom-id> — assign a user-chosen task ID for easy lookup with result <custom-id>, validated alphanumeric/hyphens/underscores, max 64 chars, rejects duplicates)
 - Output to file (send --output-file <path> — write task output directly to a file, creates parent dirs, works with --json for structured output, ideal for CI pipelines)
 - Ad-hoc task env vars (send --env KEY=VAL — pass environment variables to a single task without modifying agent's persistent env, repeatable, ideal for CI pipelines)
