@@ -2353,11 +2353,43 @@ cmd_ls() {
 # sage rm <name>
 # ═══════════════════════════════════════════════
 cmd_rm() {
-  local name="${1:-}"
-  [[ -n "$name" ]] || die "usage: sage rm <name>"
-  ensure_init; agent_exists "$name"
+  local name="" stopped=false dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --stopped) stopped=true; shift ;;
+      --dry-run) dry_run=true; shift ;;
+      -*) die "usage: sage rm <name> | sage rm --stopped [--dry-run]" ;;
+      *) name="$1"; shift ;;
+    esac
+  done
+  ensure_init
+  if $stopped; then
+    [[ -z "$name" ]] || die "--stopped cannot be combined with a name"
+    local count=0
+    for d in "$AGENTS_DIR"/*/runtime.json; do
+      [[ -f "$d" ]] || continue
+      local aname
+      aname=$(basename "$(dirname "$d")")
+      agent_pid "$aname" >/dev/null 2>&1 && continue
+      if $dry_run; then echo "  would remove: $aname"
+      else
+        local agent_dir="$AGENTS_DIR/$aname"
+        if [[ "$(jq -r '.worktree // false' "$agent_dir/runtime.json" 2>/dev/null)" == "true" ]]; then
+          git worktree remove "$agent_dir/workspace" --force 2>/dev/null || true
+        fi
+        rm -rf "$agent_dir"
+        rm -f "$LOGS_DIR/$aname.log"
+        echo "  removed: $aname"
+      fi
+      count=$((count + 1))
+    done
+    if $dry_run; then ok "dry-run: $count stopped agent(s) would be removed"
+    else ok "removed $count stopped agent(s)"; fi
+    return 0
+  fi
+  [[ -n "$name" ]] || die "usage: sage rm <name> | sage rm --stopped [--dry-run]"
+  agent_exists "$name"
   stop_agent "$name" 2>/dev/null || true
-  # Clean up git worktree if applicable
   local agent_dir="$AGENTS_DIR/$name"
   if [[ "$(jq -r '.worktree // false' "$agent_dir/runtime.json" 2>/dev/null)" == "true" ]]; then
     git worktree remove "$agent_dir/workspace" --force 2>/dev/null || true
@@ -7713,7 +7745,7 @@ case "${1:-}" in
   trace)   shift; cmd_trace "$@" ;;
   attach)  cmd_attach "${2:-}" ;;
   ls)      shift; cmd_ls "$@" ;;
-  rm)      cmd_rm "${2:-}" ;;
+  rm)      shift; cmd_rm "$@" ;;
   clone)   shift; cmd_clone "$@" ;;
   rename)  shift; cmd_rename "$@" ;;
   completions) shift; cmd_completions "$@" ;;
