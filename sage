@@ -2126,21 +2126,27 @@ _filter_since() {
 }
 
 cmd_logs() {
-  local name="" flag="" grep_pat="" all=false follow=false tail_n=50 since_secs=0
+  local name="" flag="" grep_pat="" all=false follow=false tail_n=50 since_secs=0 failed_only=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --grep) grep_pat="${2:-}"; [[ -n "$grep_pat" ]] || die "usage: sage logs <name> --grep <pattern>"; shift 2 ;;
       --tail) tail_n="${2:-}"; [[ "$tail_n" =~ ^[0-9]+$ ]] || die "--tail requires a number"; shift 2 ;;
       --since) since_secs=$(_parse_duration "${2:-}") || die "invalid duration '${2:-}' (use: 30m, 2h, 1d, 1w)"; shift 2 ;;
       --all) all=true; shift ;;
+      --failed) failed_only=true; shift ;;
       -f) follow=true; shift ;;
       --clear) flag="--clear"; shift ;;
       -*) die "unknown flag: $1" ;;
       *) [[ -z "$name" ]] && name="$1" || true; shift ;;
     esac
   done
-  [[ -n "$name" || "$all" == true ]] || die "usage: sage logs <name> [-f|--clear|--all|--grep <pattern>|--tail <N>|--since <duration>]"
+  [[ -n "$name" || "$all" == true || "$failed_only" == true ]] || die "usage: sage logs <name> [-f|--clear|--all|--failed|--grep <pattern>|--tail <N>|--since <duration>]"
   ensure_init
+
+  if [[ "$failed_only" == true ]]; then
+    _logs_failed "$tail_n"
+    return
+  fi
 
   if [[ "$all" == true ]]; then
     _logs_all "$($follow && echo "-f" || true)" "$grep_pat" "$tail_n" "$since_secs"
@@ -2188,6 +2194,33 @@ cmd_logs() {
   else
     tail -"$tail_n" "$logfile"
   fi
+}
+
+_logs_failed() {
+  local tail_n="${1:-50}" found=false
+  for d in "$AGENTS_DIR"/*/; do
+    [[ -d "$d" ]] || continue
+    local n; n=$(basename "$d")
+    [[ "$n" == .* ]] && continue
+    # Find most recent task status file for this agent
+    local latest="" latest_ts=0
+    for sf in "$d"results/*.status.json; do
+      [[ -f "$sf" ]] || continue
+      local ts; ts=$(jq -r '.finished_at // .queued_at // 0' "$sf" 2>/dev/null)
+      [[ -z "$ts" || "$ts" == "null" ]] && ts=0
+      if [[ "$ts" -gt "$latest_ts" ]]; then latest_ts="$ts"; latest="$sf"; fi
+    done
+    [[ -z "$latest" ]] && continue
+    local rc; rc=$(jq -r '.exit_code // 0' "$latest" 2>/dev/null)
+    [[ "$rc" == "0" ]] && continue
+    local lf="$LOGS_DIR/$n.log"
+    [[ -f "$lf" ]] || continue
+    found=true
+    printf "=== %s ===\n" "$n"
+    tail -"$tail_n" "$lf"
+    echo
+  done
+  $found || info "no failed agents with logs"
 }
 
 _logs_all() {
