@@ -6912,6 +6912,7 @@ cmd_help() {
   DEBUG
     logs <name> [-f|--clear]    View/tail/clear agent logs
     logs --all [-f]             Tail all agents' logs (color-coded)
+    logs --failed [--tail N]    Tail logs from only agents whose last task failed
     trace [name] [--tree] [-n N]  Show agent interaction trace
     attach [name]               Attach to tmux session
 
