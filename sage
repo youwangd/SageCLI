@@ -2237,7 +2237,7 @@ cmd_attach() {
 # ═══════════════════════════════════════════════
 cmd_ls() {
   ensure_init
-  local long=false json=false filter="" rt_filter="" sort_field="" tree=false quiet=false
+  local long=false json=false filter="" rt_filter="" sort_field="" tree=false quiet=false failed_only=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -q|--quiet) quiet=true; shift ;;
@@ -2246,6 +2246,7 @@ cmd_ls() {
       --tree) tree=true; shift ;;
       --running) filter="running"; shift ;;
       --stopped) filter="stopped"; shift ;;
+      --failed) failed_only=true; shift ;;
       --runtime) rt_filter="$2"; shift 2 ;;
       --sort) sort_field="$2"; shift 2 ;;
       *) die "unknown flag: $1" ;;
@@ -2287,6 +2288,22 @@ cmd_ls() {
     agent_pid "$n" >/dev/null 2>&1 && st="running"
     [[ -n "$filter" && "$filter" != "$st" ]] && continue
     [[ -n "$rt_filter" && "$rt" != "$rt_filter" ]] && continue
+    # --failed: only show agents whose most recent task exited non-zero
+    if $failed_only; then
+      # Find status file with highest finished_at/queued_at timestamp
+      local _latest_status="" _latest_ts=0
+      for _sf in "$d"results/*.status.json; do
+        [[ -f "$_sf" ]] || continue
+        local _ts=$(jq -r '.finished_at // .queued_at // 0' "$_sf" 2>/dev/null)
+        [[ -z "$_ts" || "$_ts" == "null" ]] && _ts=0
+        if [[ "$_ts" -gt "$_latest_ts" ]]; then
+          _latest_ts="$_ts"; _latest_status="$_sf"
+        fi
+      done
+      [[ -z "$_latest_status" ]] && continue
+      local _rc=$(jq -r '.exit_code // 0' "$_latest_status" 2>/dev/null)
+      [[ "$_rc" == "0" ]] && continue
+    fi
     local la="never"
     if ls "$d"results/*.status.json >/dev/null 2>&1; then
       la=$(jq -r '.finished_at // .queued_at // empty' "$d"results/*.status.json 2>/dev/null | sort | tail -1)
