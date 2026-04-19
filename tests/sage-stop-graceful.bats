@@ -9,12 +9,12 @@ setup() {
 }
 
 @test "stop --graceful sends SIGTERM first then cleans up" {
-  # Start a process that traps SIGTERM
-  bash -c 'trap "exit 0" TERM; sleep 300' &
+  # Start a process that exits cleanly on SIGTERM (use wait to let trap fire)
+  bash -c 'trap "exit 0" TERM; sleep 300 & wait' &
   local pid=$!
   echo "$pid" > "$SAGE_HOME/agents/worker/.pid"
-  # Graceful stop with 2s timeout
-  run "$BATS_TEST_DIRNAME/../sage" stop --graceful 2s worker
+  # Graceful stop with 3s timeout (enough for trap to fire)
+  run "$BATS_TEST_DIRNAME/../sage" stop --graceful 3s worker
   [ "$status" -eq 0 ]
   [[ "$output" == *"stopped worker"* ]]
   # Process should be gone

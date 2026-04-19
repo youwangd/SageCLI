@@ -1486,7 +1486,16 @@ start_agent() {
 # sage stop [name|--all]
 # ═══════════════════════════════════════════════
 cmd_stop() {
-  local target="${1:-}"
+  local target="" graceful_secs=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --graceful) [[ -n "${2:-}" ]] || die "usage: sage stop [name|--all] [--graceful <duration>]"
+                  graceful_secs=$(_parse_duration "$2") || die "invalid duration '$2' (use: 5s, 30s, 1m)"
+                  shift 2 ;;
+      -*) target="$1"; shift ;;
+      *)  target="$1"; shift ;;
+    esac
+  done
   ensure_init
 
   if [[ "$target" == "--all" || -z "$target" ]]; then
@@ -1494,30 +1503,53 @@ cmd_stop() {
       [[ -d "$agent_dir" ]] || continue
       local n=$(basename "$agent_dir")
       [[ "$n" == .* ]] && continue
-      stop_agent "$n"
+      stop_agent "$n" "$graceful_secs"
     done
     tmux kill-session -t "$TMUX_SESSION" 2>/dev/null && info "tmux session closed"
   else
     agent_exists "$target"
-    stop_agent "$target"
+    stop_agent "$target" "$graceful_secs"
   fi
 }
 
 stop_agent() {
-  local name="$1" pid
+  local name="$1" graceful="${2:-0}" pid
   # Stop MCP servers first
   [[ -f "$AGENTS_DIR/$name/.mcp-pids" ]] && cmd_mcp stop-servers "$name" 2>/dev/null || true
   if pid=$(agent_pid "$name"); then
-    # Kill entire process group (catches child cline/claude processes)
     local pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
-    if [[ -n "$pgid" ]]; then
-      kill -- -"$pgid" 2>/dev/null || true
+    # Safety: never signal our own process group (would kill caller/cron/ACP parent)
+    local self_pgid=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
+    [[ -n "$pgid" && "$pgid" == "$self_pgid" ]] && pgid=""
+    if [[ "$graceful" -gt 0 ]]; then
+      # Graceful: SIGTERM first, wait, then SIGKILL
+      [[ -n "$pgid" ]] && kill -TERM -- -"$pgid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
+      local waited=0
+      while [[ "$waited" -lt "$graceful" ]] && kill -0 "$pid" 2>/dev/null; do
+        sleep 1; waited=$((waited + 1))
+      done
+      if kill -0 "$pid" 2>/dev/null; then
+        [[ -n "$pgid" ]] && kill -9 -- -"$pgid" 2>/dev/null || true
+        kill -9 "$pid" 2>/dev/null || true
+        rm -f "$AGENTS_DIR/$name/.pid"
+        tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null || true
+        ok "force-killed $name after ${graceful}s (pid $pid)"
+        return 0
+      fi
+      rm -f "$AGENTS_DIR/$name/.pid"
+      tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null || true
+      ok "stopped $name gracefully (pid $pid)"
+    else
+      # Immediate kill (original behavior)
+      if [[ -n "$pgid" ]]; then
+        kill -- -"$pgid" 2>/dev/null || true
+      fi
+      pkill -P "$pid" 2>/dev/null || true
+      kill "$pid" 2>/dev/null || true
+      rm -f "$AGENTS_DIR/$name/.pid"
+      tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null || true
+      ok "stopped $name (pid $pid)"
     fi
-    pkill -P "$pid" 2>/dev/null
-    kill "$pid" 2>/dev/null
-    rm -f "$AGENTS_DIR/$name/.pid"
-    tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null
-    ok "stopped $name (pid $pid)"
   else
     # No running process — still clean up stale tmux window
     tmux kill-window -t "$TMUX_SESSION:$name" 2>/dev/null || true
@@ -6998,9 +7030,10 @@ cmd_info() {
 # Parse duration string (30m, 2h, 1d, 1w) → seconds
 _parse_duration() {
   local d="$1"
-  local num="${d%[mhdw]}" unit="${d: -1}"
+  local num="${d%[smhdw]}" unit="${d: -1}"
   [[ "$num" =~ ^[0-9]+$ ]] || return 1
   case "$unit" in
+    s) echo "$num" ;;
     m) echo $((num * 60)) ;;
     h) echo $((num * 3600)) ;;
     d) echo $((num * 86400)) ;;
@@ -7729,7 +7762,7 @@ case "${1:-}" in
   init)    shift; cmd_init "$@" ;;
   create)  shift; cmd_create "$@" ;;
   start)   cmd_start "${2:-}" ;;
-  stop)    cmd_stop "${2:-}" ;;
+  stop)    shift; cmd_stop "$@" ;;
   restart) cmd_restart "${2:-}" ;;
   status)  cmd_status ;;
   send)    shift; cmd_send "$@" ;;
