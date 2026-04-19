@@ -6823,7 +6823,7 @@ cmd_help() {
     stop [name|--all]           Stop agent(s)
     restart [name|--all]        Restart agent(s)
     status                      Show all agents
-    ls                          List agent names (-l, --json, --running, --stopped, --runtime, --sort <field>)
+    ls                          List agent names (-l, --json, --running, --stopped, --failed, --runtime, --sort <field>)
     clone <src> <dest>          Duplicate agent config (no state)
     completions <bash|zsh>      Generate shell tab-completions
     rename <old> <new>         Rename an agent

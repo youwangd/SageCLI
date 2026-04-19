@@ -182,30 +182,37 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 
 ---
 
-## Competitor Signals (2026-04-13)
+## Competitor Signals (2026-04-19)
 
 | Signal | Impact | Sage Status |
 |--------|--------|-------------|
-| claude-code-router 32K stars — proxy any LLM through Claude Code UI | HIGH (mindshare) | sage has 8 native runtimes ✅ — no proxy needed |
-| ruflo 31.5K stars, growth decelerating (416/wk vs 9.5K last week) | HIGH | sage has 8 runtimes including Codex ✅ |
-| steipete strict execution mode (1,570 ❤️) — "don't be lazy" agents | MEDIUM | sage has `--retry` but no `--strict` — **gap** |
-| Anthropic managed agent runtime API (build vs buy debate) | MEDIUM | sage is the "build" option — zero vendor lock-in ✅ |
-| Cline Kanban launch — persistent visual task board | MEDIUM | sage has `dashboard --live` but no persistent Kanban — **gap** |
-| Claude Code Agent Teams docs updated (known limitations) | POSITIVE | sage handles resumption/coordination/shutdown ✅ |
-| HN "trust agents with API keys" — security concern growing | MEDIUM | sage has timeout/max-turns but no key scoping — **gap** |
-| ACP in JetBrains + Zed + Kiro — adoption accelerating | POSITIVE | sage has ACP ✅ |
-| emdash (YC W26) 3.8K stars, growth slowing | LOW | sage has more features, they have funding |
-| r/LocalLLaMA "open source agent stack" thread — sage not mentioned | HIGH | sage has ollama/llama-cpp ✅ but zero visibility |
-| 6,900+ MCP servers tracked — ecosystem exploding | POSITIVE | sage has `mcp add/ls/rm` ✅ |
-| gastown declining (13.9K, -58/wk) | POSITIVE | persistent sessions alone isn't enough |
+| **claude-flow 32,436 stars** — Claude Code multi-agent orchestrator (parallel exec, memory, coordination) | **HIGH** | sage's runtime-agnostic model differentiates but mindshare gap is severe |
+| claude-code-router 32,572 stars (+447/wk, growth slowing) | HIGH | sage has 8 native runtimes ✅ — no proxy needed |
+| **Claude Opus 4.7 released (+13% coding, 3x vision)** Apr 16 | POSITIVE | sage claude-code runtime inherits ✅ |
+| **Codex major update + hooks mechanism** Apr 16 (thsottiaux 4.6K ❤️) | MEDIUM | sage has `--on-done`/`--on-fail` ✅ but no tool-level hook registry — **gap** |
+| **Cloudflare "Code Mode" paradigm** — agents inhabit state machines | WATCH | Not a tool yet; conceptual shift — monitor |
+| **ACP Registry RFD completed** (initial release this week) | **HIGH opportunity** | sage has ACP ✅ — should register for free distribution |
+| "Virtual MCP server" composite pattern (Prefect Apr 6) | MEDIUM | sage has `mcp add/ls/rm` ✅ but no composition — **gap** |
+| OpenCode v1.4.7 (Apr 16) — incremental | LOW | No action |
+| Claude Code → native binary spawn (Apr 17) | POSITIVE | Test sage claude-code runtime still detects binary path |
+| **qwen3.6-35b + OpenCode viral on r/LocalLLaMA** ("as good as Claude" on MBP) | HIGH | sage has ollama/llama-cpp ✅ but zero visibility — **opportunity** |
+| r/LocalLLaMA "whats the best harness for my llm?" thread | HIGH | sage needs to be in that answer |
+| "Loopndroll" Codex hooks tool (908 ❤️) | LOW/WATCH | Community building on Codex hooks; validates hook pattern |
+| Claude Code `/ultrareview` multi-agent review built-in | POSITIVE | sage `plan --pattern debate` ✅ overlaps; call `/ultrareview` via `sage send` instead |
+| opencode 145,980 stars, cline 60,451 stars | HIGH | Gap in individual-agent popularity; sage is orchestrator not agent |
+| bradAGI/awesome-cli-coding-agents 231 stars — **sage still not listed** | HIGH | PR #47 follow-up needed |
 
-### Action Items from Intel (2026-04-13)
-- [ ] **P0**: Follow up on awesome-cli-coding-agents PR #47
-- [ ] **P0**: Post to r/LocalLLaMA "open source agent stack" thread with sage's ollama/llama-cpp story
-- [x] **P1**: Implement `--strict` execution flag (retry-on-incomplete pattern)
-- [x] **P1**: Add API key scoping/sandboxing for agent security
-- [ ] **P2**: Consider `sage proxy` mode (claude-code-router proves 32K-star demand)
-- [ ] **P2**: Persistent Kanban view in `dashboard --live`
+### Action Items from Intel (2026-04-19)
+- [ ] **P0**: Register sage in **ACP Registry** (RFD completed this week, initial release live)
+- [ ] **P0**: Post "Run qwen3.6 locally with sage" to r/LocalLLaMA — riding viral OpenCode+qwen3.6 thread
+- [ ] **P0**: Follow up / re-submit awesome-cli-coding-agents PR #47 (carried from last week)
+- [ ] **P1**: Add `sage tool hook` subcommand (Codex hooks pattern, Loopndroll validation)
+- [ ] **P1**: Add `sage mcp compose` — Virtual MCP composite endpoints
+- [ ] **P1**: Add `sage acp register` helper command
+- [ ] **P1**: Verify sage claude-code runtime still works with native Claude Code binary (Apr 17 change)
+- [ ] **P2**: Write "Native runtimes beat proxies" blog post — counter claude-code-router (32.5K ⭐)
+- [ ] **P2**: Write "Portable orchestration" blog post — counter claude-flow (32.4K ⭐)
+- [ ] **P2**: Local-model tutorial series for r/LocalLLaMA (first mover gap closing)
 
 ---
 
@@ -215,4 +222,4 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 - **Daily report**: `sagecli-daily-report` cron (14:00 UTC) → email
 - **Self-improver**: `sage-improver` cron (hourly) → auto-ships features via TDD
 
-*Next intel scan: 2026-04-13 (Monday)*
+*Next intel scan: 2026-04-27 (Monday)*
