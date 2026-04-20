@@ -6376,7 +6376,41 @@ _sage_completions() {
     return
   fi
   case "$prev" in
-    send|start|stop|restart|attach|peek|logs|rm|info|steer|wait|diff|merge|clone|rename|result|export|env|msg)
+    ls)
+      COMPREPLY=($(compgen -W "--running --stopped --failed --runtime --json -l --tree -q --quiet --sort" -- "$cur"));;
+    logs)
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--all --failed --grep --tail --since -f --clear" -- "$cur"))
+      else
+        local agents=""
+        [[ -d "${SAGE_HOME:-$HOME/.sage}/agents" ]] && agents=$(ls "${SAGE_HOME:-$HOME/.sage}/agents" 2>/dev/null)
+        COMPREPLY=($(compgen -W "$agents" -- "$cur"))
+      fi;;
+    stop)
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--all --graceful" -- "$cur"))
+      else
+        local agents=""
+        [[ -d "${SAGE_HOME:-$HOME/.sage}/agents" ]] && agents=$(ls "${SAGE_HOME:-$HOME/.sage}/agents" 2>/dev/null)
+        COMPREPLY=($(compgen -W "$agents --all" -- "$cur"))
+      fi;;
+    result)
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--all --failed --json --agent" -- "$cur"))
+      else
+        local agents=""
+        [[ -d "${SAGE_HOME:-$HOME/.sage}/agents" ]] && agents=$(ls "${SAGE_HOME:-$HOME/.sage}/agents" 2>/dev/null)
+        COMPREPLY=($(compgen -W "$agents" -- "$cur"))
+      fi;;
+    rm)
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--stopped --dry-run" -- "$cur"))
+      else
+        local agents=""
+        [[ -d "${SAGE_HOME:-$HOME/.sage}/agents" ]] && agents=$(ls "${SAGE_HOME:-$HOME/.sage}/agents" 2>/dev/null)
+        COMPREPLY=($(compgen -W "$agents" -- "$cur"))
+      fi;;
+    send|start|restart|attach|peek|info|steer|wait|diff|merge|clone|rename|export|env|msg)
       local agents=""
       if [[ -d "${SAGE_HOME:-$HOME/.sage}/agents" ]]; then
         agents=$(ls "${SAGE_HOME:-$HOME/.sage}/agents" 2>/dev/null)
@@ -6419,15 +6453,14 @@ _sage() {
     'history:Activity timeline'
     'info:Agent details'
     'init:Initialize sage'
-    'logs:View agent logs'
-    'ls:List agents'
+    'logs:View agent logs (flags: --all --failed --grep --tail --since -f --clear)'
+    'ls:List agents (flags: --running --stopped --failed --runtime --json -l --tree -q --sort)'
     'mcp:MCP server management'
     'merge:Merge worktree branch'
     'msg:Inter-agent messaging'
     'plan:Orchestrate multi-agent plan'
     'rename:Rename an agent'
     'restart:Restart agent'
-    'result:Get task result'
     'replay:Re-send a previous task'
     'rm:Remove agent'
     'runs:List task runs'
@@ -6437,7 +6470,8 @@ _sage() {
     'stats:Usage statistics'
     'status:Agent status'
     'steer:Steer running agent'
-    'stop:Stop agent'
+    'stop:Stop agent (flags: --all --graceful <duration>)'
+    'result:Get task result (flags: --all --failed --json --agent)'
     'task:Task management'
     'tasks:List tasks'
     'tool:Run agent tool'
