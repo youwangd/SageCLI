@@ -6407,7 +6407,7 @@ _sage_completions() {
   fi
   case "$prev" in
     ls)
-      COMPREPLY=($(compgen -W "--running --stopped --failed --runtime --json -l --tree -q --quiet --sort" -- "$cur"));;
+      COMPREPLY=($(compgen -W "--running --stopped --failed --runtime --json -l --tree -q --quiet --sort --count" -- "$cur"));;
     logs)
       if [[ "$cur" == -* ]]; then
         COMPREPLY=($(compgen -W "--all --failed --grep --tail --since -f --clear" -- "$cur"))

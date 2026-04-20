@@ -95,6 +95,7 @@
 - Per-agent environment (env set/ls/rm/scope, create --env, env var allowlist, ls --json for scripting)
 - Agent status filter (ls --running/--stopped — filter agents by status, works with -l/--json, enables scripting: sage ls --running | xargs sage stop)
 - Failed agents filter (ls --failed — show agents whose most recent task exited non-zero; combines with -q/--json/--runtime; enables: sage ls --failed -q | xargs sage logs)
+- Agent count (ls --count — prints just the number of matching agents for monitoring: if [ $(sage ls --count --failed) -gt 0 ]; then alert; fi)
 - Failed logs tail (logs --failed [--tail N] — tails logs from only agents whose most recent task exited non-zero, with === agent === headers, for fast post-fan-out triage)
 - Failed results (result --failed [--json] — show most recent results from only agents whose latest task exited non-zero; implicit --all; composes with ls --failed workflow)
 - Runtime filter (ls --runtime <name> — filter agents by runtime type, works with -l/--json/--running/--stopped, enables: sage ls --runtime ollama | xargs sage stop)
