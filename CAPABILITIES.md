@@ -71,7 +71,7 @@
 - Skills system (skill install/ls/rm/show/run, create --skill, registries)
 - Shared context store (context set/get/ls/rm, auto-inject)
 - Per-agent persistent memory (memory set/get/ls/rm/clear, auto-inject into prompts, ls --json for scripting)
-- Inter-agent messaging (msg send/ls/clear, auto-inject on send)
+- Inter-agent messaging (msg send/ls/clear, auto-inject on send; inbox --from <agent> for sender filter)
 - Agent chaining (send --then, multi-step pipelines)
 - Failure callback (send --on-fail <command> — run command on task failure with SAGE_FAIL_AGENT/TASK/OUTPUT env vars)
 - Completion callback (send --on-done <command> — run command on ANY task completion with SAGE_DONE_AGENT/TASK/STATUS/OUTPUT env vars)
