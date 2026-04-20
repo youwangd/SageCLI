@@ -3361,12 +3361,13 @@ cmd_peek() {
 # sage inbox [--json] [--clear]
 # ═══════════════════════════════════════════════
 cmd_inbox() {
-  local format="pretty" do_clear=false
+  local format="pretty" do_clear=false from_filter=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json)  format="json"; shift ;;
       --clear) do_clear=true; shift ;;
+      --from)  from_filter="${2:-}"; [[ -n "$from_filter" ]] || die "usage: sage inbox --from <agent>"; shift 2 ;;
       -*)      die "unknown flag: $1" ;;
       *)       shift ;;
     esac
@@ -3386,6 +3387,10 @@ cmd_inbox() {
   local msg_count=0
   for msg_file in $(ls -t "$inbox"/*.json 2>/dev/null); do
     [[ -f "$msg_file" ]] || continue
+    if [[ -n "$from_filter" ]]; then
+      local _sender; _sender=$(jq -r '.from // ""' "$msg_file" 2>/dev/null)
+      [[ "$_sender" == "$from_filter" ]] || continue
+    fi
     ((msg_count++)) || true
 
     if [[ "$format" == "json" ]]; then

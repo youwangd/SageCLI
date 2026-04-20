@@ -18,20 +18,22 @@ teardown() { rm -rf "$SAGE_HOME"; }
 @test "inbox --from worker-1 returns only worker-1 messages" {
   run ./sage inbox --from worker-1 --json
   [[ "$status" -eq 0 ]]
-  local n; n=$(echo "$output" | jq -s 'length')
+  local n; n=$(echo "$output" | grep -c '^{"from":"worker-1"')
+  local other; other=$(echo "$output" | grep -c '^{"from":"worker-2"' || true)
   [[ "$n" -eq 2 ]]
-  echo "$output" | jq -s '.[].from' | grep -qv worker-2
+  [[ "$other" -eq 0 ]]
 }
 
 @test "inbox --from worker-2 returns one message" {
   run ./sage inbox --from worker-2 --json
   [[ "$status" -eq 0 ]]
-  local n; n=$(echo "$output" | jq -s 'length')
+  local n; n=$(echo "$output" | grep -c '^{"from":"worker-2"')
   [[ "$n" -eq 1 ]]
 }
 
 @test "inbox --from nobody returns zero messages" {
   run ./sage inbox --from nobody --json
   [[ "$status" -eq 0 ]]
-  [[ -z "${output// }" ]] || { local n; n=$(echo "$output" | jq -s 'length'); [[ "$n" -eq 0 ]]; }
+  local n; n=$(echo "$output" | grep -c '^{' || true)
+  [[ "$n" -eq 0 ]]
 }
