@@ -98,6 +98,7 @@
 - MCP JSON output (mcp ls --json — machine-readable JSON array of registered MCP servers with name/command/args fields; empty returns []; composes with jq: sage mcp ls --json | jq -r '.[].name' for script-friendly server iteration and config introspection)
 - MCP server health check (doctor --mcp — verify registered MCP server command binaries exist)
 - Per-agent environment (env set/ls/rm/scope, create --env, env var allowlist, ls --json for scripting)
+- Agent checkpointing (checkpoint <name|--all|--ls>, restore <name|--all> — save/restore runtime config, env vars, MCP servers, steer file to JSON; checkpoint --ls lists existing checkpoints with name/runtime/timestamp so users see what's restorable without browsing ~/.sage/checkpoints/)
 - Agent status filter (ls --running/--stopped — filter agents by status, works with -l/--json, enables scripting: sage ls --running | xargs sage stop)
 - Failed agents filter (ls --failed — show agents whose most recent task exited non-zero; combines with -q/--json/--runtime; enables: sage ls --failed -q | xargs sage logs)
 - Agent count (ls --count — prints just the number of matching agents for monitoring: if [ $(sage ls --count --failed) -gt 0 ]; then alert; fi)
