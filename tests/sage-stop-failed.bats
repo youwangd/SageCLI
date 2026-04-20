@@ -18,9 +18,9 @@ setup() {
   echo '{"id":"t2","status":"failed","exit_code":1,"finished_at":200}' > "$SAGE_HOME/agents/loser/results/t2.status.json"
   # zombie: NOT running, failed (should NOT be stopped — already stopped)
   echo '{"id":"t3","status":"failed","exit_code":1,"finished_at":300}' > "$SAGE_HOME/agents/zombie/results/t3.status.json"
-  # simulate running for winner and loser via .pid files pointing to PID 1 (init, always alive)
-  echo 1 > "$SAGE_HOME/agents/winner/.pid"
-  echo 1 > "$SAGE_HOME/agents/loser/.pid"
+  # simulate running for winner and loser via .pid files pointing to current shell PID (always alive)
+  echo $$ > "$SAGE_HOME/agents/winner/.pid"
+  echo $$ > "$SAGE_HOME/agents/loser/.pid"
   # zombie has no .pid — not running
 }
 

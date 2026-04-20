@@ -1486,17 +1486,47 @@ start_agent() {
 # sage stop [name|--all]
 # ═══════════════════════════════════════════════
 cmd_stop() {
-  local target="" graceful_secs=0
+  local target="" graceful_secs=0 failed_only=false dry_run=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --graceful) [[ -n "${2:-}" ]] || die "usage: sage stop [name|--all] [--graceful <duration>]"
+      --graceful) [[ -n "${2:-}" ]] || die "usage: sage stop [name|--all|--failed] [--graceful <duration>] [--dry-run]"
                   graceful_secs=$(_parse_duration "$2") || die "invalid duration '$2' (use: 5s, 30s, 1m)"
                   shift 2 ;;
+      --failed)   failed_only=true; shift ;;
+      --dry-run)  dry_run=true; shift ;;
       -*) target="$1"; shift ;;
       *)  target="$1"; shift ;;
     esac
   done
   ensure_init
+
+  if $failed_only; then
+    local count=0
+    for agent_dir in "$AGENTS_DIR"/*/; do
+      [[ -d "$agent_dir" ]] || continue
+      local n; n=$(basename "$agent_dir")
+      [[ "$n" == .* ]] && continue
+      agent_pid "$n" >/dev/null 2>&1 || continue
+      # latest status file (by finished_at/queued_at) must have non-zero exit_code
+      local _latest_status="" _latest_ts=0
+      for _sf in "$agent_dir"/results/*.status.json; do
+        [[ -f "$_sf" ]] || continue
+        local _ts; _ts=$(jq -r '.finished_at // .queued_at // 0' "$_sf" 2>/dev/null)
+        [[ -z "$_ts" || "$_ts" == "null" ]] && _ts=0
+        if [[ "$_ts" -gt "$_latest_ts" ]]; then _latest_ts="$_ts"; _latest_status="$_sf"; fi
+      done
+      [[ -z "$_latest_status" ]] && continue
+      local _rc; _rc=$(jq -r '.exit_code // 0' "$_latest_status" 2>/dev/null)
+      [[ "$_rc" == "0" ]] && continue
+      if $dry_run; then echo "  would stop: $n"
+      else stop_agent "$n" "$graceful_secs"
+      fi
+      count=$((count + 1))
+    done
+    if $dry_run; then ok "dry-run: $count failed running agent(s) would be stopped"
+    else ok "stopped $count failed running agent(s)"; fi
+    return 0
+  fi
 
   if [[ "$target" == "--all" || -z "$target" ]]; then
     for agent_dir in "$AGENTS_DIR"/*/; do
@@ -6505,7 +6535,7 @@ _sage_completions() {
       fi;;
     stop)
       if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--all --graceful" -- "$cur"))
+        COMPREPLY=($(compgen -W "--all --failed --graceful --dry-run" -- "$cur"))
       else
         local agents=""
         [[ -d "${SAGE_HOME:-$HOME/.sage}/agents" ]] && agents=$(ls "${SAGE_HOME:-$HOME/.sage}/agents" 2>/dev/null)
@@ -6595,7 +6625,7 @@ _sage() {
     'stats:Usage statistics'
     'status:Agent status'
     'steer:Steer running agent'
-    'stop:Stop agent (flags: --all --graceful <duration>)'
+    'stop:Stop agent (flags: --all --failed --graceful <duration> --dry-run)'
     'result:Get task result (flags: --all --failed --json --agent)'
     'task:Task management'
     'tasks:List tasks'
