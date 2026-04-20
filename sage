@@ -5697,8 +5697,13 @@ cmd_skill() {
       ;;
     rm)
       local name="${1:-}"
-      [[ -n "$name" ]] || die "usage: sage skill rm <name>"
+      [[ -n "$name" ]] || die "usage: sage skill rm <name> [--dry-run]"
       [[ -d "$SKILLS_DIR/$name" ]] || die "skill '$name' not found"
+      if [[ "${2:-}" == "--dry-run" ]]; then
+        local _fc; _fc=$(find "$SKILLS_DIR/$name" -type f | wc -l | tr -d ' ')
+        echo "would remove skill '$name' ($_fc file(s)) at $SKILLS_DIR/$name"
+        return
+      fi
       rm -rf "$SKILLS_DIR/$name"
       echo "removed skill: $name"
       ;;
