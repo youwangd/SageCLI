@@ -1561,9 +1561,46 @@ stop_agent() {
 # sage restart [name|--all]
 # ═══════════════════════════════════════════════
 cmd_restart() {
-  local target="${1:-}"
-  [[ -n "$target" ]] || die "usage: sage restart <name|--all>"
+  local target="" failed_only=false dry_run=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --failed) failed_only=true; shift ;;
+      --dry-run) dry_run=true; shift ;;
+      *) target="$1"; shift ;;
+    esac
+  done
+  [[ -n "$target" || "$failed_only" == true ]] || die "usage: sage restart <name|--all|--failed> [--dry-run]"
   ensure_init
+
+  if [[ "$failed_only" == true ]]; then
+    local count=0
+    for agent_dir in "$AGENTS_DIR"/*/; do
+      [[ -d "$agent_dir" ]] || continue
+      local n=$(basename "$agent_dir")
+      [[ "$n" == .* ]] && continue
+      # Find latest task status
+      local latest="" latest_ts=0
+      for sf in "$agent_dir"results/*.status.json; do
+        [[ -f "$sf" ]] || continue
+        local ts; ts=$(jq -r '.finished_at // .queued_at // 0' "$sf" 2>/dev/null)
+        [[ -z "$ts" || "$ts" == "null" ]] && ts=0
+        if [[ "$ts" -gt "$latest_ts" ]]; then latest_ts="$ts"; latest="$sf"; fi
+      done
+      [[ -z "$latest" ]] && continue
+      local rc; rc=$(jq -r '.exit_code // 0' "$latest" 2>/dev/null)
+      [[ "$rc" == "0" ]] && continue
+      if $dry_run; then
+        echo "  would restart: $n"
+      else
+        stop_agent "$n" 2>/dev/null
+        start_agent "$n"
+      fi
+      count=$((count + 1))
+    done
+    if $dry_run; then ok "dry-run: $count failed agent(s) would be restarted"
+    else ok "restarted $count failed agent(s)"; fi
+    return 0
+  fi
 
   if [[ "$target" == "--all" ]]; then
     for agent_dir in "$AGENTS_DIR"/*/; do
@@ -7884,7 +7921,7 @@ case "${1:-}" in
   create)  shift; cmd_create "$@" ;;
   start)   cmd_start "${2:-}" ;;
   stop)    shift; cmd_stop "$@" ;;
-  restart) cmd_restart "${2:-}" ;;
+  restart) shift; cmd_restart "$@" ;;
   status)  cmd_status ;;
   send)    shift; cmd_send "$@" ;;
   call)    shift; cmd_call "$@" ;;
