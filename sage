@@ -5618,6 +5618,15 @@ cmd_skill() {
 
   case "$subcmd" in
     ls)
+      if [[ "${1:-}" == "--json" ]]; then
+        local _json="[]"
+        for d in "$SKILLS_DIR"/*/skill.json; do
+          [[ -f "$d" ]] || continue
+          _json=$(jq --argjson acc "$_json" '$acc + [.]' "$d")
+        done
+        echo "$_json"
+        return
+      fi
       local found=0
       for d in "$SKILLS_DIR"/*/skill.json; do
         [[ -f "$d" ]] || continue

@@ -49,6 +49,7 @@
 - `sage tool`
 - `sage trace`
 - `sage upgrade`
+- `sage version`
 - `sage wait`
 - `sage watch`
 
