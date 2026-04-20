@@ -6394,6 +6394,10 @@ cmd_alias() {
       ok "alias '$name' → $expansion"
       ;;
     ls)
+      if [[ "${1:-}" == "--json" ]]; then
+        cat "$aliasfile"
+        return
+      fi
       if [[ "$(jq 'length' "$aliasfile")" -eq 0 ]]; then
         printf "\n  ${DIM}no aliases defined${NC}\n\n"; return
       fi
