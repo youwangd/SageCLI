@@ -3022,14 +3022,15 @@ cmd_tasks() {
 # sage result <task-id>
 # ═══════════════════════════════════════════════
 cmd_result() {
-  local task_id="" agent_filter="" all_mode=false json_output=false
+  local task_id="" agent_filter="" all_mode=false json_output=false failed_only=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --all)   all_mode=true; shift ;;
-      --json)  json_output=true; shift ;;
-      --agent) agent_filter="${2:-}"; [[ -n "$agent_filter" ]] || die "usage: sage result [task-id] [--agent <name>]"; shift 2 ;;
-      -*)      die "usage: sage result [task-id] [--agent <name>]" ;;
-      *)       task_id="$1"; shift ;;
+      --all)    all_mode=true; shift ;;
+      --failed) failed_only=true; all_mode=true; shift ;;
+      --json)   json_output=true; shift ;;
+      --agent)  agent_filter="${2:-}"; [[ -n "$agent_filter" ]] || die "usage: sage result [task-id] [--agent <name>]"; shift 2 ;;
+      -*)       die "usage: sage result [task-id] [--agent <name>]" ;;
+      *)        task_id="$1"; shift ;;
     esac
   done
   ensure_init
@@ -3048,6 +3049,11 @@ cmd_result() {
         [[ "$mt" -gt "$newest_time" ]] && { newest_time=$mt; newest=$f; }
       done
       [[ -n "$newest" ]] || continue
+      # --failed: skip agents whose latest task succeeded (exit_code == 0)
+      if $failed_only; then
+        local _rc; _rc=$(jq -r '.exit_code // 0' "$newest" 2>/dev/null)
+        [[ "$_rc" == "0" ]] && continue
+      fi
       found=$((found + 1))
       local tid; tid=$(basename "$newest" .status.json)
       local st; st=$(jq -r '.status' "$newest")
