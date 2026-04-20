@@ -6237,10 +6237,25 @@ _doctor_basic() {
 # ═══════════════════════════════════════════════
 cmd_checkpoint() {
   local target="${1:-}"
-  [[ -n "$target" ]] || die "usage: sage checkpoint <name|--all>"
+  [[ -n "$target" ]] || die "usage: sage checkpoint <name|--all|--ls>"
   ensure_init
   local ckpt_dir="$SAGE_HOME/checkpoints"
   mkdir -p "$ckpt_dir"
+
+  if [[ "$target" == "--ls" ]]; then
+    local found=false
+    for ckpt in "$ckpt_dir"/*.json; do
+      [[ -f "$ckpt" ]] || continue
+      found=true
+      local n rt ts
+      n=$(basename "$ckpt" .json)
+      rt=$(jq -r '.runtime // "?"' "$ckpt" 2>/dev/null)
+      ts=$(jq -r '.timestamp // "?"' "$ckpt" 2>/dev/null)
+      printf "  %-20s %-14s %s\n" "$n" "$rt" "$ts"
+    done
+    $found || info "no checkpoints"
+    return
+  fi
 
   if [[ "$target" == "--all" ]]; then
     local count=0
