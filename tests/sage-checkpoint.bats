@@ -115,3 +115,30 @@ _create_agent() {
   run "$SAGE" restore ghost
   [ "$status" -ne 0 ]
 }
+
+# --- checkpoint --ls (list existing checkpoints) ---
+
+@test "checkpoint --ls shows empty when no checkpoints" {
+  run "$SAGE" checkpoint --ls
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no checkpoints"* ]]
+}
+
+@test "checkpoint --ls lists checkpoint names" {
+  _create_agent "alpha" "claude-code"
+  _create_agent "beta" "gemini-cli"
+  "$SAGE" checkpoint alpha
+  "$SAGE" checkpoint beta
+  run "$SAGE" checkpoint --ls
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"alpha"* ]]
+  [[ "$output" == *"beta"* ]]
+}
+
+@test "checkpoint --ls shows runtime for each checkpoint" {
+  _create_agent "worker1" "codex"
+  "$SAGE" checkpoint worker1
+  run "$SAGE" checkpoint --ls
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"codex"* ]]
+}
