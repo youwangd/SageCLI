@@ -6458,6 +6458,12 @@ cmd_alias() {
       jq -r 'to_entries[]|"  \(.key) → \(.value)"' "$aliasfile"
       printf "\n"
       ;;
+    get)
+      local name="${1:-}"
+      [[ -n "$name" ]] || die "usage: sage alias get <name>"
+      jq -e --arg k "$name" 'has($k)' "$aliasfile" >/dev/null 2>&1 || die "alias '$name' not found"
+      jq -r --arg k "$name" '.[$k]' "$aliasfile"
+      ;;
     rm)
       local name="$1"
       [[ -n "$name" ]] || die "usage: sage alias rm <name>"
@@ -6466,7 +6472,7 @@ cmd_alias() {
       printf '%s\n' "$tmp" > "$aliasfile"
       ok "removed alias '$name'"
       ;;
-    *) die "usage: sage alias [set|ls|rm]" ;;
+    *) die "usage: sage alias [set|get|ls|rm]" ;;
   esac
 }
 
