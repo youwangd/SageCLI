@@ -95,6 +95,7 @@
 - Runs JSON output (runs --json — machine-readable list of task runs with run_id/status/current_cycle/goal; composes with --active for monitoring: sage runs --active --json | jq ...)
 - Aliases JSON output (alias ls --json — machine-readable JSON object of aliases; empty returns {}; composes with jq: sage alias ls --json | jq -r 'keys[]' or jq '.review' for specific lookups)
 - Skills JSON output (skill ls --json — machine-readable JSON array of installed skills with name/version/description fields; empty returns []; composes with jq: sage skill ls --json | jq -r '.[].name' for script-friendly skill iteration)
+- MCP JSON output (mcp ls --json — machine-readable JSON array of registered MCP servers with name/command/args fields; empty returns []; composes with jq: sage mcp ls --json | jq -r '.[].name' for script-friendly server iteration and config introspection)
 - MCP server health check (doctor --mcp — verify registered MCP server command binaries exist)
 - Per-agent environment (env set/ls/rm/scope, create --env, env var allowlist, ls --json for scripting)
 - Agent status filter (ls --running/--stopped — filter agents by status, works with -l/--json, enables scripting: sage ls --running | xargs sage stop)
