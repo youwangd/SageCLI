@@ -6477,7 +6477,15 @@ _sage_completions() {
         [[ -d "${SAGE_HOME:-$HOME/.sage}/agents" ]] && agents=$(ls "${SAGE_HOME:-$HOME/.sage}/agents" 2>/dev/null)
         COMPREPLY=($(compgen -W "$agents" -- "$cur"))
       fi;;
-    send|start|restart|attach|peek|info|steer|wait|diff|merge|clone|rename|export|env|msg)
+    restart)
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--all --failed --dry-run" -- "$cur"))
+      else
+        local agents=""
+        [[ -d "${SAGE_HOME:-$HOME/.sage}/agents" ]] && agents=$(ls "${SAGE_HOME:-$HOME/.sage}/agents" 2>/dev/null)
+        COMPREPLY=($(compgen -W "$agents --all" -- "$cur"))
+      fi;;
+    send|start|attach|peek|info|steer|wait|diff|merge|clone|rename|export|env|msg)
       local agents=""
       if [[ -d "${SAGE_HOME:-$HOME/.sage}/agents" ]]; then
         agents=$(ls "${SAGE_HOME:-$HOME/.sage}/agents" 2>/dev/null)
