@@ -3361,12 +3361,13 @@ cmd_peek() {
 # sage inbox [--json] [--clear]
 # ═══════════════════════════════════════════════
 cmd_inbox() {
-  local format="pretty" do_clear=false from_filter=""
+  local format="pretty" do_clear=false from_filter="" count_only=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json)  format="json"; shift ;;
       --clear) do_clear=true; shift ;;
+      --count) count_only=true; shift ;;
       --from)  from_filter="${2:-}"; [[ -n "$from_filter" ]] || die "usage: sage inbox --from <agent>"; shift 2 ;;
       -*)      die "unknown flag: $1" ;;
       *)       shift ;;
@@ -3381,6 +3382,20 @@ cmd_inbox() {
     local count=$(find "$inbox" -name "*.json" 2>/dev/null | wc -l)
     rm -f "$inbox"/*.json
     ok "cleared $count message(s)"
+    return
+  fi
+
+  if [[ "$count_only" == true ]]; then
+    local n=0
+    for msg_file in "$inbox"/*.json; do
+      [[ -f "$msg_file" ]] || continue
+      if [[ -n "$from_filter" ]]; then
+        local _sender; _sender=$(jq -r '.from // ""' "$msg_file" 2>/dev/null)
+        [[ "$_sender" == "$from_filter" ]] || continue
+      fi
+      ((n++)) || true
+    done
+    echo "$n"
     return
   fi
 
