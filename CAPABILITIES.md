@@ -102,6 +102,7 @@
 - Sortable listing (ls --sort <field> — sort agents by name/runtime/status/last_active, works with -l/--json and all filters)
 - Quiet listing (ls -q/--quiet — output bare agent names one per line for Unix pipeline scripting, like docker ps -q; works with --running/--stopped/--runtime/--sort filters)
 - Broadcast send (send --all --headless "msg" — send same task to all running agents in parallel for ad-hoc fan-out without plan YAML; works with --json/--tag/--timeout)
+- Failed retry (send --failed --headless "msg" — broadcast task to only the running agents whose latest task exited non-zero; completes ls --failed → logs --failed → result --failed triage with one-shot remediation)
 - Aggregate results (result --all — show most recent task result from every agent in one view; --json outputs array of {agent, status, task_id, output}; skips agents with no tasks)
 - Bulk remove (rm --stopped — remove all stopped agents in one command with --dry-run preview; skips running agents; cleans up worktrees)
 - Graceful stop (stop --graceful <duration> — sends SIGTERM first, waits up to <duration> for clean exit, then SIGKILL if still alive; like Docker/systemd; works with --all; preserves mid-task writes/API calls)
