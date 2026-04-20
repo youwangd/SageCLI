@@ -3580,7 +3580,21 @@ cmd_tool() {
          cp "$tpath" "$TOOLS_DIR/$tname.sh"; chmod +x "$TOOLS_DIR/$tname.sh"
          if [[ "${1:-}" == "--desc" ]]; then shift; echo "$*" > "$TOOLS_DIR/$tname.desc"; fi
          ok "tool '$tname' registered" ;;
-    ls)  for t in "$TOOLS_DIR"/*.sh; do
+    ls)  if [[ "${2:-}" == "--json" ]]; then
+           printf '['
+           local _first=true
+           for t in "$TOOLS_DIR"/*.sh; do
+             [[ -f "$t" ]] || continue
+             local n; n=$(basename "$t" .sh)
+             local d=""; [[ -f "$TOOLS_DIR/$n.desc" ]] && d=$(cat "$TOOLS_DIR/$n.desc")
+             local _dj; _dj=$(printf '%s' "$d" | jq -Rs .)
+             [[ "$_first" == true ]] && _first=false || printf ','
+             printf '{"name":"%s","description":%s}' "$n" "$_dj"
+           done
+           printf ']\n'
+           return
+         fi
+         for t in "$TOOLS_DIR"/*.sh; do
            [[ -f "$t" ]] || continue
            local n; n=$(basename "$t" .sh)
            local d=""; [[ -f "$TOOLS_DIR/$n.desc" ]] && d=$(cat "$TOOLS_DIR/$n.desc")
