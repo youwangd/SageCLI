@@ -5504,6 +5504,16 @@ cmd_mcp() {
       echo "removed MCP server: $name"
       ;;
     ls)
+      if [[ "${1:-}" == "--json" ]]; then
+        local _json="[]"
+        for f in "$SAGE_HOME/mcp"/*.json; do
+          [[ -f "$f" ]] || continue
+          local n; n=$(basename "$f" .json)
+          _json=$(jq --argjson acc "$_json" --arg n "$n" '$acc + [. + {name:$n}]' "$f")
+        done
+        echo "$_json"
+        return
+      fi
       for f in "$SAGE_HOME/mcp"/*.json; do
         [[ -f "$f" ]] || { echo "no MCP servers registered"; return; }
         local n=$(basename "$f" .json)
