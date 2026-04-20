@@ -105,6 +105,7 @@
 - Failed retry (send --failed --headless "msg" — broadcast task to only the running agents whose latest task exited non-zero; completes ls --failed → logs --failed → result --failed triage with one-shot remediation)
 - Aggregate results (result --all — show most recent task result from every agent in one view; --json outputs array of {agent, status, task_id, output}; skips agents with no tasks)
 - Bulk remove (rm --stopped — remove all stopped agents in one command with --dry-run preview; skips running agents; cleans up worktrees)
+- Bulk remove failed (rm --failed [--dry-run] — remove stopped agents whose latest task exited non-zero; running-failed agents are skipped; composes with ls --failed / logs --failed post-triage)
 - Graceful stop (stop --graceful <duration> — sends SIGTERM first, waits up to <duration> for clean exit, then SIGKILL if still alive; like Docker/systemd; works with --all; preserves mid-task writes/API calls)
 - Restart failed (restart --failed [--dry-run] — bulk-restarts agents whose most recent task exited non-zero; composes with ls --failed triage; --dry-run previews without acting)
 - Verbose version (version --verbose — shows sage version plus bash/jq/tmux versions, SAGE_HOME, agent count, and detected runtime binaries; for bug reports and CI diagnostics)
