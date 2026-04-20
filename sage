@@ -1655,7 +1655,7 @@ cmd_status() {
 cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
-  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id="" output_file="" task_env_vars="" notify=false broadcast_all=false
+  local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id="" output_file="" task_env_vars="" notify=false broadcast_all=false broadcast_failed=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1677,6 +1677,7 @@ cmd_send() {
       --env)         [[ "$2" == *=* ]] || die "invalid --env format '$2' — use KEY=VAL"; task_env_vars="${task_env_vars:+$task_env_vars$'\n'}$2"; shift 2 ;;
       --notify)      notify=true; shift ;;
       --all)         broadcast_all=true; shift ;;
+      --failed)      broadcast_failed=true; broadcast_all=true; shift ;;
       -*)            die "unknown flag: $1" ;;
       *)
         if [[ -z "$to" ]]; then
@@ -1711,6 +1712,20 @@ cmd_send() {
       n=$(basename "$d")
       [[ "$n" == .* ]] && continue
       agent_pid "$n" >/dev/null 2>&1 || continue
+      if $broadcast_failed; then
+        local _latest_status="" _latest_ts=0
+        for _sf in "$d"results/*.status.json; do
+          [[ -f "$_sf" ]] || continue
+          local _ts; _ts=$(jq -r '.finished_at // .queued_at // 0' "$_sf" 2>/dev/null)
+          [[ -z "$_ts" || "$_ts" == "null" ]] && _ts=0
+          if [[ "$_ts" -gt "$_latest_ts" ]]; then
+            _latest_ts="$_ts"; _latest_status="$_sf"
+          fi
+        done
+        [[ -z "$_latest_status" ]] && continue
+        local _rc; _rc=$(jq -r '.exit_code // 0' "$_latest_status" 2>/dev/null)
+        [[ "$_rc" == "0" ]] && continue
+      fi
       info "sending to $n"
       local send_args=("$n" "$message" --headless)
       $json_output && send_args+=(--json)
@@ -1718,7 +1733,11 @@ cmd_send() {
       sent=$((sent + 1))
     done
     if [[ $sent -eq 0 ]]; then
-      warn "no running agents to broadcast to"
+      if $broadcast_failed; then
+        warn "no failed agents to retry"
+      else
+        warn "no running agents to broadcast to"
+      fi
       return 0
     fi
     wait
@@ -2270,7 +2289,7 @@ cmd_attach() {
 # ═══════════════════════════════════════════════
 cmd_ls() {
   ensure_init
-  local long=false json=false filter="" rt_filter="" sort_field="" tree=false quiet=false failed_only=false
+  local long=false json=false filter="" rt_filter="" sort_field="" tree=false quiet=false failed_only=false count_only=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -q|--quiet) quiet=true; shift ;;
@@ -2280,6 +2299,7 @@ cmd_ls() {
       --running) filter="running"; shift ;;
       --stopped) filter="stopped"; shift ;;
       --failed) failed_only=true; shift ;;
+      --count) count_only=true; shift ;;
       --runtime) rt_filter="$2"; shift 2 ;;
       --sort) sort_field="$2"; shift 2 ;;
       *) die "unknown flag: $1" ;;
@@ -2353,6 +2373,16 @@ cmd_ls() {
       name) _sk=1 ;; runtime) _sk=2 ;; status) _sk=4 ;; last_active) _sk=5 ;;
     esac
     _ls_lines=$(printf '%s' "$_ls_lines" | sort -t'	' -k"$_sk","$_sk")
+  fi
+
+  if $count_only; then
+    local _cnt=0
+    while IFS=$'\t' read -r n rt md st la; do
+      [[ -n "$n" ]] || continue
+      _cnt=$((_cnt + 1))
+    done <<< "$_ls_lines"
+    printf '%d\n' "$_cnt"
+    return 0
   fi
 
   if $quiet; then
