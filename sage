@@ -6347,6 +6347,41 @@ cmd_alias() {
   esac
 }
 
+cmd_version() {
+  local verbose=false
+  [[ "${1:-}" == "--verbose" || "${1:-}" == "-V" ]] && verbose=true
+  if ! $verbose; then
+    echo "sage $SAGE_VERSION"
+    return 0
+  fi
+  echo "sage $SAGE_VERSION"
+  echo "  bash:   $BASH_VERSION"
+  local jq_v="not found"
+  command -v jq >/dev/null 2>&1 && jq_v=$(jq --version 2>/dev/null)
+  echo "  jq:     $jq_v"
+  local tmux_v="not found"
+  command -v tmux >/dev/null 2>&1 && tmux_v=$(tmux -V 2>/dev/null || echo "not found")
+  echo "  tmux:   $tmux_v"
+  echo "  home:   $SAGE_HOME"
+  local count=0
+  if [[ -d "$AGENTS_DIR" ]]; then
+    for d in "$AGENTS_DIR"/*/; do
+      [[ -d "$d" ]] || continue
+      local n; n=$(basename "$d")
+      [[ "$n" == .* ]] && continue
+      count=$((count + 1))
+    done
+  fi
+  echo "  agents: $count"
+  # Count available runtimes
+  local runtimes=""
+  for rt in bash claude-code cline gemini-cli codex kiro ollama llama-cpp; do
+    local bin; bin=$(_runtime_binary "$rt" 2>/dev/null)
+    [[ -n "$bin" ]] && command -v "$bin" >/dev/null 2>&1 && runtimes="${runtimes:+$runtimes, }$rt"
+  done
+  echo "  runtimes: ${runtimes:-none}"
+}
+
 cmd_upgrade() {
   local check_only=false
   [[ "${1:-}" == "--check" ]] && check_only=true
@@ -7976,7 +8011,7 @@ case "${1:-}" in
   stats)   shift; cmd_stats "$@" ;;
   info)    shift; cmd_info "$@" ;;
   upgrade) shift; cmd_upgrade "$@" ;;
-  version|--version|-v) echo "sage $SAGE_VERSION" ;;
+  version|--version|-v) shift 2>/dev/null || true; cmd_version "$@" ;;
   *)
     # Check aliases before failing
     _af="$SAGE_HOME/aliases.json"
