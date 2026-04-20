@@ -92,6 +92,7 @@
 - Unified health check (doctor --all — run basic + security + agents + mcp checks in one pass)
 - Doctor JSON output (doctor --json — machine-readable health check output for CI/monitoring; works with --all, --security, --agents, --mcp)
 - Runs JSON output (runs --json — machine-readable list of task runs with run_id/status/current_cycle/goal; composes with --active for monitoring: sage runs --active --json | jq ...)
+- Aliases JSON output (alias ls --json — machine-readable JSON object of aliases; empty returns {}; composes with jq: sage alias ls --json | jq -r 'keys[]' or jq '.review' for specific lookups)
 - MCP server health check (doctor --mcp — verify registered MCP server command binaries exist)
 - Per-agent environment (env set/ls/rm/scope, create --env, env var allowlist, ls --json for scripting)
 - Agent status filter (ls --running/--stopped — filter agents by status, works with -l/--json, enables scripting: sage ls --running | xargs sage stop)
