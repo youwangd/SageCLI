@@ -2502,25 +2502,40 @@ cmd_ls() {
 # sage rm <name>
 # ═══════════════════════════════════════════════
 cmd_rm() {
-  local name="" stopped=false dry_run=false
+  local name="" stopped=false failed_only=false dry_run=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stopped) stopped=true; shift ;;
+      --failed)  failed_only=true; shift ;;
       --dry-run) dry_run=true; shift ;;
       --force) shift ;;  # accepted for compat, no-op
-      -*) die "usage: sage rm <name> | sage rm --stopped [--dry-run]" ;;
+      -*) die "usage: sage rm <name> | sage rm --stopped [--dry-run] | sage rm --failed [--dry-run]" ;;
       *) name="$1"; shift ;;
     esac
   done
   ensure_init
-  if $stopped; then
-    [[ -z "$name" ]] || die "--stopped cannot be combined with a name"
-    local count=0
+  if $stopped || $failed_only; then
+    [[ -z "$name" ]] || die "--stopped/--failed cannot be combined with a name"
+    local count=0 label="stopped"
+    $failed_only && label="failed"
     for d in "$AGENTS_DIR"/*/runtime.json; do
       [[ -f "$d" ]] || continue
       local aname
       aname=$(basename "$(dirname "$d")")
       agent_pid "$aname" >/dev/null 2>&1 && continue
+      if $failed_only; then
+        # latest status file (by finished_at/queued_at) must have non-zero exit_code
+        local _latest_status="" _latest_ts=0
+        for _sf in "$AGENTS_DIR/$aname"/results/*.status.json; do
+          [[ -f "$_sf" ]] || continue
+          local _ts; _ts=$(jq -r '.finished_at // .queued_at // 0' "$_sf" 2>/dev/null)
+          [[ -z "$_ts" || "$_ts" == "null" ]] && _ts=0
+          if [[ "$_ts" -gt "$_latest_ts" ]]; then _latest_ts="$_ts"; _latest_status="$_sf"; fi
+        done
+        [[ -z "$_latest_status" ]] && continue
+        local _rc; _rc=$(jq -r '.exit_code // 0' "$_latest_status" 2>/dev/null)
+        [[ "$_rc" == "0" ]] && continue
+      fi
       if $dry_run; then echo "  would remove: $aname"
       else
         local agent_dir="$AGENTS_DIR/$aname"
@@ -2533,11 +2548,11 @@ cmd_rm() {
       fi
       count=$((count + 1))
     done
-    if $dry_run; then ok "dry-run: $count stopped agent(s) would be removed"
-    else ok "removed $count stopped agent(s)"; fi
+    if $dry_run; then ok "dry-run: $count $label agent(s) would be removed"
+    else ok "removed $count $label agent(s)"; fi
     return 0
   fi
-  [[ -n "$name" ]] || die "usage: sage rm <name> | sage rm --stopped [--dry-run]"
+  [[ -n "$name" ]] || die "usage: sage rm <name> | sage rm --stopped [--dry-run] | sage rm --failed [--dry-run]"
   agent_exists "$name"
   stop_agent "$name" 2>/dev/null || true
   local agent_dir="$AGENTS_DIR/$name"
@@ -6506,7 +6521,7 @@ _sage_completions() {
       fi;;
     rm)
       if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--stopped --dry-run" -- "$cur"))
+        COMPREPLY=($(compgen -W "--stopped --failed --dry-run" -- "$cur"))
       else
         local agents=""
         [[ -d "${SAGE_HOME:-$HOME/.sage}/agents" ]] && agents=$(ls "${SAGE_HOME:-$HOME/.sage}/agents" 2>/dev/null)
