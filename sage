@@ -4056,10 +4056,11 @@ CYCLEMD
 }
 
 cmd_runs() {
-  local run_id="" cycle_num="" show_active=false
+  local run_id="" cycle_num="" show_active=false json_mode=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --active|-a) show_active=true; shift ;;
+      --json)      json_mode=true; shift ;;
       -c)          cycle_num="$2"; shift 2 ;;
       -*)          die "unknown flag: $1" ;;
       *)           run_id="$1"; shift ;;
@@ -4070,6 +4071,21 @@ cmd_runs() {
   mkdir -p "$RUNS_DIR"
 
   if [[ -z "$run_id" ]]; then
+    if [[ "$json_mode" == true ]]; then
+      local _first=true
+      printf '['
+      for d in "$RUNS_DIR"/*/state.json; do
+        [[ -f "$d" ]] || continue
+        local st
+        st=$(jq -r '.status' "$d")
+        [[ "$show_active" == true && "$st" != "running" ]] && continue
+        $_first || printf ','
+        jq -c '{run_id, status, current_cycle, goal}' "$d"
+        _first=false
+      done
+      printf ']\n'
+      return 0
+    fi
     if [[ "$show_active" == true ]]; then
       printf "  ${BOLD}%-35s %-10s %s${NC}\n" "RUN" "STATUS" "CYCLES"
       for d in "$RUNS_DIR"/*/state.json; do
