@@ -8044,6 +8044,12 @@ cmd_memory() {
       info "removed $3 from $agent"
       ;;
     clear)
+      if [[ "${3:-}" == "--dry-run" ]]; then
+        local _keys=() _k
+        for _k in "$mem_dir"/*; do [[ -f "$_k" ]] && _keys+=("$(basename "$_k")"); done
+        info "would clear ${#_keys[@]} key(s) for $agent: ${_keys[*]:-}"
+        return
+      fi
       rm -f "$mem_dir"/* 2>/dev/null
       info "cleared all memory for $agent"
       ;;
