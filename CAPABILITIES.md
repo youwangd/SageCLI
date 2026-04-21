@@ -70,7 +70,7 @@
 - MCP server registry (mcp add/ls/rm, create --mcp, mcp tools)
 - Custom tool scripts (tool add/ls/rm/run/show — register with descriptions, list with metadata, remove, execute, and inspect custom tool scripts; tool ls --json emits machine-readable JSON array with name/description for scripted registry introspection)
 - Skills system (skill install/ls/rm/show/run, create --skill, registries)
-- Shared context store (context set/get/ls/rm, auto-inject)
+- Shared context store (context set/get/ls/rm/clear, auto-inject; clear --dry-run previews keys that would be removed without deleting, mirroring memory clear --dry-run for safe destructive-op preview)
 - Per-agent persistent memory (memory set/get/ls/rm/clear, auto-inject into prompts, ls --json for scripting)
 - Inter-agent messaging (msg send/ls/clear, auto-inject on send; inbox --from <agent> for sender filter; inbox --count emits plain number for scripted polling, composable with --from)
 - Agent chaining (send --then, multi-step pipelines)
