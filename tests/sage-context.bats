@@ -155,3 +155,31 @@ RTEOF
   [[ "$output" != *"[Context]"* ]]
   [[ "$output" == *"deploy now"* ]]
 }
+
+# ── context clear --dry-run ──
+
+@test "context clear --dry-run does not delete keys" {
+  "$SAGE" context set k1 "v1"
+  "$SAGE" context set k2 "v2"
+  run "$SAGE" context clear --dry-run
+  [ "$status" -eq 0 ]
+  [ -f "$SAGE_HOME/context/k1" ]
+  [ -f "$SAGE_HOME/context/k2" ]
+}
+
+@test "context clear --dry-run reports count and keys" {
+  "$SAGE" context set alpha "1"
+  "$SAGE" context set beta "2"
+  run "$SAGE" context clear --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"2"* ]]
+  [[ "$output" == *"alpha"* ]]
+  [[ "$output" == *"beta"* ]]
+}
+
+@test "context clear --dry-run with no keys reports would clear 0" {
+  run "$SAGE" context clear --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would"* ]]
+  [[ "$output" == *"0"* ]]
+}
