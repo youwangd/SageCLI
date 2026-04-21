@@ -7939,9 +7939,19 @@ cmd_env() {
     rm)
       local name="${1:-}"; shift 2>/dev/null || true
       local key="${1:-}"
-      [[ -n "$name" && -n "$key" ]] || die "usage: sage env rm <agent> KEY"
+      [[ -n "$name" && -n "$key" ]] || die "usage: sage env rm <agent> KEY [--dry-run]"
       ensure_init; agent_exists "$name"
       local env_file="$AGENTS_DIR/$name/env"
+      local dry_run=false
+      [[ "${2:-}" == "--dry-run" ]] && dry_run=true
+      if [[ "$dry_run" == true ]]; then
+        if [[ -f "$env_file" ]] && grep -q "^${key}=" "$env_file" 2>/dev/null; then
+          info "would remove $key from $name"
+        else
+          info "$key not set for $name"
+        fi
+        return
+      fi
       [[ -f "$env_file" ]] || { warn "no env vars for $name"; return; }
       local tmp; tmp=$(grep -v "^${key}=" "$env_file" 2>/dev/null || true)
       echo "$tmp" > "$env_file"
