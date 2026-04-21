@@ -5578,8 +5578,14 @@ cmd_mcp() {
       ;;
     rm)
       local name="${1:-}"
-      [[ -n "$name" ]] || die "usage: sage mcp rm <name>"
-      rm -f "$SAGE_HOME/mcp/${name}.json"
+      [[ -n "$name" ]] || die "usage: sage mcp rm <name> [--dry-run]"
+      local mcp_file="$SAGE_HOME/mcp/${name}.json"
+      [[ -f "$mcp_file" ]] || die "MCP server '$name' not found"
+      if [[ "${2:-}" == "--dry-run" ]]; then
+        echo "would remove MCP server '$name' at $mcp_file"
+        return 0
+      fi
+      rm -f "$mcp_file"
       echo "removed MCP server: $name"
       ;;
     ls)
