@@ -8039,14 +8039,18 @@ EOF
       fi
       ;;
     clear)
-      [[ -n "${2:-}" ]] || die "usage: sage msg clear <agent>"
+      [[ -n "${2:-}" ]] || die "usage: sage msg clear <agent> [--dry-run]"
       local msg_dir="$AGENTS_DIR/$2/messages"
       local count=0
       if [[ -d "$msg_dir" ]]; then
         count=$(find "$msg_dir" -name "*.json" 2>/dev/null | wc -l)
-        rm -f "$msg_dir"/*.json
       fi
-      info "cleared $count message(s) for $2"
+      if [[ "${3:-}" == "--dry-run" ]]; then
+        info "would clear $count message(s) for $2"
+      else
+        [[ -d "$msg_dir" ]] && rm -f "$msg_dir"/*.json
+        info "cleared $count message(s) for $2"
+      fi
       ;;
     *) die "usage: sage msg {send|ls|clear}" ;;
   esac
