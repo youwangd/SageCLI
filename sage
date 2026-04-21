@@ -7389,7 +7389,7 @@ _parse_duration() {
 
 cmd_history() {
   ensure_init
-  local agent_filter="" limit=20 json_mode=false tag_filter="" since_cutoff=0 grep_pattern="" prune_dur="" status_filter=""
+  local agent_filter="" limit=20 json_mode=false tag_filter="" since_cutoff=0 grep_pattern="" prune_dur="" status_filter="" dry_run=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent) agent_filter="$2"; shift 2 ;;
@@ -7398,12 +7398,13 @@ cmd_history() {
       --tag)   tag_filter="$2"; shift 2 ;;
       --grep)  grep_pattern="$2"; shift 2 ;;
       --prune) prune_dur="$2"; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
       --status) status_filter="${2:-}"; [[ -n "$status_filter" ]] || die "usage: sage history --status <done|failed>"
                 case "$status_filter" in done|failed) ;; *) die "invalid status '$status_filter' (use: done, failed)" ;; esac
                 shift 2 ;;
       --since) local _dur; _dur=$(_parse_duration "$2") || die "invalid duration '$2' (use: 30m, 2h, 1d, 1w)"
                since_cutoff=$(($(date +%s) - _dur)); shift 2 ;;
-      *)       die "usage: sage history [--agent <name>] [--tag <label>] [--status <done|failed>] [--since <duration>] [--grep <pattern>] [--prune <duration>] [-n <count>] [--json]" ;;
+      *)       die "usage: sage history [--agent <name>] [--tag <label>] [--status <done|failed>] [--since <duration>] [--grep <pattern>] [--prune <duration>] [--dry-run] [-n <count>] [--json]" ;;
     esac
   done
 
@@ -7423,13 +7424,21 @@ cmd_history() {
         local qt
         qt=$(jq -r '.queued_at // 0' "$sf" 2>/dev/null) || continue
         if [[ "$qt" -lt "$cutoff" ]]; then
-          local base="${sf%.status.json}"
-          rm -f "$sf" "${base}.result"
-          pruned=$((pruned + 1))
+          if [[ "$dry_run" == true ]]; then
+            pruned=$((pruned + 1))
+          else
+            local base="${sf%.status.json}"
+            rm -f "$sf" "${base}.result"
+            pruned=$((pruned + 1))
+          fi
         fi
       done
     done
-    ok "pruned $pruned task(s)"
+    if [[ "$dry_run" == true ]]; then
+      ok "would prune $pruned task(s)"
+    else
+      ok "pruned $pruned task(s)"
+    fi
     return 0
   fi
 
