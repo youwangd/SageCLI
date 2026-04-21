@@ -3600,8 +3600,13 @@ cmd_tool() {
            local d=""; [[ -f "$TOOLS_DIR/$n.desc" ]] && d=$(cat "$TOOLS_DIR/$n.desc")
            if [[ -n "$d" ]]; then printf "%-20s %s\n" "$n" "$d"; else echo "$n"; fi
          done ;;
-    rm)  [[ -n "${2:-}" ]] || die "usage: sage tool rm <name>"
+    rm)  [[ -n "${2:-}" ]] || die "usage: sage tool rm <name> [--dry-run]"
          [[ -f "$TOOLS_DIR/$2.sh" ]] || die "tool '$2' not found"
+         if [[ "${3:-}" == "--dry-run" ]]; then
+           echo "would remove tool '$2' at $TOOLS_DIR/$2.sh"
+           [[ -f "$TOOLS_DIR/$2.desc" ]] && echo "  desc: $TOOLS_DIR/$2.desc"
+           return 0
+         fi
          rm -f "$TOOLS_DIR/$2.sh" "$TOOLS_DIR/$2.desc"; ok "tool '$2' removed" ;;
     show) [[ -n "${2:-}" ]] || die "usage: sage tool show <name>"
           [[ -f "$TOOLS_DIR/$2.sh" ]] || die "tool '$2' not found"
@@ -7051,7 +7056,7 @@ HELP
   SUBCOMMANDS
     add <name> <path> [--desc "text"]  Register a tool (optional description)
     ls                                 List tools with descriptions
-    rm <name>                          Remove a tool
+    rm <name> [--dry-run]              Remove a tool (--dry-run previews paths)
     run <name> [args...]               Execute a tool
     show <name>                        Show tool source
 
