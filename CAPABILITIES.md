@@ -94,6 +94,7 @@
 - Unified health check (doctor --all — run basic + security + agents + mcp checks in one pass)
 - Doctor JSON output (doctor --json — machine-readable health check output for CI/monitoring; works with --all, --security, --agents, --mcp)
 - Runs JSON output (runs --json — machine-readable list of task runs with run_id/status/current_cycle/goal; composes with --active for monitoring: sage runs --active --json | jq ...)
+- Status JSON output (status --json — machine-readable system state in one call: sage_home, tmux {session, running}, agents [{name, runtime, status, pid, inbox, task, last_active}]; enables CI/monitoring scripts: sage status --json | jq '.agents[] | select(.status=="running") | .name')
 - Aliases JSON output (alias ls --json — machine-readable JSON object of aliases; empty returns {}; composes with jq: sage alias ls --json | jq -r 'keys[]' or jq '.review' for specific lookups)
 - Skills JSON output (skill ls --json — machine-readable JSON array of installed skills with name/version/description fields; empty returns []; composes with jq: sage skill ls --json | jq -r '.[].name' for script-friendly skill iteration)
 - MCP JSON output (mcp ls --json — machine-readable JSON array of registered MCP servers with name/command/args fields; empty returns []; composes with jq: sage mcp ls --json | jq -r '.[].name' for script-friendly server iteration and config introspection)
