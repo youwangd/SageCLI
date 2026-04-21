@@ -8043,7 +8043,7 @@ EOF
       local msg_dir="$AGENTS_DIR/$2/messages"
       local count=0
       if [[ -d "$msg_dir" ]]; then
-        count=$(find "$msg_dir" -name "*.json" 2>/dev/null | wc -l)
+        count=$(find "$msg_dir" -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
       fi
       if [[ "${3:-}" == "--dry-run" ]]; then
         info "would clear $count message(s) for $2"
