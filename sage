@@ -8045,6 +8045,12 @@ cmd_context() {
       info "removed $2"
       ;;
     clear)
+      if [[ "${2:-}" == "--dry-run" ]]; then
+        local _keys=() _k
+        for _k in "$CONTEXT_DIR"/*; do [[ -f "$_k" ]] && _keys+=("$(basename "$_k")"); done
+        info "would clear ${#_keys[@]} key(s): ${_keys[*]:-}"
+        return
+      fi
       rm -f "$CONTEXT_DIR"/* 2>/dev/null
       info "cleared all context"
       ;;
