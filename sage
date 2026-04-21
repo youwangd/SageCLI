@@ -8015,10 +8015,19 @@ EOF
       info "sent message from $from → $to"
       ;;
     ls)
-      [[ -n "${2:-}" ]] || die "usage: sage msg ls <agent>"
+      [[ -n "${2:-}" ]] || die "usage: sage msg ls <agent> [--json|--count]"
       local agent="$2" format="pretty"
       [[ "${3:-}" == "--json" ]] && format="json"
+      [[ "${3:-}" == "--count" ]] && format="count"
       local msg_dir="$AGENTS_DIR/$agent/messages"
+      if [[ "$format" == "count" ]]; then
+        local n=0
+        if [[ -d "$msg_dir" ]]; then
+          n=$(find "$msg_dir" -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
+        fi
+        echo "$n"
+        return
+      fi
       local files=""
       if [[ -d "$msg_dir" ]]; then
         files=$(ls -t "$msg_dir"/*.json 2>/dev/null || true)

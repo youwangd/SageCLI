@@ -20,7 +20,9 @@ teardown() { rm -rf "$SAGE_HOME"; }
 
 @test "msg ls --count prints integer matching message count" {
   "$SAGE" msg send sender receiver "one" >/dev/null
+  sleep 1
   "$SAGE" msg send sender receiver "two" >/dev/null
+  sleep 1
   "$SAGE" msg send sender receiver "three" >/dev/null
   run "$SAGE" msg ls receiver --count
   [ "$status" -eq 0 ]
