@@ -7445,12 +7445,13 @@ _parse_duration() {
 
 cmd_history() {
   ensure_init
-  local agent_filter="" limit=20 json_mode=false tag_filter="" since_cutoff=0 grep_pattern="" prune_dur="" status_filter="" dry_run=false
+  local agent_filter="" limit=20 json_mode=false tag_filter="" since_cutoff=0 grep_pattern="" prune_dur="" status_filter="" dry_run=false count_mode=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent) agent_filter="$2"; shift 2 ;;
       -n)      limit="$2"; shift 2 ;;
       --json)  json_mode=true; shift ;;
+      --count) count_mode=true; shift ;;
       --tag)   tag_filter="$2"; shift 2 ;;
       --grep)  grep_pattern="$2"; shift 2 ;;
       --prune) prune_dur="$2"; shift 2 ;;
@@ -7460,7 +7461,7 @@ cmd_history() {
                 shift 2 ;;
       --since) local _dur; _dur=$(_parse_duration "$2") || die "invalid duration '$2' (use: 30m, 2h, 1d, 1w)"
                since_cutoff=$(($(date +%s) - _dur)); shift 2 ;;
-      *)       die "usage: sage history [--agent <name>] [--tag <label>] [--status <done|failed>] [--since <duration>] [--grep <pattern>] [--prune <duration>] [--dry-run] [-n <count>] [--json]" ;;
+      *)       die "usage: sage history [--agent <name>] [--tag <label>] [--status <done|failed>] [--since <duration>] [--grep <pattern>] [--prune <duration>] [--dry-run] [-n <count>] [--json] [--count]" ;;
     esac
   done
 
@@ -7536,6 +7537,12 @@ cmd_history() {
 "
     done
   done
+  if [[ "$count_mode" == true ]]; then
+    local n=0
+    [[ -n "$entries" ]] && n=$(echo "$entries" | grep -c -v '^$' || true)
+    echo "$n"
+    return 0
+  fi
   entries=$(echo "$entries" | grep -v '^$' | sort -t'|' -k1 -rn | head -n "$limit") || true
   if [[ -z "$entries" ]]; then
     info "no task history found"
