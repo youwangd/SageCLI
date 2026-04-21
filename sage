@@ -7906,7 +7906,17 @@ cmd_env() {
         ok "env scope set for $name: $arg"
       fi
       ;;
-    *) die "usage: sage env <set|ls|rm|scope> <agent> [KEY=VALUE|KEY]" ;;
+    get)
+      local name="${1:-}" key="${2:-}"
+      [[ -n "$name" && -n "$key" ]] || die "usage: sage env get <agent> <KEY>"
+      ensure_init; agent_exists "$name"
+      local env_file="$AGENTS_DIR/$name/env"
+      [[ -f "$env_file" ]] || die "env var '$key' not found"
+      local line; line=$(grep "^${key}=" "$env_file" 2>/dev/null | head -1) || true
+      [[ -n "$line" ]] || die "env var '$key' not found"
+      printf '%s\n' "${line#*=}"
+      ;;
+    *) die "usage: sage env <set|get|ls|rm|scope> <agent> [KEY=VALUE|KEY]" ;;
   esac
 }
 
