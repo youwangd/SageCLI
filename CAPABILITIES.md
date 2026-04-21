@@ -72,6 +72,7 @@
 - Skills system (skill install/ls/rm/show/run, create --skill, registries)
 - Shared context store (context set/get/ls/rm/clear, auto-inject; clear --dry-run previews keys that would be removed without deleting, mirroring memory clear --dry-run for safe destructive-op preview)
 - Per-agent persistent memory (memory set/get/ls/rm/clear, auto-inject into prompts, ls --json for scripting)
+- Per-agent environment variables (env set/get/ls/rm/scope; get prints plain value for scripted retrieval e.g. TOKEN=$(sage env get bot API_KEY), ls masks values for display, ls --json emits masked JSON object)
 - Inter-agent messaging (msg send/ls/clear, auto-inject on send; inbox --from <agent> for sender filter; inbox --count emits plain number for scripted polling, composable with --from)
 - Agent chaining (send --then, multi-step pipelines)
 - Failure callback (send --on-fail <command> — run command on task failure with SAGE_FAIL_AGENT/TASK/OUTPUT env vars)
