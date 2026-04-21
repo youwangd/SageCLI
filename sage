@@ -3092,14 +3092,15 @@ MSGEOF
 # sage tasks [name]
 # ═══════════════════════════════════════════════
 cmd_tasks() {
-  local name="" json_mode=false status_filter=""
+  local name="" json_mode=false status_filter="" count_mode=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json_mode=true; shift ;;
+      --count) count_mode=true; shift ;;
       --status) status_filter="${2:-}"; [[ -n "$status_filter" ]] || die "usage: sage tasks --status <done|failed|running|queued>"
                case "$status_filter" in done|failed|running|queued) ;; *) die "invalid status '$status_filter' (use: done, failed, running, queued)" ;; esac
                shift 2 ;;
-      -*) die "usage: sage tasks [name] [--json] [--status <done|failed|running|queued>]" ;;
+      -*) die "usage: sage tasks [name] [--json] [--count] [--status <done|failed|running|queued>]" ;;
       *) name="$1"; shift ;;
     esac
   done
@@ -3109,8 +3110,8 @@ cmd_tasks() {
   local now=$(date +%s)
   local found=0 json_arr="["
 
-  $json_mode || printf "\n${BOLD}  ⚡ Tasks${NC}\n\n"
-  $json_mode || printf "  ${DIM}%-20s %-12s %-10s %-10s %s${NC}\n" "TASK" "AGENT" "STATUS" "ELAPSED" "FROM"
+  $json_mode || $count_mode || printf "\n${BOLD}  ⚡ Tasks${NC}\n\n"
+  $json_mode || $count_mode || printf "  ${DIM}%-20s %-12s %-10s %-10s %s${NC}\n" "TASK" "AGENT" "STATUS" "ELAPSED" "FROM"
 
   # Search specific agent or all agents
   local search_dirs=()
@@ -3147,7 +3148,9 @@ cmd_tasks() {
       fi
       ((found++)) || true
 
-      if $json_mode; then
+      if $count_mode; then
+        :
+      elif $json_mode; then
         [[ "$found" -gt 1 ]] && json_arr="$json_arr,"
         json_arr="$json_arr$(jq -nc --arg i "$task_id" --arg a "$agent_name" --arg s "$status" \
           --argjson e "$elapsed_secs" --arg f "$from" --arg t "$task_text" \
@@ -3167,7 +3170,9 @@ cmd_tasks() {
     done
   done
 
-  if $json_mode; then
+  if $count_mode; then
+    printf '%d\n' "$found"
+  elif $json_mode; then
     printf '%s]\n' "$json_arr"
   else
     [[ $found -eq 0 ]] && printf "  ${DIM}no tasks${NC}\n"
