@@ -1650,9 +1650,54 @@ cmd_restart() {
 # ═══════════════════════════════════════════════
 # sage status
 # ═══════════════════════════════════════════════
+_status_json() {
+  local tmux_running=false
+  tmux has-session -t "$TMUX_SESSION" 2>/dev/null && tmux_running=true
+  local agents_json="[]" first=true
+  local _rows=""
+  for agent_dir in "$AGENTS_DIR"/*/; do
+    [[ -d "$agent_dir" ]] || continue
+    local name; name=$(basename "$agent_dir")
+    [[ "$name" == .* ]] && continue
+    local runtime; runtime=$(jq -r '.runtime // "bash"' "$agent_dir/runtime.json" 2>/dev/null || echo "bash")
+    local inbox_count; inbox_count=$(find "$agent_dir/inbox" -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
+    local pid status_text pid_val="null"
+    if pid=$(agent_pid "$name" 2>/dev/null); then status_text="running"; pid_val="$pid"; else status_text="stopped"; fi
+    local logfile="$LOGS_DIR/$name.log"
+    local last_active; last_active=$(tail -1 "$logfile" 2>/dev/null | sed -n 's/^\[\([0-9:]*\).*/\1/p')
+    [[ -z "$last_active" ]] && last_active=""
+    local task_text=""
+    local latest_active
+    latest_active=$(ls -t "$agent_dir/results/"*.status.json 2>/dev/null | while IFS= read -r sf; do
+      local s; s=$(jq -r '.status // ""' "$sf" 2>/dev/null)
+      if [[ "$s" == "queued" || "$s" == "running" ]]; then echo "$sf"; break; fi
+    done)
+    if [[ -n "$latest_active" ]]; then
+      task_text=$(jq -r '.task_text // ""' "$latest_active" 2>/dev/null)
+      [[ "$task_text" == "null" ]] && task_text=""
+    fi
+    local row
+    row=$(jq -cn --arg name "$name" --arg runtime "$runtime" --arg status "$status_text" \
+                 --argjson pid "$pid_val" --argjson inbox "$inbox_count" \
+                 --arg task "$task_text" --arg last_active "$last_active" \
+                 '{name:$name,runtime:$runtime,status:$status,pid:$pid,inbox:$inbox,task:$task,last_active:$last_active}')
+    _rows+="$row"$'\n'
+  done
+  if [[ -n "$_rows" ]]; then
+    agents_json=$(printf '%s' "$_rows" | jq -s .)
+  fi
+  jq -cn --arg sage_home "$SAGE_HOME" --arg tmux_session "$TMUX_SESSION" \
+         --argjson tmux_running "$tmux_running" --argjson agents "$agents_json" \
+         '{sage_home:$sage_home,tmux:{session:$tmux_session,running:$tmux_running},agents:$agents}'
+}
+
 cmd_status() {
   set +e
+  local json_mode=false
+  [[ "${1:-}" == "--json" ]] && json_mode=true
   ensure_init
+
+  if $json_mode; then _status_json; return $?; fi
 
   printf "\n${BOLD}  ⚡ SAGE — Simple Agent Engine${NC}\n"
   printf "  ${DIM}%s${NC}\n\n" "$SAGE_HOME"
@@ -7154,7 +7199,7 @@ cmd_help() {
     start [name|--all]          Start agent(s) in tmux
     stop [name|--all]           Stop agent(s)
     restart [name|--all]        Restart agent(s)
-    status                      Show all agents
+    status [--json]             Show all agents (--json for machine-readable)
     ls                          List agent names (-l, --json, --running, --stopped, --failed, --runtime, --sort <field>)
     clone <src> <dest>          Duplicate agent config (no state)
     completions <bash|zsh>      Generate shell tab-completions
@@ -8150,7 +8195,7 @@ case "${1:-}" in
   start)   cmd_start "${2:-}" ;;
   stop)    shift; cmd_stop "$@" ;;
   restart) shift; cmd_restart "$@" ;;
-  status)  cmd_status ;;
+  status)  shift; cmd_status "$@" ;;
   send)    shift; cmd_send "$@" ;;
   call)    shift; cmd_call "$@" ;;
   tasks)   shift; cmd_tasks "$@" ;;
