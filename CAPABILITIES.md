@@ -87,7 +87,7 @@
 - Task tagging (send --tag <label> — tag tasks for filtering, history --tag <label> filters by tag, multiple tags supported, shown in history output)
 - Time-based history filter (history --since <duration> — filter tasks by age: 30m, 2h, 1d, 1w, combines with --tag and --agent)
 - History search (history --grep <pattern> — case-insensitive search across task text, combines with --agent/--tag/--since)
-- History pruning (history --prune <duration> — delete task history older than a time window, combines with --agent for per-agent cleanup)
+- History pruning (history --prune <duration> — delete task history older than a time window, combines with --agent for per-agent cleanup; history --prune <duration> --dry-run previews count ('would prune N task(s)') without deleting, mirroring context/memory clear --dry-run for safe destructive-op preview)
 - History status filter (history --status <done|failed> — filter tasks by completion status, combines with --agent/--tag/--since/--grep/--json)
 - Security audit (doctor --security — report agents missing guardrails with exit code)
 - Runtime dependency check (doctor --agents — verify each agent's runtime binary is installed)
