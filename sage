@@ -6565,6 +6565,10 @@ cmd_alias() {
       ok "alias '$name' → $expansion"
       ;;
     ls)
+      if [[ "${1:-}" == "--count" ]]; then
+        jq 'length' "$aliasfile"
+        return
+      fi
       if [[ "${1:-}" == "--json" ]]; then
         cat "$aliasfile"
         return
