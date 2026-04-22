@@ -8286,8 +8286,12 @@ cmd_memory() {
       fi
       ;;
     rm)
-      [[ -n "${3:-}" ]] || die "usage: sage memory rm <agent> <key>"
+      [[ -n "${3:-}" ]] || die "usage: sage memory rm <agent> <key> [--dry-run]"
       [[ -f "$mem_dir/$3" ]] || die "key '$3' not found"
+      if [[ "${4:-}" == "--dry-run" ]]; then
+        info "would remove $3 from $agent: $(cat "$mem_dir/$3")"
+        return
+      fi
       rm "$mem_dir/$3"
       info "removed $3 from $agent"
       ;;
