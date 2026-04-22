@@ -3630,7 +3630,16 @@ cmd_tool() {
          cp "$tpath" "$TOOLS_DIR/$tname.sh"; chmod +x "$TOOLS_DIR/$tname.sh"
          if [[ "${1:-}" == "--desc" ]]; then shift; echo "$*" > "$TOOLS_DIR/$tname.desc"; fi
          ok "tool '$tname' registered" ;;
-    ls)  if [[ "${2:-}" == "--json" ]]; then
+    ls)  if [[ "${2:-}" == "--count" ]]; then
+           local _n=0
+           for t in "$TOOLS_DIR"/*.sh; do
+             [[ -f "$t" ]] || continue
+             ((_n++)) || true
+           done
+           printf '%d\n' "$_n"
+           return
+         fi
+         if [[ "${2:-}" == "--json" ]]; then
            printf '['
            local _first=true
            for t in "$TOOLS_DIR"/*.sh; do
