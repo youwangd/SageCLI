@@ -101,6 +101,7 @@
 - Aliases JSON output (alias ls --json — machine-readable JSON object of aliases; empty returns {}; composes with jq: sage alias ls --json | jq -r 'keys[]' or jq '.review' for specific lookups)
 - Skills JSON output (skill ls --json — machine-readable JSON array of installed skills with name/version/description fields; empty returns []; composes with jq: sage skill ls --json | jq -r '.[].name' for script-friendly skill iteration)
 - MCP JSON output (mcp ls --json — machine-readable JSON array of registered MCP servers with name/command/args fields; empty returns []; composes with jq: sage mcp ls --json | jq -r '.[].name' for script-friendly server iteration and config introspection)
+- MCP count (mcp ls --count — plain integer count of registered MCP servers for scripted registry introspection e.g. `[ $(sage mcp ls --count) -ge 1 ] || exit 1` for CI MCP-registration verification; extends --count scripted-polling family across tasks, history, msg ls, inbox, ls, runs, skill, mcp)
 - MCP server health check (doctor --mcp — verify registered MCP server command binaries exist)
 - Per-agent environment (env set/ls/rm/scope, create --env, env var allowlist, ls --json for scripting)
 - Agent checkpointing (checkpoint <name|--all|--ls>, restore <name|--all> — save/restore runtime config, env vars, MCP servers, steer file to JSON; checkpoint --ls lists existing checkpoints with name/runtime/timestamp so users see what's restorable without browsing ~/.sage/checkpoints/)
