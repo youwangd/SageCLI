@@ -8255,6 +8255,12 @@ cmd_memory() {
       cat "$mem_dir/$3"
       ;;
     ls)
+      if [[ "${3:-}" == "--count" ]]; then
+        local _c=0 _k
+        for _k in "$mem_dir"/*; do [[ -f "$_k" ]] && _c=$((_c+1)); done
+        printf '%d\n' "$_c"
+        return
+      fi
       if [[ "${3:-}" == "--json" ]]; then
         local json="{}" k
         for k in "$mem_dir"/*; do
