@@ -6588,8 +6588,13 @@ cmd_alias() {
       ;;
     rm)
       local name="$1"
-      [[ -n "$name" ]] || die "usage: sage alias rm <name>"
+      [[ -n "$name" ]] || die "usage: sage alias rm <name> [--dry-run]"
       jq -e --arg k "$name" 'has($k)' "$aliasfile" >/dev/null 2>&1 || die "alias '$name' not found"
+      if [[ "${2:-}" == "--dry-run" ]]; then
+        local expansion; expansion=$(jq -r --arg k "$name" '.[$k]' "$aliasfile")
+        info "would remove alias '$name' → $expansion"
+        return
+      fi
       local tmp; tmp=$(jq --arg k "$name" 'del(.[$k])' "$aliasfile")
       printf '%s\n' "$tmp" > "$aliasfile"
       ok "removed alias '$name'"
