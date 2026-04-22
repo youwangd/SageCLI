@@ -5742,6 +5742,15 @@ cmd_skill() {
         echo "$_json"
         return
       fi
+      if [[ "${1:-}" == "--count" ]]; then
+        local _n=0
+        for d in "$SKILLS_DIR"/*/skill.json; do
+          [[ -f "$d" ]] || continue
+          ((_n++)) || true
+        done
+        printf '%d\n' "$_n"
+        return
+      fi
       local found=0
       for d in "$SKILLS_DIR"/*/skill.json; do
         [[ -f "$d" ]] || continue
