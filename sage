@@ -7920,6 +7920,11 @@ cmd_config() {
       echo "$v"
       ;;
     ls)
+      if [[ "${2:-}" == "--count" ]]; then
+        local _n; _n=$(jq -r 'keys | length' "$cf" 2>/dev/null || echo 0)
+        echo "${_n:-0}"
+        return
+      fi
       if [[ "${2:-}" == "--json" ]]; then cat "$cf"; return; fi
       local keys; keys=$(jq -r 'keys[]' "$cf" 2>/dev/null)
       if [[ -z "$keys" ]]; then info "no config keys set"; else
