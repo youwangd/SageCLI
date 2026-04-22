@@ -142,3 +142,30 @@ _create_agent() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"codex"* ]]
 }
+
+@test "checkpoint --ls --count returns 0 when no checkpoints" {
+  run "$SAGE" checkpoint --ls --count
+  [ "$status" -eq 0 ]
+  [ "$output" = "0" ]
+}
+
+@test "checkpoint --ls --count returns integer count of saved checkpoints" {
+  _create_agent "alpha"
+  _create_agent "beta"
+  _create_agent "gamma"
+  "$SAGE" checkpoint alpha
+  "$SAGE" checkpoint beta
+  "$SAGE" checkpoint gamma
+  run "$SAGE" checkpoint --ls --count
+  [ "$status" -eq 0 ]
+  [ "$output" = "3" ]
+}
+
+@test "checkpoint --ls --count suppresses table output" {
+  _create_agent "alpha" "claude-code"
+  "$SAGE" checkpoint alpha
+  run "$SAGE" checkpoint --ls --count
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"claude-code"* ]]
+  [[ "$output" != *"alpha"* ]]
+}
