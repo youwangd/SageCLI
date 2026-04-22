@@ -69,7 +69,7 @@
 - Stdin pipe support (echo "msg" | sage send agent — Unix pipeline integration)
 - MCP server registry (mcp add/ls/rm, create --mcp, mcp tools)
 - Custom tool scripts (tool add/ls/rm/run/show — register with descriptions, list with metadata, remove, execute, and inspect custom tool scripts; tool ls --json emits machine-readable JSON array with name/description for scripted registry introspection; tool rm <name> --dry-run previews .sh path and optional .desc path without deleting, mirroring skill rm --dry-run for safe destructive-op preview)
-- Skills system (skill install/ls/rm/show/run, create --skill, registries)
+- Skills system (skill install/ls/rm/show/run, create --skill, registries; skill ls --count emits plain integer of installed skills for scripted registry introspection, e.g. `[ $(sage skill ls --count) -ge 1 ] || exit 1`, completes --count scripted-polling family alongside tasks/history/msg ls/inbox/ls/runs)
 - Shared context store (context set/get/ls/rm/clear, auto-inject; clear --dry-run previews keys that would be removed without deleting, mirroring memory clear --dry-run for safe destructive-op preview)
 - Per-agent persistent memory (memory set/get/ls/rm/clear, auto-inject into prompts, ls --json for scripting)
 - Per-agent environment variables (env set/get/ls/rm/scope; get prints plain value for scripted retrieval e.g. TOKEN=$(sage env get bot API_KEY), ls masks values for display, ls --json emits masked JSON object)
