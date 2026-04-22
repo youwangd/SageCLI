@@ -6346,6 +6346,14 @@ cmd_checkpoint() {
   mkdir -p "$ckpt_dir"
 
   if [[ "$target" == "--ls" ]]; then
+    if [[ "${2:-}" == "--count" ]]; then
+      local count=0
+      for ckpt in "$ckpt_dir"/*.json; do
+        [[ -f "$ckpt" ]] && count=$((count + 1))
+      done
+      echo "$count"
+      return
+    fi
     local found=false
     for ckpt in "$ckpt_dir"/*.json; do
       [[ -f "$ckpt" ]] || continue
