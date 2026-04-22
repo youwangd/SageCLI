@@ -8173,6 +8173,11 @@ cmd_context() {
       ;;
     ls)
       local _ctx_json=false
+      if [[ "${2:-}" == "--count" ]]; then
+        local _keys; _keys=$(ls "$CONTEXT_DIR/" 2>/dev/null)
+        if [[ -z "$_keys" ]]; then echo "0"; else echo "$_keys" | wc -l | tr -d ' '; fi
+        return
+      fi
       [[ "${2:-}" == "--json" ]] && _ctx_json=true
       local keys
       keys=$(ls "$CONTEXT_DIR/" 2>/dev/null)
