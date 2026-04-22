@@ -7965,7 +7965,17 @@ cmd_env() {
       ;;
     ls)
       local name="${1:-}" _env_json=false
-      [[ -n "$name" ]] || die "usage: sage env ls <agent> [--json]"
+      [[ -n "$name" ]] || die "usage: sage env ls <agent> [--json|--count]"
+      if [[ "${2:-}" == "--count" ]]; then
+        ensure_init; agent_exists "$name"
+        local env_file="$AGENTS_DIR/$name/env"
+        if [[ ! -f "$env_file" ]] || [[ ! -s "$env_file" ]]; then
+          echo "0"
+        else
+          grep -cE '^[^[:space:]]+=' "$env_file" 2>/dev/null || echo "0"
+        fi
+        return
+      fi
       [[ "${2:-}" == "--json" ]] && _env_json=true
       ensure_init; agent_exists "$name"
       local env_file="$AGENTS_DIR/$name/env"
