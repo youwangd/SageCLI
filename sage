@@ -5619,6 +5619,15 @@ cmd_mcp() {
         echo "$_json"
         return
       fi
+      if [[ "${1:-}" == "--count" ]]; then
+        local _n=0
+        for f in "$SAGE_HOME/mcp"/*.json; do
+          [[ -f "$f" ]] || continue
+          ((_n++)) || true
+        done
+        printf '%d\n' "$_n"
+        return
+      fi
       for f in "$SAGE_HOME/mcp"/*.json; do
         [[ -f "$f" ]] || { echo "no MCP servers registered"; return; }
         local n=$(basename "$f" .json)
