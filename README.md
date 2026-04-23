@@ -601,10 +601,10 @@ Customize agent behavior by editing `instructions.md` in the agent directory.
 sage is a single bash script. Read it, understand it, improve it.
 
 ```bash
-wc -l sage    # ~5000 lines
+wc -l sage    # ~8,500 lines
 
 # Run tests
-bats tests/   # 338 tests across 12 files
+bats tests/   # 928 tests across 155 files
 
 # Run from source
 ./sage init --force
@@ -638,13 +638,6 @@ See [ROADMAP.md](ROADMAP.md) for competitive analysis, weekly intel, and detaile
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
----
-
-<p align="center">
-  <strong>⚡ sage</strong> — Because the best agent framework is the one you can read in an afternoon.
-</p>
-CENSE](LICENSE).
 
 ---
 
