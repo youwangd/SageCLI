@@ -33,6 +33,10 @@
   <a href="DEVELOPMENT.md">Development</a>
 </p>
 
+<p align="center">
+  <img src="docs/demo.gif" alt="sage demo" width="800">
+</p>
+
 ---
 
 ## Why sage?
