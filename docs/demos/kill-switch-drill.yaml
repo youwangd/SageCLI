@@ -1,0 +1,37 @@
+# Kill-Switch Drill: "Your primary AI vendor is down. Your workflow doesn't care."
+#
+# This demo shows sage's vendor-neutrality moat in action. We define a PR review
+# pipeline that runs on Claude Code primary, with Gemini CLI and then Ollama as
+# fallbacks. When we simulate Claude being unreachable, sage transparently routes
+# to Gemini. When Gemini is also down, it routes to local Ollama. The workflow
+# completes regardless.
+#
+# Run:  sage plan run docs/demos/kill-switch-drill.yaml
+# Chaos test: PATH= sage plan run docs/demos/kill-switch-drill.yaml   (simulates
+#             all cloud binaries missing — everything falls through to local Ollama)
+
+name: kill-switch-drill
+description: Three-vendor PR review with automatic failover
+
+agents:
+  reviewer-primary:
+    runtime: claude-code
+  reviewer-gemini:
+    runtime: gemini-cli
+  reviewer-local:
+    runtime: ollama
+    model: llama3.2:3b
+
+steps:
+  - name: review-code
+    send: reviewer-primary
+    fallback:
+      - reviewer-gemini
+      - reviewer-local
+    message: |
+      Review this code snippet for obvious bugs. Reply with a bullet list.
+
+      ```python
+      def divide(a, b):
+          return a / b
+      ```

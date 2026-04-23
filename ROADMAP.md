@@ -195,6 +195,43 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 - [x] `sage watch --on-change <script>` — run arbitrary command on change
 - [x] Watch integration with plan orchestrator (auto-re-run plan on file change)
 
+### Phase 20: Vendor Kill-Switch (flagship moat exploit)
+**Use case**: "Claude Code is down. My production PR review pipeline keeps running on Gemini CLI."
+
+This is the strongest neutrality-moat play. Every competitor (claude-flow, ruflo, mux, emdash)
+is single-vendor — if their primary backend goes down, workflows halt. Sage's 8 runtime shims
+become an insurance policy when they're composable at send-time.
+
+- [ ] `sage send <agent> "task" --fallback <agent2> --fallback <agent3>` — pre-flight
+      runtime health check, auto-failover to next fallback if primary runtime binary is
+      unreachable / `doctor` reports unhealthy.
+- [ ] `sage plan` YAML supports `fallback:` list per step
+- [ ] `docs/use-case-kill-switch.md` — narrative + benchmark showing same plan executing
+      identically on Claude / Gemini / Codex with primary chaos-killed
+- [ ] `docs/demos/kill-switch-drill.yaml` — ready-to-run demo plan
+- [ ] `tests/test_fallback.bats` — regression coverage
+- [ ] v2 (future): mid-task failover when primary returns error within N seconds
+
+**Moat check**: strengthens neutrality ✅ · zero-dep ✅ · Unix-native ✅ · not in coding-assistant lane ✅
+
+### Phase 21: Bench-as-Code (proof weapon)
+**Use case**: "Should I buy Claude Code, Gemini CLI, or Codex seats for my team?"
+
+Public benchmarks test models on MMLU. Vendor blog posts are biased. Nobody benchmarks
+the **agent+runtime+prompt** stack across vendors on *your actual workflow* — because nobody
+else drives all the agent CLIs from one command surface. Sage can.
+
+- [ ] `sage bench run <tasks-dir> --agents A,B,C --patterns single,debate,pipeline` — drive
+      the same task across N agents, capture token cost / latency / success
+- [ ] `sage bench report --format markdown|json|csv` — produce a decision-ready table
+- [ ] Success oracle options: `--oracle exit-zero` (task script exits 0) / `--oracle llm-judge`
+      (separate synthesizer agent judges) / `--oracle file-diff` (compare against golden output)
+- [ ] Dogfood: run `sage bench` on SageCLI's own repo, publish the table
+- [ ] `docs/use-case-bench.md` — "How I chose between Claude, Gemini, and Codex for my team"
+
+**Moat check**: strengthens neutrality ✅ (requires vendor-neutral driver) · Unix-native ✅
+· not in coding-assistant lane ✅
+
 ---
 
 ## Example User Workflows (not features we build — workflows the user composes)

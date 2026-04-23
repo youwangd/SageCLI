@@ -1768,6 +1768,7 @@ cmd_send() {
   local to="" message="" force=false headless=false json_output=false no_context=false
   local then_chain="" retry_max=0 strict=false dry_run=false
   local attach_files="" task_tags="" on_fail_cmd="" on_done_cmd="" task_timeout="" custom_id="" output_file="" task_env_vars="" notify=false broadcast_all=false broadcast_failed=false
+  local fallback_chain=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1776,6 +1777,7 @@ cmd_send() {
       --json)        json_output=true; shift ;;
       --no-context)  no_context=true; shift ;;
       --then)        then_chain="${then_chain:+$then_chain }$2"; shift 2 ;;
+      --fallback)    fallback_chain="${fallback_chain:+$fallback_chain }$2"; shift 2 ;;
       --on-fail)     on_fail_cmd="$2"; shift 2 ;;
       --on-done)     on_done_cmd="$2"; shift 2 ;;
       --retry)       retry_max="$2"; shift 2 ;;
@@ -1807,6 +1809,27 @@ cmd_send() {
   # Read from stdin if piped and no message given
   if [[ -z "$message" && ! -t 0 ]]; then
     message=$(cat)
+  fi
+
+  # --fallback: pre-flight runtime health check for vendor kill-switch.
+  # If primary agent's runtime binary is unreachable, try each fallback in order.
+  # Only applies when we have a concrete agent (not --all broadcast).
+  if [[ -n "$fallback_chain" && -n "$to" ]] && ! $broadcast_all; then
+    if ! _agent_runtime_healthy "$to"; then
+      local _primary="$to" _picked=""
+      for _fb in $fallback_chain; do
+        if _agent_runtime_healthy "$_fb"; then
+          _picked="$_fb"
+          break
+        fi
+      done
+      if [[ -n "$_picked" ]]; then
+        warn "primary '$_primary' runtime unreachable → failing over to '$_picked'"
+        to="$_picked"
+      else
+        die "primary '$_primary' and all fallbacks ($fallback_chain) are unreachable"
+      fi
+    fi
   fi
 
   # --all broadcast mode
@@ -6082,6 +6105,25 @@ _runtime_binary() {
     llama-cpp)   echo "llama-server" ;;
     acp)         echo "claude" ;;
     *)           echo "$1" ;;
+  esac
+}
+
+# Check if an agent's runtime binary is reachable. Returns 0 = healthy, 1 = unhealthy.
+# Used by --fallback in cmd_send for vendor kill-switch.
+_agent_runtime_healthy() {
+  local name="$1"
+  local agent_dir="$AGENTS_DIR/$name"
+  [[ -d "$agent_dir" ]] || return 1
+  local rt
+  rt=$(jq -r '.runtime // "bash"' "$agent_dir/runtime.json" 2>/dev/null)
+  # bash and ollama are internally healthy if the dir exists
+  case "$rt" in
+    bash)   return 0 ;;
+    ollama) command -v ollama >/dev/null 2>&1 && curl -sf -m 2 http://localhost:11434/api/version >/dev/null 2>&1 ;;
+    *)
+      local bin; bin=$(_runtime_binary "$rt")
+      command -v "$bin" >/dev/null 2>&1
+      ;;
   esac
 }
 
