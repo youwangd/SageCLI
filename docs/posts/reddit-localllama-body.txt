@@ -1,4 +1,4 @@
-I've been working on **Sage** (github.com/youwangd/SageCLI) — an AI agent orchestrator written in pure bash. No Python runtime, no Node server, no SaaS. Just bash, `jq`, and `tmux`. It can drive Claude Code, Codex, Gemini CLI, OpenCode, Cline, Kiro, **and Ollama / llama.cpp** from the same command surface.
+I've been working on **Sage** ([github.com/youwangd/SageCLI](https://github.com/youwangd/SageCLI)) — an AI agent orchestrator written in pure bash. No Python runtime, no Node server, no SaaS. Just bash, `jq`, and `tmux`. It can drive Claude Code, Codex, Gemini CLI, OpenCode, Cline, Kiro, **and Ollama / llama.cpp** from the same command surface.
 
 I kept seeing the qwen3.6-35b + OpenCode threads here and thought: *"OK, but what if I want to run three local models in parallel and merge their outputs?"* Sage does that. Here's a real run on a **CPU-only** box (16-core Xeon, 62GB RAM, no GPU) using `llama3.2:3b`:
 
@@ -13,33 +13,31 @@ I kept seeing the qwen3.6-35b + OpenCode threads here and thought: *"OK, but wha
     $ # ... 34 seconds later, all three done
     $ sage result t-1776971675-20386   # fetch each agent's output
 
-### Actual numbers from my box
+**Actual numbers from my box:**
 
-| Metric | Value |
-|---|---|
-| Model | `llama3.2:3b` (Q4, ~2GB) |
-| Hardware | 16-core Xeon, 62GB RAM, **no GPU** |
-| Raw ollama throughput | **13.81 tok/s** generation, 23.67 tok/s prompt eval |
-| 3 parallel `sage` agents end-to-end | **34 seconds** |
-| ollama CPU peak | 75% (one model instance, serializes internally) |
-| Resident memory (1 model loaded) | ~2.4 GB |
-| Sage framework itself | ~8500 lines of bash, zero runtime deps beyond `jq` + `tmux` |
+* Model: `llama3.2:3b` (Q4, ~2GB)
+* Hardware: 16-core Xeon, 62GB RAM, **no GPU**
+* Raw ollama throughput: **13.81 tok/s** generation, 23.67 tok/s prompt eval
+* 3 parallel `sage` agents end-to-end: **34 seconds**
+* ollama CPU peak: 75% (one model instance, serializes internally)
+* Resident memory (1 model loaded): ~2.4 GB
+* Sage framework itself: ~8500 lines of bash, zero runtime deps beyond `jq` + `tmux`
 
-### What "parallel" actually means here
+**What "parallel" actually means here**
 
-Honest caveat: ollama's default build serializes generation requests through one model instance. So three agents against one ollama server = 3x sequential inference under the hood. The **orchestration** is parallel (agents are independent, fan-out/collect works, would scale on multi-GPU), but the **inference** is serialized until you run multiple ollama instances or set `OLLAMA_NUM_PARALLEL=3` on the server.
+Honest caveat: ollama's default build serializes generation requests through one model instance. So three agents against one ollama server = 3x sequential inference under the hood. The *orchestration* is parallel (agents are independent, fan-out/collect works, would scale on multi-GPU), but the *inference* is serialized until you run multiple ollama instances or set `OLLAMA_NUM_PARALLEL=3` on the server.
 
 Point each agent at a different model (writer→llama3.2:3b, critic→qwen3:8b, editor→phi-4) and you get mixed model families in one plan — still serialized on a single ollama server, truly parallel on multi-GPU.
 
-### Why bash?
+**Why bash?**
 
 Short: zero cold-start, zero dependency drift, zero "which Python env did I install this in". Every competitor in this space (claude-flow, gastown, emdash, mux) needs Node/Rust/Go/Python. Sage boots in <50ms and ships as one executable.
 
 Long: coordinating 8+ different agent CLIs is mostly glue — spawning subprocesses, managing tmux sessions, passing JSON through pipes. Bash is genuinely good at that. The parts that would be painful (JSON manipulation, async waits) I do with `jq` and file-based signaling.
 
-### What's in it (v1.4.0)
+**What's in it (v1.4.0)**
 
-* **8 runtimes**: Claude Code, Codex, Gemini CLI, Cline, Kiro, Bash, **Ollama**, **llama.cpp** — plus any ACP-compatible agent
+* 8 runtimes: Claude Code, Codex, Gemini CLI, Cline, Kiro, Bash, **Ollama**, **llama.cpp** — plus any ACP-compatible agent
 * `sage plan` — YAML multi-agent workflows with dependency waves
 * `sage plan --pattern fan-out/pipeline/debate/map-reduce` — named swarm patterns
 * `sage dashboard` — live TUI of all running agents
@@ -47,16 +45,16 @@ Long: coordinating 8+ different agent CLIs is mostly glue — spawning subproces
 * Agent chaining: `sage send A "task" --then B --then C`
 * 53 commands, 928 bats tests, CI on Ubuntu + macOS
 
-### Gotchas I hit while writing this post
+**Gotchas I hit while writing this post**
 
-**`qwen3:0.6b` pulled 11 days ago** → `Error: 400 Bad Request: does not support generate` with ollama v0.18.2. The old manifest template is stale; re-pull fixes it (~600MB redownload). Small-model quirk, not a sage issue.
+`qwen3:0.6b` pulled 11 days ago → `Error: 400 Bad Request: does not support generate` with ollama v0.18.2. The old manifest template is stale; re-pull fixes it (~600MB redownload). Small-model quirk, not a sage issue.
 
-**`llama3.2:3b` hallucinates the agent framework's syntax into its answers** — you'll see outputs like `sage send mytask "..."` in the raw logs. That's the 3B model echoing its own system prompt. 8B+ models stop doing this. Trim your `instructions.md` aggressively for small models.
+`llama3.2:3b` hallucinates the agent framework's syntax into its answers — you'll see outputs like `sage send mytask "..."` in the raw logs. That's the 3B model echoing its own system prompt. 8B+ models stop doing this. Trim your `instructions.md` aggressively for small models.
 
-### Links
+**Links**
 
-* Repo: github.com/youwangd/SageCLI
-* 37-second demo (asciinema GIF): github.com/youwangd/SageCLI/blob/main/docs/demo.gif
-* Architecture diagram: github.com/youwangd/SageCLI/blob/main/docs/diagrams/architecture.svg
+* Repo: [github.com/youwangd/SageCLI](https://github.com/youwangd/SageCLI)
+* 37-second demo GIF: [docs/demo.gif](https://github.com/youwangd/SageCLI/blob/main/docs/demo.gif)
+* Architecture diagram: [docs/diagrams/architecture.svg](https://github.com/youwangd/SageCLI/blob/main/docs/diagrams/architecture.svg)
 
 Happy to benchmark different model combos if people post specs. If qwen3.6-35b runs on your box, I'd love to see `sage plan --pattern debate` on it.
