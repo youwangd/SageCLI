@@ -1,15 +1,40 @@
 # SageCLI — Roadmap & Competitive Intelligence
 
-**Updated**: 2026-04-23 | **Repo**: github.com/youwangd/SageCLI | **Stars**: 2 | **Version**: 1.3.0
+**Updated**: 2026-04-23 | **Repo**: github.com/youwangd/SageCLI | **Stars**: 2 | **Version**: 1.4.0
+
+---
+
+## Why sage exists (north star)
+
+Sage is **the Unix-native control plane for agent CLIs** — the vendor-neutral layer
+that sits between the user and Claude Code / Codex / Gemini CLI / Cline / Kiro / Ollama /
+llama.cpp / any ACP agent.
+
+**Three competitive moats, in priority order:**
+
+1. **Neutrality** — the only orchestrator where all 8 runtimes work from one command surface today.
+2. **Zero-dependency** — one bash script. Beats every Python/Node/Rust orchestrator on install friction.
+3. **Unix-native** — JSON in/out, stdin/stdout, pipes. Beats every web dashboard / TUI-primary tool.
+
+**Before shipping any feature, apply the rubric in [docs/POSITIONING.md](docs/POSITIONING.md):**
+
+- Does it strengthen at least one moat?
+- Would Claude Code / Aider / Cline ever ship this? (If yes, it's in their lane, not ours.)
+- Does it bolt us to a specific vendor? (If yes, refuse.)
+- Does it add a non-bash runtime dep? (If yes, refuse or isolate.)
+
+**We are not building a coding assistant.** We don't write code, we don't have a model,
+we don't compete on code quality. Our job is making Claude + Codex + Gemini cooperate
+on the user's terms, or fail over when one goes down.
 
 ---
 
 ## Current State
 
-SageCLI is a **6,179-line pure bash** AI agent orchestrator. 47 commands, 8 runtimes, 465 tests, CI on every push.
+SageCLI is a **~8,500-line pure bash** AI agent orchestrator. 53 commands, 8 runtimes, 928 tests, CI on every push.
 
 **What we ship that nobody else does in pure bash:**
-- Runtime-agnostic orchestration (claude-code, cline, kiro, gemini-cli, codex, bash)
+- Runtime-agnostic orchestration (claude-code, cline, kiro, gemini-cli, codex, ollama, llama-cpp, bash)
 - Plan orchestrator with wave-based dependency execution and validation
 - Git worktree isolation per agent
 - MCP server lifecycle management
@@ -172,13 +197,18 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 
 ---
 
-## Killer Use Cases to Build Toward
+## Example User Workflows (not features we build — workflows the user composes)
 
-1. **PR Review Pipeline**: `sage plan --pattern fan-out "Review PR #123"` → reviewer + security auditor + test writer in parallel → merge findings
-2. **Codebase Migration**: `sage plan --pattern pipeline "Migrate Express→Fastify"` → spec → implement per-module → test → validate
-3. **CI Agent**: GitHub Action runs `sage --headless` on every PR for automated review
-4. **Oncall Triage**: `sage plan "Triage ticket T-12345"` → read ticket → check logs → propose fix → write tests
-5. **Multi-Model Benchmark**: `sage plan --pattern debate "Implement auth"` → claude vs gemini vs codex → pick best implementation
+These are example invocations showing what sage *enables*. We don't ship features specifically
+for any of these — we ship the generic primitives (`plan`, `send`, `msg`, `context`, patterns)
+and users compose whatever workflow they need.
+
+1. **Multi-vendor benchmark (the moat in action)**: `sage plan --pattern debate "Implement auth"` → claude-code vs gemini-cli vs codex → synthesizer picks best. **Only sage can do this today.**
+2. **Vendor failover**: primary agent is Claude Code; if `claude` binary is unreachable, `sage send --fallback gemini-cli` retries on the backup runtime. Vendor insurance policy.
+3. **PR Review Pipeline**: `sage plan --pattern fan-out "Review PR #123"` → reviewer + security auditor + test writer in parallel → merge findings. Any runtime combo.
+4. **Codebase Migration**: `sage plan --pattern pipeline "Migrate Express→Fastify"` → spec → implement per-module → test → validate.
+5. **CI Agent**: GitHub Action runs `sage --headless` on every PR for automated review.
+6. **Oncall Triage**: `sage plan "Triage ticket T-12345"` → read ticket → check logs → propose fix → write tests.
 
 ---
 
@@ -206,7 +236,7 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 - [x] **P0**: ~~Register sage in ACP Registry~~ **Reframed**: sage is a client, not an agent. Shipped `sage acp ls/show/install` for consumer-side discovery (c18cb7d, 2026-04-23)
 - [x] **P0**: ~~Post "Run qwen3.6 locally with sage" to r/LocalLLaMA~~ Posted as "Parallel multi-agent workflows with Ollama, ~8500 lines of bash" 2026-04-23 ([1stvezm](https://www.reddit.com/r/LocalLLaMA/comments/1stvezm/)) — pivoted off qwen3.6 (no GPU) to llama3.2:3b CPU demo
 - [x] **P0**: ~~Follow up / re-submit awesome-cli-coding-agents PR #47~~ Already merged 2026-04-18 (stale intel — caught 2026-04-23)
-- [ ] **P1**: Add `sage tool hook` subcommand (Codex hooks pattern, Loopndroll validation)
+- [ ] **P1**: Add `sage tool hook` subcommand — **runtime-agnostic** hook registry (on-tool-call, on-tool-success, on-tool-error) that works across claude-code / codex / gemini-cli. Codex's hook mechanism proves the pattern; sage generalizes it to any runtime. Preserves neutrality moat.
 - [ ] **P1**: Add `sage mcp compose` — Virtual MCP composite endpoints
 - [x] **P1**: ~~Add `sage acp register` helper command~~ Dropped — see P0 above. Client-side discovery shipped instead
 - [ ] **P1**: Verify sage claude-code runtime still works with native Claude Code binary (Apr 17 change)

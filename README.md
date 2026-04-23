@@ -17,11 +17,12 @@
 </p>
 
 <h1 align="center">⚡ sage</h1>
-<h3 align="center">Simple Agent Engine</h3>
+<h3 align="center">The Unix-native control plane for agent CLIs</h3>
 
 <p align="center">
-  <strong>Orchestrate AI coding agents from your terminal.</strong><br>
-  No frameworks. No npm. No Python. Just bash, jq, and tmux.
+  <strong>You already have Claude Code, Codex, and Gemini CLI.</strong><br>
+  Sage lets them work together — or swap between them — without writing Python.<br>
+  One bash script. No framework. No lock-in.
 </p>
 
 <p align="center">
@@ -41,17 +42,33 @@
 
 ## Why sage?
 
-Every AI coding agent framework wants you to learn a new language, install a runtime, and buy into an ecosystem. sage takes a different approach:
+Every competing orchestrator — claude-flow, ruflo, mux, emdash — optimizes for a single vendor
+(usually Anthropic). If Claude Code changes a flag, restructures auth, or disappears, your
+workflows break. Sage is the **vendor-neutral layer**:
+
+**Three moats, in priority order:**
+
+1. **Neutrality** — Claude Code, Codex, Gemini CLI, Cline, Kiro, Ollama, llama.cpp, or any
+   ACP agent. Same command surface, identical semantics. Swap backends with one flag.
+2. **Zero-dependency** — one bash script. `curl | bash` and it works. No `venv`, no `nvm`,
+   no 400 MB node_modules. Ships in CI, airgapped boxes, and ephemeral containers.
+3. **Unix-native** — JSON output, stdin input, everything pipes. Sage behaves like `git`,
+   `kubectl`, and `jq` — not like a chat UI.
 
 **Agents are processes. Messages are files. The terminal is your IDE.**
 
 ```bash
 sage create reviewer --runtime claude-code
-sage create auditor --runtime kiro
+sage create auditor --runtime gemini-cli
+sage create fallback --runtime ollama --model llama3.2:3b
 sage send --headless --json reviewer "Review src/main.py for bugs"
 sage send --headless --json auditor "Security audit src/main.py"
-# Both run in parallel. Structured JSON output. Any runtime.
+# Three different vendors. One workflow. Structured JSON out.
 ```
+
+Sage is **not** a coding assistant and does not compete with Claude Code / Aider / Cline on
+code quality. It's the glue that lets you use them *together*. See [docs/POSITIONING.md](docs/POSITIONING.md)
+for the full positioning doc and decision rubric.
 
 ### The Numbers
 
