@@ -108,7 +108,7 @@ All shipped. Tests for each. CI green.
 This is the real bottleneck. 2 stars (1 external — bribeck, 2026-04) with a feature-complete product = discovery problem.
 
 - [x] Get merged into [awesome-cli-coding-agents](https://github.com/bradAGI/awesome-cli-coding-agents) (PR #47 merged 2026-04-18)
-- [x] Record 2-minute demo GIF/asciinema for README (parallel multi-runtime audit use case) — shipped `docs/demo.sh` + `docs/demo.cast` + `docs/demo.gif` (18s, fan-out scaffold walkthrough)
+- [x] Record 2-minute demo GIF/asciinema for README (parallel multi-runtime audit use case) — shipped `docs/demo.sh` + `docs/demo.cast` + `docs/demo.gif` (37s, fan-out scaffold walkthrough)
 - [ ] HN Show launch post — position as "pure bash, zero-framework agent orchestrator"
 - [ ] r/ClaudeCode + r/LocalLLaMA posts with real use cases
 - [ ] Submit to Tembo "AI Coding Agents Compared" list
