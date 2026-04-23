@@ -1105,12 +1105,12 @@ while true; do
 
     # Process the message
     task_start_ts=$(date +%s)
-    local task_rc=0
+    task_rc=0
     runtime_inject "$AGENT_NAME" "$msg" || task_rc=$?
     task_elapsed=$(( $(date +%s) - task_start_ts ))
 
     # Update task status based on runtime exit code
-    local final_status="done"
+    final_status="done"
     [[ $task_rc -ne 0 ]] && final_status="failed"
     if [[ -f "$status_file" ]]; then
       jq --arg ts "$(date +%s)" --arg st "$final_status" '.status=$st | .finished_at=($ts|tonumber)' "$status_file" > "${status_file}.tmp" && mv "${status_file}.tmp" "$status_file"
@@ -1129,7 +1129,7 @@ while true; do
   sleep 0.3
   # Timeout enforcement
   if [[ "$TIMEOUT_SECONDS" -gt 0 ]]; then
-    local elapsed=$(( $(date +%s) - AGENT_START_TS ))
+    elapsed=$(( $(date +%s) - AGENT_START_TS ))
     if [[ $elapsed -ge $TIMEOUT_SECONDS ]]; then
       log "timeout reached (${TIMEOUT_SECONDS}s) — stopping"
       exit 0

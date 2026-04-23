@@ -488,6 +488,28 @@ Three `ollama` agents running `llama3.2:3b` in parallel on a **16-core Xeon, 62 
 
 Ollama serializes generation on a single model instance — set `OLLAMA_NUM_PARALLEL=3` or run multiple instances for true inference parallelism. See the [r/LocalLLaMA write-up](https://www.reddit.com/r/LocalLLaMA/comments/1stvezm/).
 
+### Vendor kill-switch (the neutrality moat in action)
+
+Primary AI vendor goes down? Workflow auto-routes to the next healthy runtime. One flag. No config change.
+
+<p align="center">
+  <img src="docs/kill-switch.gif" alt="sage kill-switch demo" width="820">
+</p>
+
+```bash
+sage send reviewer-primary "Review src/main.py" \
+  --fallback reviewer-gemini \
+  --fallback reviewer-local
+# ⚠  primary 'reviewer-primary' runtime unreachable → failing over to 'reviewer-local'
+# ✓  task t-1776985392-26333 → reviewer-local
+```
+
+Pre-flight health check — if primary's runtime binary is unreachable or the daemon isn't responding, sage tries each fallback in order. Every competitor in this space (claude-flow, ruflo, mux, emdash) is single-vendor-locked and has no cross-vendor failover primitive. See [docs/use-case-kill-switch.md](docs/use-case-kill-switch.md) for the full narrative, or run the drill yourself:
+
+```bash
+CHAOS_BINARIES="claude gemini" bash docs/demos/kill-switch-drill.sh
+```
+
 ---
 
 ## Architecture
