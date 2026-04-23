@@ -7256,6 +7256,74 @@ HELP
   esac
 }
 
+cmd_acp() {
+  local sub="${1:-ls}"; shift 2>/dev/null || true
+  local url="${SAGE_ACP_REGISTRY_URL:-https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json}"
+  local cache="$SAGE_HOME/acp-registry.json"
+  ensure_init
+  _acp_registry_load() {
+    local refresh="${1:-false}"
+    if ! $refresh && [[ -f "$cache" ]]; then return 0; fi
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL --max-time 10 "$url" -o "$cache.tmp" 2>/dev/null && mv "$cache.tmp" "$cache" && return 0
+      rm -f "$cache.tmp"
+    fi
+    [[ -f "$cache" ]] && { echo "warn: using stale cache ($cache)" >&2; return 0; }
+    die "failed to fetch registry from $url and no cache at $cache"
+  }
+  case "$sub" in
+    ls)
+      local json_out=false refresh=false
+      for a in "$@"; do
+        [[ "$a" == "--json" ]] && json_out=true
+        [[ "$a" == "--refresh" ]] && refresh=true
+      done
+      _acp_registry_load "$refresh"
+      if $json_out; then cat "$cache"; return 0; fi
+      jq -r '.agents[] | "\(.id)\t\(.name)\t\(.description)"' "$cache" | \
+        awk -F'\t' '{printf "  %-24s %-20s %s\n", $1, $2, $3}'
+      ;;
+    show)
+      local id="${1:-}"; [[ -n "$id" ]] || die "usage: sage acp show <id>"
+      _acp_registry_load false
+      local a; a=$(jq --arg id "$id" '.agents[] | select(.id==$id)' "$cache")
+      [[ -n "$a" ]] || die "agent not found: $id"
+      echo "$a" | jq -r '"id:          \(.id)\nname:        \(.name)\nversion:     \(.version)\ndescription: \(.description)\nrepository:  \(.repository)\nlicense:     \(.license // "unknown")\ndistribution: \(.distribution | keys | join(", "))"'
+      ;;
+    install)
+      local id="${1:-}"; shift 2>/dev/null || true
+      [[ -n "$id" ]] || die "usage: sage acp install <id> [--as <name>]"
+      local as_name="$id"
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --as) as_name="$2"; shift 2 ;;
+          *)    die "unknown flag: $1" ;;
+        esac
+      done
+      _acp_registry_load false
+      local a; a=$(jq --arg id "$id" '.agents[] | select(.id==$id)' "$cache")
+      [[ -n "$a" ]] || die "agent not found: $id"
+      local dist; dist=$(echo "$a" | jq -r '.distribution | keys | join(",")')
+      if [[ "$dist" != *npx* && "$dist" != *uvx* ]]; then
+        die "agent '$id' only ships as binary; npx/uvx install not supported yet (available: $dist)"
+      fi
+      echo "installing '$id' as sage agent '$as_name' (distribution: $dist)"
+      cmd_create "$as_name" --agent "$id"
+      ;;
+    help|--help|-h|"")
+      cat <<EOF
+  sage acp — ACP Registry discovery
+
+  USAGE
+    sage acp ls [--json] [--refresh]      List available ACP agents
+    sage acp show <id>                    Show details for one agent
+    sage acp install <id> [--as <name>]   Create a sage agent wrapping it
+EOF
+      ;;
+    *) die "unknown acp subcommand: $sub (try: ls, show, install)" ;;
+  esac
+}
+
 cmd_demo() {
   local clean=false
   [[ "${1:-}" == "--clean" ]] && clean=true
@@ -8407,6 +8475,7 @@ case "${1:-}" in
   runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;
   demo)    shift; cmd_demo "$@" ;;
+  acp)     shift; cmd_acp "$@" ;;
   help|-h|--help) shift; cmd_help "$@" ;;
   "") cmd_help ;;
   dashboard) shift; cmd_dashboard "$@" ;;
