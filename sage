@@ -7256,6 +7256,46 @@ HELP
   esac
 }
 
+cmd_demo() {
+  local clean=false
+  [[ "${1:-}" == "--clean" ]] && clean=true
+  ensure_init
+  mkdir -p "$AGENTS_DIR" "$PLANS_DIR"
+  local agents=(demo-reviewer demo-tester demo-security)
+  local plan_file="$PLANS_DIR/demo-fan-out.yaml"
+  if $clean; then
+    for a in "${agents[@]}"; do
+      [[ -d "$AGENTS_DIR/$a" ]] && rm -rf "$AGENTS_DIR/$a"
+    done
+    [[ -f "$plan_file" ]] && rm -f "$plan_file"
+    echo "demo: cleaned"
+    return 0
+  fi
+  for a in "${agents[@]}"; do
+    if [[ -d "$AGENTS_DIR/$a" ]]; then
+      echo "demo: reused $a"
+    else
+      cmd_create "$a" --runtime bash >/dev/null && echo "demo: created $a"
+    fi
+  done
+  cat > "$plan_file" <<'YAML'
+# sage demo plan — fan-out pattern
+# Run: sage plan --run <this-file>
+pattern: fan-out
+task: "Analyze the input and report findings"
+inputs: [demo-reviewer, demo-tester, demo-security]
+YAML
+  echo "demo: wrote $plan_file"
+  cat <<EOF
+
+  ✨ Demo scaffolded. Try:
+    sage ls                        # see your 3 demo agents
+    sage plan --run $plan_file     # run the fan-out pattern
+    sage send demo-reviewer "hi"   # talk to one agent
+    sage demo --clean              # tear it all down
+EOF
+}
+
 cmd_help() {
   if [[ -n "${1:-}" ]]; then
     _help_command "$1"
@@ -7271,6 +7311,7 @@ cmd_help() {
 
   AGENTS
     init [--force]              Initialize sage (~/.sage/)
+    demo [--clean]              First-run demo: 3 agents + fan-out plan
     create <name> [flags]       Create agent (--runtime bash|cline|claude-code|gemini-cli|codex|ollama|llama-cpp|acp, --agent <a>, --model <m>)
     start [name|--all]          Start agent(s) in tmux
     stop [name|--all]           Stop agent(s)
@@ -8365,6 +8406,7 @@ case "${1:-}" in
   task)    shift; cmd_task "$@" ;;
   runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;
+  demo)    shift; cmd_demo "$@" ;;
   help|-h|--help) shift; cmd_help "$@" ;;
   "") cmd_help ;;
   dashboard) shift; cmd_dashboard "$@" ;;
