@@ -6,7 +6,6 @@ Sources rendered with [PlantUML](https://plantuml.com) using the [markdown-viewe
 |---|---|---|
 | Architecture — message lifecycle | `architecture.puml` | `README.md` → `## Architecture` |
 | Plan orchestrator — wave execution | `plan-waves.puml` | `README.md` → `## Plan Orchestrator` |
-| Runtimes mindmap | `runtimes.puml` | `README.md` → `## Runtimes` |
 
 ## Regenerate
 

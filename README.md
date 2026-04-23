@@ -432,10 +432,6 @@ sage trace --tree -n 50      # last 50 events as tree
 
 ## Runtimes
 
-<p align="center">
-  <img src="docs/diagrams/runtimes.svg" alt="9 runtimes grouped by category: cloud LLMs, local LLMs, protocols" width="560">
-</p>
-
 | Runtime | Backend | Streaming | How it works |
 |---|---|---|---|
 | `claude-code` | [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) | ✅ stream-json | Real-time tool calls + text via `--output-format stream-json` |

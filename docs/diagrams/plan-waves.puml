@@ -3,43 +3,49 @@
 skinparam defaultFontName "Helvetica"
 skinparam defaultFontSize 12
 skinparam shadowing false
+skinparam backgroundColor transparent
 skinparam sequenceArrowThickness 1.5
 
 title Plan Orchestrator — Dependency Waves with Parallel Execution
 
 actor User
 participant "sage plan" as sage
-participant "planner agent" as planner
+participant "planner\n(claude-code)" as planner
+
 box "Wave 1" #F0F8FF
-  participant "Task 1\nspec" as t1
+  participant "spec-agent\n(claude-code)" as t1
 end box
-box "Wave 2 (parallel)" #F0FFF0
-  participant "Task 2\nauth" as t2
-  participant "Task 3\ncrud" as t3
+box "Wave 2 — parallel" #F0FFF0
+  participant "auth-agent\n(claude-code)" as t2
+  participant "crud-agent\n(gemini-cli)"  as t3
 end box
-box "Wave 3 (parallel)" #FFF8F0
-  participant "Task 4\ntests" as t4
-  participant "Task 5\ndocs" as t5
+box "Wave 3 — parallel" #FFF8F0
+  participant "test-agent\n(codex)"       as t4
+  participant "docs-agent\n(ollama)"      as t5
 end box
 
-User -> sage : plan "Build REST API"
-sage -> planner : decompose goal
-planner --> sage : 5 tasks + deps
-sage -> User : show waves [a]pprove
-User --> sage : approve
+User    -> sage    : plan "Build REST API"
+sage    -> planner : decompose goal
+planner --> sage   : 5 tasks + deps
+sage    -> User    : show waves [a]pprove
+User    --> sage   : approve
 
-sage -> t1 : run #1
-t1 --> sage : ✓ schema.yaml
+== Wave 1 ==
+sage -> t1   : run #1 spec
+t1   --> sage : ✓ schema.yaml
 
-sage -> t2 : run #2 (ctx=#1)
-sage -> t3 : run #3 (ctx=#1)
-t2 --> sage : ✓ auth.py
-t3 --> sage : ✓ crud.py
+== Wave 2 (parallel fan-out) ==
+sage -> t2   : run #2 auth (ctx=#1)
+sage -> t3   : run #3 crud (ctx=#1)
+t2   --> sage : ✓ auth.py
+t3   --> sage : ✓ crud.py
 
-sage -> t4 : run #4 (ctx=#2,#3)
-sage -> t5 : run #5 (ctx=#2,#3)
-t4 --> sage : ✓ tests pass
-t5 --> sage : ✓ API.md
+== Wave 3 (parallel fan-out) ==
+sage -> t4   : run #4 tests (ctx=#2,#3)
+sage -> t5   : run #5 docs  (ctx=#2,#3)
+t4   --> sage : ✓ pytest: 24 pass
+t5   --> sage : ✓ API.md
+
 sage --> User : plan complete
 
 @enduml
