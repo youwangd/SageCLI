@@ -1,6 +1,6 @@
 # SageCLI — Roadmap & Competitive Intelligence
 
-**Updated**: 2026-04-12 | **Repo**: github.com/youwangd/SageCLI | **Stars**: 1 | **Version**: 1.3.0
+**Updated**: 2026-04-23 | **Repo**: github.com/youwangd/SageCLI | **Stars**: 2 | **Version**: 1.3.0
 
 ---
 
@@ -44,7 +44,7 @@ SageCLI is a **6,179-line pure bash** AI agent orchestrator. 47 commands, 8 runt
 | Session Mgrs | nimbalyst (ex crystal) | 3K | Pivoted to desktop app |
 | | toad | 2.8K | Unified terminal AI |
 | | mux (Coder) | 1.6K | Desktop parallel dev |
-| **Us** | **SageCLI** | **1** | Pure bash, zero-framework |
+| **Us** | **SageCLI** | **2** | Pure bash, zero-framework |
 
 ### Market Map
 
@@ -105,7 +105,7 @@ All shipped. Tests for each. CI green.
 ### Phase 13: Adoption & Visibility
 **Use case**: "People need to know sage exists"
 
-This is the real bottleneck. 1 star with a feature-complete product = discovery problem.
+This is the real bottleneck. 2 stars (1 external — bribeck, 2026-04) with a feature-complete product = discovery problem.
 
 - [x] Get merged into [awesome-cli-coding-agents](https://github.com/bradAGI/awesome-cli-coding-agents) (PR #47 merged 2026-04-18)
 - [ ] Record 2-minute demo GIF/asciinema for README (parallel multi-runtime audit use case)
