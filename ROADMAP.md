@@ -191,7 +191,7 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 | **Claude Opus 4.7 released (+13% coding, 3x vision)** Apr 16 | POSITIVE | sage claude-code runtime inherits ✅ |
 | **Codex major update + hooks mechanism** Apr 16 (thsottiaux 4.6K ❤️) | MEDIUM | sage has `--on-done`/`--on-fail` ✅ but no tool-level hook registry — **gap** |
 | **Cloudflare "Code Mode" paradigm** — agents inhabit state machines | WATCH | Not a tool yet; conceptual shift — monitor |
-| **ACP Registry RFD completed** (initial release this week) | **HIGH opportunity** | sage has ACP ✅ — should register for free distribution |
+| **ACP Registry RFD completed** (initial release this week) | **HIGH opportunity** | sage has ACP ✅ — **shipped `sage acp ls/show/install`** as consumer (c18cb7d). Sage is ACP client, not agent — submitting as agent would fail schema |
 | "Virtual MCP server" composite pattern (Prefect Apr 6) | MEDIUM | sage has `mcp add/ls/rm` ✅ but no composition — **gap** |
 | OpenCode v1.4.7 (Apr 16) — incremental | LOW | No action |
 | Claude Code → native binary spawn (Apr 17) | POSITIVE | Test sage claude-code runtime still detects binary path |
@@ -203,12 +203,12 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 | bradAGI/awesome-cli-coding-agents 231 stars — **sage still not listed** | HIGH | PR #47 follow-up needed |
 
 ### Action Items from Intel (2026-04-19)
-- [ ] **P0**: Register sage in **ACP Registry** (RFD completed this week, initial release live)
+- [x] **P0**: ~~Register sage in ACP Registry~~ **Reframed**: sage is a client, not an agent. Shipped `sage acp ls/show/install` for consumer-side discovery (c18cb7d, 2026-04-23)
 - [ ] **P0**: Post "Run qwen3.6 locally with sage" to r/LocalLLaMA — riding viral OpenCode+qwen3.6 thread
 - [ ] **P0**: Follow up / re-submit awesome-cli-coding-agents PR #47 (carried from last week)
 - [ ] **P1**: Add `sage tool hook` subcommand (Codex hooks pattern, Loopndroll validation)
 - [ ] **P1**: Add `sage mcp compose` — Virtual MCP composite endpoints
-- [ ] **P1**: Add `sage acp register` helper command
+- [x] **P1**: ~~Add `sage acp register` helper command~~ Dropped — see P0 above. Client-side discovery shipped instead
 - [ ] **P1**: Verify sage claude-code runtime still works with native Claude Code binary (Apr 17 change)
 - [ ] **P2**: Write "Native runtimes beat proxies" blog post — counter claude-code-router (32.5K ⭐)
 - [ ] **P2**: Write "Portable orchestration" blog post — counter claude-flow (32.4K ⭐)
