@@ -1,6 +1,7 @@
 # SageCLI Capabilities (auto-updated)
 
 ## Commands
+- `sage acp`
 - `sage alias`
 - `sage attach`
 - `sage call`
@@ -12,6 +13,7 @@
 - `sage context`
 - `sage create`
 - `sage dashboard`
+- `sage demo`
 - `sage diff`
 - `sage doctor`
 - `sage env`

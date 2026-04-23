@@ -496,6 +496,7 @@ sage CLI
 ```
 AGENTS
   init [--force]                     Initialize ~/.sage/
+  demo                               Scaffold a 3-agent fan-out demo
   create <name> [--runtime R]        Create agent (claude-code|gemini-cli|codex|cline|acp|bash)
   start [name|--all]                 Start in tmux
   stop [name|--all]                  Stop (kills process group)
@@ -604,6 +605,13 @@ See [ROADMAP.md](ROADMAP.md) for competitive analysis and detailed specs.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+<p align="center">
+  <strong>⚡ sage</strong> — Because the best agent framework is the one you can read in an afternoon.
+</p>
+CENSE](LICENSE).
 
 ---
 
