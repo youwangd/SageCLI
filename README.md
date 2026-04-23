@@ -294,6 +294,10 @@ sage task implement --message "Add JWT refresh tokens" --background
 
 ## Plan Orchestrator
 
+<p align="center">
+  <img src="docs/diagrams/plan-waves.svg" alt="Plan orchestrator — dependency waves with parallel execution" width="780">
+</p>
+
 Decompose complex goals into dependency-aware task waves with automatic parallel execution:
 
 ```bash
@@ -428,12 +432,19 @@ sage trace --tree -n 50      # last 50 events as tree
 
 ## Runtimes
 
+<p align="center">
+  <img src="docs/diagrams/runtimes.svg" alt="9 runtimes grouped by category: cloud LLMs, local LLMs, protocols" width="560">
+</p>
+
 | Runtime | Backend | Streaming | How it works |
 |---|---|---|---|
 | `claude-code` | [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) | ✅ stream-json | Real-time tool calls + text via `--output-format stream-json` |
 | `gemini-cli` | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | ✅ json | Headless mode via `-p`, supports `--yolo` for auto-approve |
 | `codex` | [Codex CLI](https://github.com/openai/codex) | — | Exec mode with auto-approve |
 | `cline` | [Cline CLI](https://github.com/cline/cline) | ✅ json | Real-time events via `--json` |
+| `kiro` | [Kiro](https://kiro.dev) | ✅ json | Amazon's agent IDE, headless via `kiro-cli chat` |
+| `ollama` | [Ollama](https://ollama.com) | ✅ tokens | Local models (qwen3, llama3.2, etc.) via `ollama run` |
+| `llama-cpp` | [llama.cpp](https://github.com/ggerganov/llama.cpp) | ✅ tokens | Direct inference against `llama-cli` / GGUF models |
 | `acp` | [Agent Client Protocol](https://agentclientprotocol.com) | ✅ JSON-RPC | Universal bridge — any ACP agent via stdio. Persistent sessions with live steering. |
 | `bash` | Shell script | — | Custom `handler.sh` processes messages |
 
@@ -454,6 +465,10 @@ Adding a runtime is one file with two functions (`runtime_start` + `runtime_inje
 ---
 
 ## Architecture
+
+<p align="center">
+  <img src="docs/diagrams/architecture.svg" alt="SageCLI message lifecycle: User → sage send → inbox → runner.sh → runtime shim → LLM → results" width="820">
+</p>
 
 ```
 sage CLI

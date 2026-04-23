@@ -1,0 +1,43 @@
+@startuml architecture
+!theme plain
+skinparam defaultFontName "Helvetica"
+skinparam defaultFontSize 12
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam backgroundColor transparent
+left to right direction
+
+title SageCLI — Message Lifecycle
+
+actor User
+
+package "sage CLI (single bash script)" as cli {
+  [sage send <agent> "task"] as send
+}
+
+package "~/.sage/agents/<name>/" as agent {
+  folder "inbox/" as inbox
+  folder "workspace/" as ws
+  folder "results/" as results
+}
+
+component "runner.sh\n(tmux window, polls 300ms)" as runner
+
+package "runtime shim" as rt {
+  [runtime_start]
+  [runtime_inject]
+}
+
+cloud "LLM backend\n(claude-code | ollama |\ngemini | codex | ...)" as llm
+
+User --> send : "review this PR"
+send --> inbox : write JSON msg
+inbox --> runner : pickup
+runner --> rt : source runtimes/<name>.sh
+rt --> llm : inject prompt
+llm --> rt : stream tokens
+rt --> results : task.json + output
+rt --> ws : files / commits
+results --> User : sage ls / tail
+
+@enduml
