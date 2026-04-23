@@ -458,6 +458,19 @@ Unlike the dedicated `cline`/`claude-code` runtimes (one-shot per task), ACP mai
 
 Adding a runtime is one file with two functions (`runtime_start` + `runtime_inject`). See [DEVELOPMENT.md](DEVELOPMENT.md).
 
+### Local model benchmark (CPU-only)
+
+Three `ollama` agents running `llama3.2:3b` in parallel on a **16-core Xeon, 62 GB RAM, no GPU**:
+
+| Metric | Value |
+|--------|-------|
+| 3 parallel `sage send` round-trip | **34 s** end-to-end |
+| Raw ollama throughput | 13.81 tok/s gen · 23.67 tok/s prompt eval |
+| Peak CPU / RAM | 75 % (1 core-saturated ollama) · ~2.4 GB resident |
+| Framework overhead | ~8500 lines of bash, no Python/Node/Go |
+
+Ollama serializes generation on a single model instance — set `OLLAMA_NUM_PARALLEL=3` or run multiple instances for true inference parallelism. See the [r/LocalLLaMA write-up](https://www.reddit.com/r/LocalLLaMA/comments/1stvezm/).
+
 ---
 
 ## Architecture
@@ -637,7 +650,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for architecture details, runtime interface
 | [awesome-cli-coding-agents](https://github.com/bradAGI/awesome-cli-coding-agents) listing | ✅ merged (PR #47, 2026-04-18) |
 | Demo GIF in README | ✅ shipped (`docs/demo.sh` + `docs/demo.gif`) |
 | `sage acp ls/show/install` — discover agents from ACP Registry | ✅ shipped |
-| r/LocalLLaMA post (Ollama + qwen3.6 + sage) | 🚧 drafting |
+| r/LocalLLaMA post (Ollama + sage CPU benchmark) | ✅ posted [1stvezm](https://www.reddit.com/r/LocalLLaMA/comments/1stvezm/) (2026-04-23) |
 | HN Show launch post | 🚧 planned |
 | Tembo "AI Coding Agents Compared" submission | 🚧 planned |
 | Surgical refactor of top-4 giant functions | 🚧 planned (see [docs/REFACTOR-NOTES.md](docs/REFACTOR-NOTES.md)) |

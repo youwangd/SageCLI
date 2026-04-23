@@ -110,7 +110,7 @@ This is the real bottleneck. 2 stars (1 external — bribeck, 2026-04) with a fe
 - [x] Get merged into [awesome-cli-coding-agents](https://github.com/bradAGI/awesome-cli-coding-agents) (PR #47 merged 2026-04-18)
 - [x] Record 2-minute demo GIF/asciinema for README (parallel multi-runtime audit use case) — shipped `docs/demo.sh` + `docs/demo.cast` + `docs/demo.gif` (37s, fan-out scaffold walkthrough)
 - [ ] HN Show launch post — position as "pure bash, zero-framework agent orchestrator"
-- [ ] r/ClaudeCode + r/LocalLLaMA posts with real use cases
+- [x] r/LocalLLaMA post — "Parallel multi-agent workflows with Ollama, ~8500 lines of bash. Benchmarks inside." posted 2026-04-23 ([1stvezm](https://www.reddit.com/r/LocalLLaMA/comments/1stvezm/))
 - [ ] Submit to Tembo "AI Coding Agents Compared" list
 
 ### Phase 14: Swarm Patterns
@@ -204,7 +204,7 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 
 ### Action Items from Intel (2026-04-19)
 - [x] **P0**: ~~Register sage in ACP Registry~~ **Reframed**: sage is a client, not an agent. Shipped `sage acp ls/show/install` for consumer-side discovery (c18cb7d, 2026-04-23)
-- [ ] **P0**: Post "Run qwen3.6 locally with sage" to r/LocalLLaMA — riding viral OpenCode+qwen3.6 thread
+- [x] **P0**: ~~Post "Run qwen3.6 locally with sage" to r/LocalLLaMA~~ Posted as "Parallel multi-agent workflows with Ollama, ~8500 lines of bash" 2026-04-23 ([1stvezm](https://www.reddit.com/r/LocalLLaMA/comments/1stvezm/)) — pivoted off qwen3.6 (no GPU) to llama3.2:3b CPU demo
 - [x] **P0**: ~~Follow up / re-submit awesome-cli-coding-agents PR #47~~ Already merged 2026-04-18 (stale intel — caught 2026-04-23)
 - [ ] **P1**: Add `sage tool hook` subcommand (Codex hooks pattern, Loopndroll validation)
 - [ ] **P1**: Add `sage mcp compose` — Virtual MCP composite endpoints
