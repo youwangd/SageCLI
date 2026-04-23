@@ -107,7 +107,7 @@ All shipped. Tests for each. CI green.
 
 This is the real bottleneck. 1 star with a feature-complete product = discovery problem.
 
-- [ ] Get merged into [awesome-cli-coding-agents](https://github.com/bradAGI/awesome-cli-coding-agents) (PR #47 submitted)
+- [x] Get merged into [awesome-cli-coding-agents](https://github.com/bradAGI/awesome-cli-coding-agents) (PR #47 merged 2026-04-18)
 - [ ] Record 2-minute demo GIF/asciinema for README (parallel multi-runtime audit use case)
 - [ ] HN Show launch post — position as "pure bash, zero-framework agent orchestrator"
 - [ ] r/ClaudeCode + r/LocalLLaMA posts with real use cases
@@ -200,12 +200,12 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 | "Loopndroll" Codex hooks tool (908 ❤️) | LOW/WATCH | Community building on Codex hooks; validates hook pattern |
 | Claude Code `/ultrareview` multi-agent review built-in | POSITIVE | sage `plan --pattern debate` ✅ overlaps; call `/ultrareview` via `sage send` instead |
 | opencode 145,980 stars, cline 60,451 stars | HIGH | Gap in individual-agent popularity; sage is orchestrator not agent |
-| bradAGI/awesome-cli-coding-agents 231 stars — **sage still not listed** | HIGH | PR #47 follow-up needed |
+| bradAGI/awesome-cli-coding-agents 231 stars — **sage listed ✅ (PR #47 merged 2026-04-18)** | DONE | Adoption listing live — next lever: HN Show + r/LocalLLaMA |
 
 ### Action Items from Intel (2026-04-19)
 - [x] **P0**: ~~Register sage in ACP Registry~~ **Reframed**: sage is a client, not an agent. Shipped `sage acp ls/show/install` for consumer-side discovery (c18cb7d, 2026-04-23)
 - [ ] **P0**: Post "Run qwen3.6 locally with sage" to r/LocalLLaMA — riding viral OpenCode+qwen3.6 thread
-- [ ] **P0**: Follow up / re-submit awesome-cli-coding-agents PR #47 (carried from last week)
+- [x] **P0**: ~~Follow up / re-submit awesome-cli-coding-agents PR #47~~ Already merged 2026-04-18 (stale intel — caught 2026-04-23)
 - [ ] **P1**: Add `sage tool hook` subcommand (Codex hooks pattern, Loopndroll validation)
 - [ ] **P1**: Add `sage mcp compose` — Virtual MCP composite endpoints
 - [x] **P1**: ~~Add `sage acp register` helper command~~ Dropped — see P0 above. Client-side discovery shipped instead
@@ -221,5 +221,8 @@ Reddit signal: "I no longer need a cloud LLM to do quick web research." Small mo
 - **Weekly intel**: `sage-competitor-intel` cron (Mondays 12:00 UTC) → `/home/dyouwang/SageCLI/WEEKLY-INTEL.md`
 - **Daily report**: `sagecli-daily-report` cron (14:00 UTC) → email
 - **Self-improver**: `sage-improver` cron (hourly) → auto-ships features via TDD
+
+*Next intel scan: 2026-04-27 (Monday)*
+s via TDD
 
 *Next intel scan: 2026-04-27 (Monday)*
