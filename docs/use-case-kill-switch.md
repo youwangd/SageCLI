@@ -30,21 +30,30 @@ output format, same `sage result <id>` retrieval.
 If all three are down, sage refuses to dispatch with a clear error rather
 than silently hanging.
 
-### Plan-level failover (Phase 20 in progress)
+### Plan-level failover (deferred)
 
-See [docs/demos/kill-switch-drill.yaml](demos/kill-switch-drill.yaml) for the
-YAML schema being added to `sage plan`:
+The cleanest API would be per-step `fallback:` in a `sage plan` YAML:
 
     steps:
       - name: review-code
         send: reviewer-primary
-        fallback:
-          - reviewer-gemini
-          - reviewer-local
-        message: "Review this code for obvious bugs..."
+        fallback: [reviewer-gemini, reviewer-local]
+        message: "..."
 
-Each step in a plan declares its own fallback list. One step can fall over to
-Gemini while another stays on Claude.
+This schema is not yet wired into `sage plan` — the existing plan engine uses
+ephemeral agents spawned from templates, not named pre-existing agents, so a
+`fallback:` list per step would need a separate mini-engine. Deferred to v2.
+
+**Workaround that ships today:** [docs/demos/kill-switch-drill.sh](demos/kill-switch-drill.sh)
+composes `sage create` + `sage send --fallback` + `sage result` to demonstrate
+the same workflow. Run it with `CHAOS_BINARIES="claude gemini"` to mask cloud
+binaries from PATH and prove the fallback routes to local Ollama:
+
+    CHAOS_BINARIES="claude gemini" bash docs/demos/kill-switch-drill.sh
+    # [chaos] PATH filtered — these binaries are now unreachable: claude gemini
+    # ⚠ primary 'killswitch-drill-primary' runtime unreachable → failing over to 'killswitch-drill-local'
+    # ✓ task t-1776983325-32104 → killswitch-drill-local
+    # === Result (status=done) — agent: killswitch-drill-local ===
 
 ## What "unreachable" means
 

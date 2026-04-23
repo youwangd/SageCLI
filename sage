@@ -137,10 +137,12 @@ send_msg() {
       && mv "${results_dir}/${task_id}.status.json.tmp" "$results_dir/${task_id}.status.json"
   fi
 
-  # Write message to inbox
-  cat > "$inbox/${task_id}.json" <<MSGEOF
+  # Write message to inbox (atomic: write to .tmp then mv to prevent runner
+  # from reading a partial file during startup race)
+  cat > "$inbox/${task_id}.json.tmp" <<MSGEOF
 {"id":"$task_id","from":"$me","payload":$payload,"ts":$(date +%s)}
 MSGEOF
+  mv "$inbox/${task_id}.json.tmp" "$inbox/${task_id}.json"
 
   # Trace
   local text_preview=$(echo "$payload" | jq -r '.text // (.task // "")' 2>/dev/null | head -c 80)
@@ -177,9 +179,10 @@ call_agent() {
     '{id:$id, from:$from, status:$status, queued_at:($ts|tonumber), started_at:null, finished_at:null, task_text:$tt}' \
     > "$results_dir/${task_id}.status.json"
 
-  cat > "$inbox/${task_id}.json" <<MSGEOF
+  cat > "$inbox/${task_id}.json.tmp" <<MSGEOF
 {"id":"$task_id","from":"$me","payload":$payload,"reply_dir":"$reply_dir","ts":$(date +%s)}
 MSGEOF
+  mv "$inbox/${task_id}.json.tmp" "$inbox/${task_id}.json"
 
   # Trace
   local text_preview=$(echo "$payload" | jq -r '.text // (.task // "")' 2>/dev/null | head -c 80)
