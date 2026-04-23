@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-SAGE_VERSION="1.3.0"
+SAGE_VERSION="1.4.0"
 SAGE_HOME="${SAGE_HOME:-$HOME/.sage}"
 AGENTS_DIR="$SAGE_HOME/agents"
 TOOLS_DIR="$SAGE_HOME/tools"
