@@ -1,24 +1,3 @@
-# r/LocalLLaMA post — Sage v1.4.0 + Ollama orchestration
-
-**Status**: READY TO POST
-**Subreddit**: r/LocalLLaMA
-**Type**: self-post (Text)
-**Suggested flair**: `Resources` or `Tutorial | Guide`
-**Best posting window**: weekday 08:00–11:00 US Pacific
-
----
-
-## Title (locked)
-
-```
-Parallel multi-agent workflows with Ollama, in ~8500 lines of bash. Benchmarks inside.
-```
-
----
-
-## BODY — copy everything between the fences below into Reddit's text editor
-
-<!-- CLIPBOARD-START -->
 I've been working on **Sage** (github.com/youwangd/SageCLI) — an AI agent orchestrator written in pure bash. No Python runtime, no Node server, no SaaS. Just bash, `jq`, and `tmux`. It can drive Claude Code, Codex, Gemini CLI, OpenCode, Cline, Kiro, **and Ollama / llama.cpp** from the same command surface.
 
 I kept seeing the qwen3.6-35b + OpenCode threads here and thought: *"OK, but what if I want to run three local models in parallel and merge their outputs?"* Sage does that. Here's a real run on a **CPU-only** box (16-core Xeon, 62GB RAM, no GPU) using `llama3.2:3b`:
@@ -81,39 +60,3 @@ Long: coordinating 8+ different agent CLIs is mostly glue — spawning subproces
 * Architecture diagram: github.com/youwangd/SageCLI/blob/main/docs/diagrams/architecture.svg
 
 Happy to benchmark different model combos if people post specs. If qwen3.6-35b runs on your box, I'd love to see `sage plan --pattern debate` on it.
-<!-- CLIPBOARD-END -->
-
----
-
-## Pre-submit checklist
-
-- [x] Repo is public (github.com/youwangd/SageCLI)
-- [x] v1.4.0 shipped, numbers in post match README (~8500 lines, 53 commands, 928 tests, 8 runtimes)
-- [x] Post draft in repo for audit
-- [ ] Pick flair on submit form: `Resources` (safer) or `Tutorial | Guide` (more clicky)
-- [ ] Submit as **text post**, not link post
-- [ ] First 30 min after submit is make-or-break — stay online to reply
-
-## Expected pushback → pre-canned replies
-
-**"Why not use OpenCode?"**
-> OpenCode is one agent. Sage runs multiple agents with different backends (or the same backend) and merges their output. Complementary — sage has an OpenCode runtime too.
-
-**"Bash doesn't scale"**
-> Correct. Scales fine to ~100 agents on one box, which is where the "one developer orchestrating work" use case tops out. Past that you want something else.
-
-**"This is just tmux + ollama"**
-> Partly. The value is the `plan` / `send --then` / `msg` / `context` / `mcp` surface on top of that, plus 928 tests that make sure it doesn't regress.
-
-**"Show me a hard use case"**
-> PR review pipeline: `sage plan --pattern fan-out "Review PR #123"` spawns reviewer + security-auditor + test-writer in parallel, merges findings. Works with any mix of local and cloud models.
-
-**"Can I use it with [my model]?"**
-> If ollama/llama.cpp can serve it, sage can drive it. Set `--model <name>` on create.
-
-## What I'm explicitly NOT claiming
-
-- "as good as Claude" — we orchestrate local models, not claim the models themselves are state of the art
-- qwen3.6-35b tok/s numbers — didn't run it (<1 tok/s on this CPU box, not honest to quote)
-- GPU benchmarks — don't have one
-- Production-ready — 2 stars, 928 tests, not v1.0 battle-tested yet
