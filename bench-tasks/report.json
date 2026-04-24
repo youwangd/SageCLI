@@ -1,21 +1,39 @@
 [
   {
     "task": "01-hello",
-    "agent": "bench-ollama",
+    "agent": "bench-claude",
     "run": 1,
     "status": "done",
     "success": true,
-    "wall_ms": 4590,
-    "output": "⠙ ⠙ ⠸ ⠸ ⠼ ⠦ ⠧ ⠇ sage send bench-ollama \"HELLO\""
+    "wall_ms": 24685,
+    "output": "\n\nHELLO\nTask complete. I said the single word HELLO and reported back to cli.\nTask complete. I said the single word HELLO and reported back to cli."
   },
   {
     "task": "01-hello",
-    "agent": "bench-local",
+    "agent": "bench-ollama",
+    "run": 1,
+    "status": "done",
+    "success": true,
+    "wall_ms": 2577,
+    "output": "⠙ ⠙ ⠹ ⠼ ⠴ ⠦ sage send sage-system \"HELLO\""
+  },
+  {
+    "task": "01-hello",
+    "agent": "bench-echo",
     "run": 1,
     "status": "failed",
     "success": false,
-    "wall_ms": 2679,
+    "wall_ms": 2644,
     "output": ""
+  },
+  {
+    "task": "02-list",
+    "agent": "bench-claude",
+    "run": 1,
+    "status": "done",
+    "success": true,
+    "wall_ms": 46268,
+    "output": "\n\napple, banana, orange\nResult sent. The answer is: **apple, banana, orange**\nResult sent. The answer is: **apple, banana, orange**"
   },
   {
     "task": "02-list",
@@ -23,17 +41,26 @@
     "run": 1,
     "status": "done",
     "success": true,
-    "wall_ms": 4073,
-    "output": "⠙ ⠹ ⠸ ⠸ ⠴ ⠴ ⠦ ⠧ sage send mykey \"apple,banana,orange\""
+    "wall_ms": 2058,
+    "output": "⠋ ⠙ ⠸ ⠸ ⠴ ⠦ ⠧ ⠇ sage send mykey \"apple,banana,orange\""
   },
   {
     "task": "02-list",
-    "agent": "bench-local",
+    "agent": "bench-echo",
     "run": 1,
     "status": "failed",
     "success": false,
-    "wall_ms": 2058,
+    "wall_ms": 2057,
     "output": ""
+  },
+  {
+    "task": "03-math",
+    "agent": "bench-claude",
+    "run": 1,
+    "status": "done",
+    "success": true,
+    "wall_ms": 34252,
+    "output": "\n\n56\nThe answer is **56**. Result sent back to cli.\nThe answer is **56**. Result sent back to cli."
   },
   {
     "task": "03-math",
@@ -41,16 +68,70 @@
     "run": 1,
     "status": "done",
     "success": true,
-    "wall_ms": 2059,
-    "output": "⠙ ⠙ ⠹ ⠸ ⠼ ⠴  sage send mykey \"7 * 8 = 56\""
+    "wall_ms": 2057,
+    "output": "⠙ ⠙ ⠸ ⠸ ⠼ ⠦ ⠦ sage send mykey \"echo $((7*8))\""
   },
   {
     "task": "03-math",
-    "agent": "bench-local",
+    "agent": "bench-echo",
+    "run": 1,
+    "status": "failed",
+    "success": false,
+    "wall_ms": 2057,
+    "output": ""
+  },
+  {
+    "task": "04-code-review",
+    "agent": "bench-claude",
+    "run": 1,
+    "status": "running",
+    "success": false,
+    "wall_ms": 301576,
+    "output": ""
+  },
+  {
+    "task": "04-code-review",
+    "agent": "bench-ollama",
+    "run": 1,
+    "status": "done",
+    "success": true,
+    "wall_ms": 26213,
+    "output": "⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏ ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏ ⠏ ⠋ ⠹ ⠹ ⠸ ⠼ ⠴ ⠧ ⠧ ⠇ ⠏ ⠋ ⠙ ⠸ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏ ⠋ ⠙ ⠸ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏ ⠋ ⠹ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏ ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠇ ⠇ ⠋ ⠋ ⠙ ⠹ ⠸ ⠼ ⠦ ⠦ ⠧ ⠇ ⠏ ⠋ ⠙ ⠹ ⠼ ⠼ ⠦ ⠦ ⠇ ⠇ ⠏ ⠋ ⠹ ⠹ ⠸ ⠼ ⠴ ⠧ ⠧ ⠇ ⠋ ⠋ ⠙ ⠹ ⠸ ⠴ ⠴ ⠦ ⠧ ⠇ ⠏ ⠋ ⠙ ⠸ ⠸ ⠼ ⠴ ⠦ ⠇ ⠇ ⠏ ⠋ ⠹ ⠹ ⠸ ⠴ ⠴ ⠦ ⠧ ⠏ ⠏ ⠙ ⠙ ⠸ ⠸ ⠼ ⠴ ⠧ ⠇ ⠇ ⠏ ⠋ ⠙ ⠹ ⠸ * The function `divide` does not handle the case where `b` is zero, which would result in a division by zero error.\n* The function `parse_age` assumes that the input string `s` is always a valid integer representation of an age. However, it does not validate this assumption and may raise an exception if `s` contains non-numeric characters or if its value exceeds the maximum limit for an integer in Python.\n* The function `find_user` does not handle the case where the input list `users` is empty or does not contain any elements with a matching name. It will return `None` in these cases without raising an exception, which may be unexpected behavior depending on how this function is intended to be used."
+  },
+  {
+    "task": "04-code-review",
+    "agent": "bench-echo",
     "run": 1,
     "status": "failed",
     "success": false,
     "wall_ms": 2058,
+    "output": ""
+  },
+  {
+    "task": "05-json",
+    "agent": "bench-claude",
+    "run": 1,
+    "status": "queued",
+    "success": false,
+    "wall_ms": 301666,
+    "output": ""
+  },
+  {
+    "task": "05-json",
+    "agent": "bench-ollama",
+    "run": 1,
+    "status": "done",
+    "success": true,
+    "wall_ms": 14153,
+    "output": "⠙ ⠹ ⠹ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏ ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏ ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠇ ⠏ ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠧ ⠧ ⠇ ⠋ ⠙ ⠹ ⠸ ⠼ ⠼ ⠦ ⠦ ⠇ ⠇ ⠏ ⠋ ⠙ ⠸ ⠼ ⠼ ⠦ ⠦ ⠇ ⠇ ⠏ ⠙ ⠙ ⠹ ⠼ ⠼ ⠴ ⠧ ⠧ ⠏ ⠏ ⠙ ⠹ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏ ⠙ ⠙ ⠹ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏ ⠋ ⠙ ⠙ ⠹ ⠼ ⠼ ⠴ ⠧ ⠧ ⠏ ⠏ ⠙ ⠙ ⠹ ⠼ ⠼ ⠴ ⠧ ⠧ ⠏ ⠋ ⠙ ⠙ ⠸ ⠼ ⠴ sage send mykey '{\"language\": \"Python\", \"released\": 1991, \"typing\": \"dynamic\"}'"
+  },
+  {
+    "task": "05-json",
+    "agent": "bench-echo",
+    "run": 1,
+    "status": "failed",
+    "success": false,
+    "wall_ms": 2057,
     "output": ""
   }
 ]

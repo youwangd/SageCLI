@@ -1,0 +1,12 @@
+Review this Python function and list the bugs as a bulleted list. No preamble.
+
+def divide(a, b):
+    return a / b
+
+def parse_age(s):
+    return int(s)
+
+def find_user(users, name):
+    for u in users:
+        if u.name == name:
+            return u
