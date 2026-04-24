@@ -510,6 +510,25 @@ Pre-flight health check — if primary's runtime binary is unreachable or the da
 CHAOS_BINARIES="claude gemini" bash docs/demos/kill-switch-drill.sh
 ```
 
+### Bench-as-code (the proof weapon)
+
+Should you buy Claude Code seats, Gemini CLI subscriptions, or run a local model? Run your actual tasks through each vendor's actual agent CLI and get a decision-ready report:
+
+```bash
+sage bench run ./bench-tasks --agents claude-agent,gemini-agent,ollama-agent
+sage bench report --format markdown
+```
+
+Real dogfood results (5 tasks × 3 agents, CPU-only box, 2026-04-24):
+
+| Agent | Success rate | Median wall |
+|-------|-------------|-------------|
+| bench-claude (Claude Code) | 60% | 46,268 ms |
+| bench-ollama (llama3.2:3b) | 100% | 2,577 ms |
+| bench-echo (null baseline) | 0% | 2,057 ms |
+
+For trivial orchestration tasks, a small local model on CPU beats a full coding agent CLI — not because the local model is smarter, but because the coding agent's scaffolding cost dominates wall-time for short tasks. See [docs/use-case-bench.md](docs/use-case-bench.md) for the full analysis, honest caveats, and how to run it on your own workflow.
+
 ---
 
 ## Architecture

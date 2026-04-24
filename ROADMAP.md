@@ -236,7 +236,7 @@ else drives all the agent CLIs from one command surface. Sage can.
 - [ ] Success oracle: `--oracle llm-judge` (separate synthesizer agent judges output quality)
 - [x] Dogfood: ran `sage bench` on SageCLI repo with 3 tasks × 2 agents (ollama + bash),
       produced real markdown/csv/json reports. See `bench-tasks/` for task files.
-- [ ] `docs/use-case-bench.md` — "How I chose between Claude, Gemini, and Codex for my team"
+- [x] `docs/use-case-bench.md` — "How I chose between Claude, Gemini, and Codex for my team"
 
 **Moat check**: strengthens neutrality ✅ (requires vendor-neutral driver) · Unix-native ✅
 · not in coding-assistant lane ✅
