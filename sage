@@ -7369,6 +7369,243 @@ EOF
   esac
 }
 
+# ==========================================================================
+# sage bench — vendor-neutral benchmarking (Phase 21)
+# Drive the SAME task across N agents, capture wall-time and success signal,
+# emit a decision-ready report. The proof weapon that only sage can ship,
+# because only sage orchestrates every agent CLI from one command surface.
+# ==========================================================================
+
+cmd_bench() {
+  ensure_init
+  local sub="${1:-}"; shift 2>/dev/null || true
+  case "$sub" in
+    run)    _bench_run "$@" ;;
+    report) _bench_report "$@" ;;
+    ls)     _bench_ls ;;
+    ""|help|-h|--help)
+      cat <<'HELP'
+  sage bench run <tasks-dir> --agents A,B,C [flags]
+  sage bench report [--run <id>] [--format markdown|json|csv]
+  sage bench ls
+
+  Run a set of task files across multiple agents and produce a decision
+  report. Same task, different vendors, honest numbers.
+
+  FLAGS for run
+    --agents A,B,C       comma-separated agent names (required)
+    --oracle MODE        success signal: exit-zero (default) | file-diff
+    --golden <dir>       golden-output dir (for file-diff oracle)
+    --runs N             repeat each task N times (default 1)
+    --timeout SECS       per-task timeout (default 300)
+
+  FLAGS for report
+    --run <id>           report on specific run (default: latest)
+    --format FORMAT      markdown (default) | json | csv
+
+  TASK FILE FORMAT
+    tasks-dir/
+      01-hello.prompt        # prompt text sent to each agent
+      02-fizzbuzz.prompt
+      ...
+
+  EXAMPLES
+    sage bench run ./bench-tasks --agents claude,gemini,ollama
+    sage bench report --format csv > results.csv
+    sage bench ls
+HELP
+      ;;
+    *) die "unknown bench subcommand: $sub (try: run, report, ls)" ;;
+  esac
+}
+
+_bench_run() {
+  local tasks_dir="" agents_csv="" oracle="exit-zero" golden_dir="" runs=1 timeout=300
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agents)  agents_csv="$2"; shift 2 ;;
+      --oracle)  oracle="$2"; shift 2 ;;
+      --golden)  golden_dir="$2"; shift 2 ;;
+      --runs)    runs="$2"; shift 2 ;;
+      --timeout) timeout="$2"; shift 2 ;;
+      -*) die "unknown flag: $1" ;;
+      *)  [[ -z "$tasks_dir" ]] && tasks_dir="$1"; shift ;;
+    esac
+  done
+  [[ -n "$tasks_dir" ]] || die "usage: sage bench run <tasks-dir> --agents A,B,C"
+  [[ -d "$tasks_dir" ]] || die "tasks dir not found: $tasks_dir"
+  [[ -n "$agents_csv" ]] || die "--agents A,B,C is required"
+  case "$oracle" in exit-zero|file-diff) ;; *) die "unknown --oracle: $oracle" ;; esac
+
+  local bench_dir="$SAGE_HOME/bench"
+  local run_id; run_id="run-$(date +%Y%m%d-%H%M%S)"
+  local out_dir="$bench_dir/$run_id"
+  mkdir -p "$out_dir"
+  local results="$out_dir/results.jsonl"
+  : > "$results"
+
+  # Collect task files
+  local -a tasks=()
+  while IFS= read -r f; do tasks+=("$f"); done < <(find "$tasks_dir" -maxdepth 1 -name "*.prompt" -type f | sort)
+  [[ "${#tasks[@]}" -gt 0 ]] || die "no .prompt files in $tasks_dir"
+
+  IFS=',' read -r -a agents <<< "$agents_csv"
+
+  info "bench run $run_id — ${#tasks[@]} tasks × ${#agents[@]} agents × ${runs} runs = $((${#tasks[@]} * ${#agents[@]} * runs)) dispatches"
+  info "out: $out_dir"
+  echo ""
+
+  local total_done=0
+  for t in "${tasks[@]}"; do
+    local task_name; task_name=$(basename "$t" .prompt)
+    local prompt; prompt=$(cat "$t")
+    for agent in "${agents[@]}"; do
+      for n in $(seq 1 "$runs"); do
+        printf "  %-20s %-20s run=%d " "$task_name" "$agent" "$n"
+        if ! _agent_runtime_healthy "$agent" 2>/dev/null; then
+          printf "\033[0;33m⚠ skipped (agent '%s' unhealthy)\033[0m\n" "$agent"
+          jq -cn --arg t "$task_name" --arg a "$agent" --argjson n "$n" \
+            '{task:$t,agent:$a,run:$n,status:"skipped",reason:"agent unhealthy",wall_ms:0,success:false}' \
+            >> "$results"
+          continue
+        fi
+        local t0 t1 wall_ms task_id status_json status output rc success=false
+        t0=$(date +%s%3N 2>/dev/null || echo $(($(date +%s)*1000)))
+        # Dispatch via send - capture task id from send output
+        task_id=$(cmd_send "$agent" "$prompt" 2>&1 | grep -oE 't-[0-9]+-[0-9]+' | head -1)
+        if [[ -z "$task_id" ]]; then
+          printf "\033[0;31m✗ dispatch failed\033[0m\n"
+          jq -cn --arg t "$task_name" --arg a "$agent" --argjson n "$n" \
+            '{task:$t,agent:$a,run:$n,status:"dispatch_failed",success:false,wall_ms:0}' >> "$results"
+          continue
+        fi
+        # Poll for completion
+        local waited=0
+        while [[ $waited -lt $timeout ]]; do
+          status=$(cmd_result "$task_id" --json 2>/dev/null | jq -r '.status // "?"' 2>/dev/null)
+          [[ "$status" == "done" || "$status" == "failed" ]] && break
+          sleep 2; waited=$((waited+2))
+        done
+        t1=$(date +%s%3N 2>/dev/null || echo $(($(date +%s)*1000)))
+        wall_ms=$((t1-t0))
+        output=$(cmd_result "$task_id" --json 2>/dev/null | jq -r '.output // ""' 2>/dev/null)
+        # Strip ANSI/spinner to keep JSON clean
+        output=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' | head -c 2000)
+        # Apply oracle
+        case "$oracle" in
+          exit-zero)
+            [[ "$status" == "done" ]] && success=true
+            ;;
+          file-diff)
+            local golden="$golden_dir/${task_name}.golden"
+            if [[ -f "$golden" ]] && diff -q <(printf '%s' "$output") "$golden" >/dev/null 2>&1; then
+              success=true
+            fi
+            ;;
+        esac
+        if $success; then
+          printf "\033[0;32m✓\033[0m %dms\n" "$wall_ms"
+        else
+          printf "\033[0;31m✗\033[0m %dms status=%s\n" "$wall_ms" "$status"
+        fi
+        jq -cn --arg t "$task_name" --arg a "$agent" --argjson n "$n" \
+          --arg s "$status" --arg o "$output" --argjson w "$wall_ms" --argjson ok "$success" \
+          '{task:$t,agent:$a,run:$n,status:$s,success:$ok,wall_ms:$w,output:$o}' >> "$results"
+        total_done=$((total_done+1))
+      done
+    done
+  done
+
+  echo ""
+  info "bench complete — $total_done dispatches recorded in $results"
+  info "next: sage bench report"
+  echo "$run_id" > "$bench_dir/latest"
+}
+
+_bench_ls() {
+  local bench_dir="$SAGE_HOME/bench"
+  [[ -d "$bench_dir" ]] || { info "no bench runs yet"; return; }
+  printf "  %-30s %-8s %s\n" "RUN" "TASKS" "AGENTS"
+  for d in "$bench_dir"/run-*; do
+    [[ -d "$d" ]] || continue
+    local rid; rid=$(basename "$d")
+    local r="$d/results.jsonl"
+    [[ -f "$r" ]] || continue
+    local n_tasks n_agents
+    n_tasks=$(jq -r '.task' "$r" | sort -u | wc -l)
+    n_agents=$(jq -r '.agent' "$r" | sort -u | paste -sd,)
+    printf "  %-30s %-8d %s\n" "$rid" "$n_tasks" "$n_agents"
+  done
+}
+
+_bench_report() {
+  local run_id="" fmt="markdown"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --run)    run_id="$2"; shift 2 ;;
+      --format) fmt="$2"; shift 2 ;;
+      *) die "unknown flag: $1" ;;
+    esac
+  done
+  local bench_dir="$SAGE_HOME/bench"
+  [[ -n "$run_id" ]] || run_id=$(cat "$bench_dir/latest" 2>/dev/null || echo "")
+  [[ -n "$run_id" ]] || die "no bench runs found (run: sage bench run ...)"
+  local r="$bench_dir/$run_id/results.jsonl"
+  [[ -f "$r" ]] || die "results not found for run $run_id"
+
+  case "$fmt" in
+    json)
+      jq -s . "$r"
+      ;;
+    csv)
+      echo "task,agent,run,status,success,wall_ms"
+      jq -r '[.task,.agent,.run,.status,.success,.wall_ms] | @csv' "$r"
+      ;;
+    markdown)
+      echo "## sage bench report — $run_id"
+      echo ""
+      # Aggregate: per-agent success rate + median wall_ms
+      echo "### Summary (per agent)"
+      echo ""
+      echo "| Agent | Tasks | Success | Success rate | Median wall (ms) |"
+      echo "|-------|-------|---------|--------------|------------------|"
+      jq -r '.agent' "$r" | sort -u | while read -r a; do
+        local n ok med
+        n=$(jq -s --arg a "$a" '[.[] | select(.agent==$a)] | length' "$r")
+        ok=$(jq -s --arg a "$a" '[.[] | select(.agent==$a and .success==true)] | length' "$r")
+        med=$(jq -s --arg a "$a" '[.[] | select(.agent==$a) | .wall_ms] | sort | .[length/2|floor]' "$r")
+        local rate="0.0"
+        [[ "$n" -gt 0 ]] && rate=$(awk -v a=$ok -v b=$n 'BEGIN{printf "%.1f", a*100/b}')
+        printf "| %s | %d | %d | %s%% | %s |\n" "$a" "$n" "$ok" "$rate" "$med"
+      done
+      echo ""
+      echo "### Per task × agent (wall_ms · success)"
+      echo ""
+      # Header row: task | agent1 | agent2 ...
+      local agents_list
+      agents_list=$(jq -r '.agent' "$r" | sort -u)
+      printf "| Task |"; for a in $agents_list; do printf " %s |" "$a"; done; echo ""
+      printf '%s' "|------|"; for a in $agents_list; do printf '%s' "------|"; done; echo ""
+      jq -r '.task' "$r" | sort -u | while read -r t; do
+        printf "| %s |" "$t"
+        for a in $agents_list; do
+          local w s cell
+          w=$(jq -s --arg t "$t" --arg a "$a" 'first(.[] | select(.task==$t and .agent==$a) | .wall_ms) // "—"' "$r")
+          s=$(jq -s --arg t "$t" --arg a "$a" 'first(.[] | select(.task==$t and .agent==$a) | .success) // false' "$r")
+          if [[ "$s" == "true" ]]; then
+            cell=$(printf "%sms ✓" "$w")
+          else
+            cell=$(printf "%sms ✗" "$w")
+          fi
+          printf " %s |" "$cell"
+        done
+        echo ""
+      done
+      ;;
+    *) die "unknown --format: $fmt (try: markdown, json, csv)" ;;
+  esac
+}
+
 cmd_demo() {
   local clean=false
   [[ "${1:-}" == "--clean" ]] && clean=true
@@ -8519,6 +8756,7 @@ case "${1:-}" in
   task)    shift; cmd_task "$@" ;;
   runs)    shift; cmd_runs "$@" ;;
   plan)    shift; cmd_plan "$@" ;;
+  bench)   shift; cmd_bench "$@" ;;
   demo)    shift; cmd_demo "$@" ;;
   acp)     shift; cmd_acp "$@" ;;
   help|-h|--help) shift; cmd_help "$@" ;;

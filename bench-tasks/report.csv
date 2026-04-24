@@ -1,0 +1,7 @@
+task,agent,run,status,success,wall_ms
+"01-hello","bench-ollama",1,"done",true,4590
+"01-hello","bench-local",1,"failed",false,2679
+"02-list","bench-ollama",1,"done",true,4073
+"02-list","bench-local",1,"failed",false,2058
+"03-math","bench-ollama",1,"done",true,2059
+"03-math","bench-local",1,"failed",false,2058

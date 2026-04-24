@@ -1,0 +1,56 @@
+[
+  {
+    "task": "01-hello",
+    "agent": "bench-ollama",
+    "run": 1,
+    "status": "done",
+    "success": true,
+    "wall_ms": 4590,
+    "output": "⠙ ⠙ ⠸ ⠸ ⠼ ⠦ ⠧ ⠇ sage send bench-ollama \"HELLO\""
+  },
+  {
+    "task": "01-hello",
+    "agent": "bench-local",
+    "run": 1,
+    "status": "failed",
+    "success": false,
+    "wall_ms": 2679,
+    "output": ""
+  },
+  {
+    "task": "02-list",
+    "agent": "bench-ollama",
+    "run": 1,
+    "status": "done",
+    "success": true,
+    "wall_ms": 4073,
+    "output": "⠙ ⠹ ⠸ ⠸ ⠴ ⠴ ⠦ ⠧ sage send mykey \"apple,banana,orange\""
+  },
+  {
+    "task": "02-list",
+    "agent": "bench-local",
+    "run": 1,
+    "status": "failed",
+    "success": false,
+    "wall_ms": 2058,
+    "output": ""
+  },
+  {
+    "task": "03-math",
+    "agent": "bench-ollama",
+    "run": 1,
+    "status": "done",
+    "success": true,
+    "wall_ms": 2059,
+    "output": "⠙ ⠙ ⠹ ⠸ ⠼ ⠴  sage send mykey \"7 * 8 = 56\""
+  },
+  {
+    "task": "03-math",
+    "agent": "bench-local",
+    "run": 1,
+    "status": "failed",
+    "success": false,
+    "wall_ms": 2058,
+    "output": ""
+  }
+]

@@ -226,12 +226,16 @@ Public benchmarks test models on MMLU. Vendor blog posts are biased. Nobody benc
 the **agent+runtime+prompt** stack across vendors on *your actual workflow* — because nobody
 else drives all the agent CLIs from one command surface. Sage can.
 
-- [ ] `sage bench run <tasks-dir> --agents A,B,C --patterns single,debate,pipeline` — drive
-      the same task across N agents, capture token cost / latency / success
-- [ ] `sage bench report --format markdown|json|csv` — produce a decision-ready table
-- [ ] Success oracle options: `--oracle exit-zero` (task script exits 0) / `--oracle llm-judge`
-      (separate synthesizer agent judges) / `--oracle file-diff` (compare against golden output)
-- [ ] Dogfood: run `sage bench` on SageCLI's own repo, publish the table
+- [x] `sage bench run <tasks-dir> --agents A,B,C` — drive the same task across N agents,
+      capture wall time / success signal. Oracle modes: `exit-zero` (default), `file-diff`.
+      Shipped 2026-04-24.
+- [x] `sage bench report --format markdown|json|csv` — produce a decision-ready table
+      with per-agent summary (success rate, median wall-time) and task×agent matrix.
+- [ ] `--patterns single,debate,pipeline` support (run each task through different swarm
+      patterns, not just single-agent send)
+- [ ] Success oracle: `--oracle llm-judge` (separate synthesizer agent judges output quality)
+- [x] Dogfood: ran `sage bench` on SageCLI repo with 3 tasks × 2 agents (ollama + bash),
+      produced real markdown/csv/json reports. See `bench-tasks/` for task files.
 - [ ] `docs/use-case-bench.md` — "How I chose between Claude, Gemini, and Codex for my team"
 
 **Moat check**: strengthens neutrality ✅ (requires vendor-neutral driver) · Unix-native ✅
